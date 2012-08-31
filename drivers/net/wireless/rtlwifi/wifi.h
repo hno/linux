@@ -1687,7 +1687,7 @@ struct dig_t {
 	u8 dig_twoport_algorithm;
 	u8 dig_dbgmode;
 	u8 dig_slgorithm_switch;
-	u8 cursta_connectctate;
+	u8 cursta_connectstate;
 	u8 presta_connectstate;
 	u8 curmultista_connectstate;
 	char backoff_val;
