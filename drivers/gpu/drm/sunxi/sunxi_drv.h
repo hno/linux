@@ -28,6 +28,7 @@
 #include <drm/drm_crtc.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_fb_helper.h>
+#include <linux/i2c.h>
 
 struct sunxi_drm_device {
 	struct drm_device *pdev;
@@ -39,11 +40,17 @@ struct sunxi_drm_device {
 	struct drm_fb_helper fb_helper;
 };
 
+extern struct i2c_adapter sunxi_hdmi_i2c_adapter;
 
 int init_crtc(struct sunxi_drm_device *sdev);
 void destroy_crtc(struct sunxi_drm_device *sdev);
+
+int hdmi_i2c_sunxi_probe(struct platform_device *dev);
+int hdmi_i2c_sunxi_remove(struct platform_device *dev);
+
 int init_connector(struct sunxi_drm_device *sdev, struct drm_encoder *encoder);
 void destroy_connector(struct sunxi_drm_device *sdev);
+
 int init_encoder(struct sunxi_drm_device *sdev);
 void destroy_encoder(struct sunxi_drm_device *sdev);
 int init_framebuffer(struct sunxi_drm_device *sdev);

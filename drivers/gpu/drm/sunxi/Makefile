@@ -18,7 +18,8 @@ sunxi_drm-y := sunxi_drv.o \
 	sunxi_connector.o \
 	sunxi_crtc.o \
 	sunxi_encoder.o \
-	sunxi_fb.o
+	sunxi_fb.o \
+	sunxi_hdmi_i2c.o
 
 obj-$(CONFIG_DRM_SUNXI)   += sunxi_drm.o
 

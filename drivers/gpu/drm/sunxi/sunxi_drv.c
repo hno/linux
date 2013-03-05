@@ -61,6 +61,10 @@ static int sunxi_drm_load(struct drm_device *dev, unsigned long chipset)
 	if (err != 0)
 		goto error_handler;
 
+	err = hdmi_i2c_sunxi_probe(dev->platformdev);
+	if (err != 0)
+		goto error_handler;
+
 	err = init_connector(sdev, &sdev->encoder);
 	if (err != 0)
 		goto error_handler;
@@ -84,6 +88,7 @@ static int sunxi_drm_unload(struct drm_device *dev)
 	struct sunxi_drm_device *sdev = dev->dev_private;
 	destroy_framebuffer(sdev);
 	destroy_connector(sdev);
+	hdmi_i2c_sunxi_remove(dev->platformdev);
 	destroy_encoder(sdev);
 	destroy_crtc(sdev);
 	drm_mode_config_cleanup(dev);
@@ -110,9 +115,14 @@ static struct drm_driver driver = {
 		 .open = drm_open,
 		 .release = drm_release,
 		 .unlocked_ioctl = drm_ioctl,
-		 .mmap = drm_mmap,
+#ifdef CONFIG_COMPAT
+		 .compat_ioctl = drm_compat_ioctl,
+#endif
+		 .mmap = drm_mmap, /*drm_gem_cma_mmap*/
 		 .poll = drm_poll,
+		 .read = drm_read,
 		 .fasync = drm_fasync,
+		 .llseek = no_llseek,
 	},
 	.name = DRIVER_NAME,
 	.desc = DRIVER_DESC,

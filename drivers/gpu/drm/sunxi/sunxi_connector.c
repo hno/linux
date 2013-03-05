@@ -13,34 +13,26 @@
  */
 
 #include "sunxi_drv.h"
+#include "sunxi_disp_regs.h"
 
 static int sunxi_drm_connector_get_modes(struct drm_connector *connector)
 {
-	/*struct sunxi_drm_device *sdev = connector->dev->dev_private;*/
 	struct drm_display_mode *mode;
+	struct edid *edid;
+	int ret = 0;
 
 	mode = drm_mode_create(connector->dev);
 	if (mode == NULL)
 		return 0;
-/*
-	mode->type = DRM_MODE_TYPE_PREFERRED | DRM_MODE_TYPE_DRIVER;
-	mode->clock = sdev->pdata->panel.mode.clock;
-	mode->hdisplay = sdev->pdata->panel.mode.hdisplay;
-	mode->hsync_start = sdev->pdata->panel.mode.hsync_start;
-	mode->hsync_end = sdev->pdata->panel.mode.hsync_end;
-	mode->htotal = sdev->pdata->panel.mode.htotal;
-	mode->vdisplay = sdev->pdata->panel.mode.vdisplay;
-	mode->vsync_start = sdev->pdata->panel.mode.vsync_start;
-	mode->vsync_end = sdev->pdata->panel.mode.vsync_end;
-	mode->vtotal = sdev->pdata->panel.mode.vtotal;
-	mode->flags = sdev->pdata->panel.mode.flags;
 
-	drm_mode_set_name(mode);
-	drm_mode_probed_add(connector, mode);
+	edid = drm_get_edid(connector, &sunxi_hdmi_i2c_adapter);
+	if (edid) {
+		drm_mode_connector_update_edid_property(connector, edid);
+		ret = drm_add_edid_modes(connector, edid);
+		connector->display_info.raw_edid = NULL;
+		kfree(edid);
+	}
 
-	connector->display_info.width_mm = sdev->pdata->panel.width_mm;
-	connector->display_info.height_mm = sdev->pdata->panel.height_mm;
-*/
 	return 1;
 }
 
@@ -72,7 +64,11 @@ static void sunxi_drm_connector_destroy(struct drm_connector *connector)
 static enum drm_connector_status
 sunxi_drm_connector_detect(struct drm_connector *connector, bool force)
 {
-	return connector_status_connected;
+	void __iomem *hdmi_base = (void __iomem *)0xf1c16000;
+	if (readl(HDMI_HPD) & 0x1)
+		return connector_status_connected;
+
+	return connector_status_disconnected;
 }
 
 static const struct drm_connector_funcs connector_funcs = {
