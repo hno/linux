@@ -85,6 +85,11 @@ static int usb_hardware_scan_thread(void * pArg)
 {
 	struct usb_cfg *cfg = pArg;
 
+#ifdef CONFIG_ARCH_SUN4I
+	/* delay for udc & hcd ready */
+	msleep(3000);
+#endif
+
 	while(thread_run_flag){
 		DMSG_DBG_MANAGER("\n\n");
 
