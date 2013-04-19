@@ -1528,7 +1528,6 @@ fail:
 */
 int sw_usb_host0_enable(void)
 {
-#ifdef CONFIG_USB_SW_SUNXI_USB0_OTG
 	struct platform_device 	*pdev 	= NULL;
 	struct device   		*dev  	= NULL;
 	struct sw_hcd 			*sw_hcd	= NULL;
@@ -1579,7 +1578,6 @@ int sw_usb_host0_enable(void)
 	spin_unlock_irqrestore(&sw_hcd->lock, flags);
 
 	DMSG_INFO_HCD0("sw_usb_host0_enable end\n");
-#endif
 	return 0;
 }
 EXPORT_SYMBOL(sw_usb_host0_enable);
@@ -1604,7 +1602,6 @@ EXPORT_SYMBOL(sw_usb_host0_enable);
 */
 int sw_usb_host0_disable(void)
 {
-#ifdef CONFIG_USB_SW_SUNXI_USB0_OTG
 	struct platform_device 	*pdev 	= NULL;
 	struct sw_hcd 			*sw_hcd	= NULL;
 	unsigned long   		flags 	= 0;
@@ -1659,7 +1656,6 @@ int sw_usb_host0_disable(void)
 	spin_unlock_irqrestore(&sw_hcd->lock, flags);
 
 	DMSG_INFO_HCD0("sw_usb_host0_disable end\n");
-#endif
 
 	return 0;
 }
@@ -1684,7 +1680,6 @@ EXPORT_SYMBOL(sw_usb_host0_disable);
 *
 *******************************************************************************
 */
-#ifdef CONFIG_USB_SW_SUNXI_USB0_OTG
 static int sw_hcd_probe_otg(struct platform_device *pdev)
 {
 	struct device   *dev    = &pdev->dev;
@@ -1725,7 +1720,6 @@ static int sw_hcd_probe_otg(struct platform_device *pdev)
 end:
     return status;
 }
-#endif
 
 /*
 *******************************************************************************
@@ -1745,7 +1739,6 @@ end:
 *
 *******************************************************************************
 */
-#ifdef CONFIG_USB_SW_SUNXI_USB0_OTG
 static int sw_hcd_remove_otg(struct platform_device *pdev)
 {
 	struct sw_hcd *sw_hcd = dev_to_sw_hcd(&pdev->dev);
@@ -1766,7 +1759,6 @@ static int sw_hcd_remove_otg(struct platform_device *pdev)
 
 	return 0;
 }
-#endif
 
 /*
 *******************************************************************************
@@ -2349,7 +2341,10 @@ static struct platform_driver sw_hcd_driver = {
 static int __init sw_hcd_init(void)
 {
 	DMSG_INFO_HCD0("usb host driver initialize........\n");
-
+#ifdef CONFIG_USB_PORT_POWER_MANAGEMENT
+	hcd0_set_vbus_cnt--;
+	hcd0_enable--;
+#endif
     if (usb_disabled()){
         DMSG_PANIC("ERR: usb disabled\n");
 		return 0;
@@ -2392,3 +2387,38 @@ static void __exit sw_hcd_cleanup(void)
 module_exit(sw_hcd_cleanup);
 
 
+int hcd0_set_vbus(int is_on)
+{
+	struct sw_hcd *sw_hcd = g_sw_hcd0;
+
+	if (is_on)
+		hcd0_enable = 1;
+	else
+		hcd0_enable = 0;
+
+	sw_hcd_board_set_vbus(sw_hcd, is_on);
+
+	return 0;
+}
+EXPORT_SYMBOL(hcd0_set_vbus);
+
+int hcd0_get_vbus_status(void)
+{
+	return hcd0_enable;
+}
+EXPORT_SYMBOL(hcd0_get_vbus_status);
+
+static int hcd0_connect_status;
+
+void set_hcd0_connect_status(int status)
+{
+	hcd0_connect_status = status;
+	return;
+}
+EXPORT_SYMBOL(set_hcd0_connect_status);
+
+int get_hcd0_connect_status(void)
+{
+	return hcd0_connect_status;
+}
+EXPORT_SYMBOL(get_hcd0_connect_status);
