@@ -32,7 +32,7 @@
 #include <linux/clk.h>
 #include <linux/io.h>
 #include <linux/gpio.h>
-#include "../../power/axp_power/axp-gpio.h"
+#include "../../../../power/axp_power/axp-gpio.h"
 
 #include  <mach/clock.h>
 #include  "../include/sw_hcd_config.h"
