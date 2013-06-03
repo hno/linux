@@ -1,3 +1,27 @@
+/*
+ * (C) Copyright 2007-2012
+ * Allwinner Technology Co., Ltd. <www.allwinnertech.com>
+ * Neil Peng<penggang@allwinnertech.com>
+ *
+ * See file CREDITS for list of people who contributed to this
+ * project.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of
+ * the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.	 See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
+ * MA 02111-1307 USA
+ */
+
 #ifndef __NAND_LIB_H__
 #define __NAND_LIB_H__
 
@@ -72,7 +96,6 @@ extern __s32 LML_Read(__u32 nLba, __u32 nLength, void* pBuf);
 extern __s32 LML_Write(__u32 nLba, __u32 nLength, void* pBuf);
 extern __s32 LML_FlushPageCache(void);
 
-extern __s32 BMM_RleaseLogBlock(__u32 log_level);
 extern __s32 BMM_WriteBackAllMapTbl(void);
 
 extern __s32 NAND_CacheFlush(void);
@@ -100,6 +123,7 @@ extern __s32 PHY_ChangeMode(__u8 serial_mode);
 extern __s32 PHY_ScanDDRParam(void);
 extern __s32 PHY_SynchBank(__u32 nBank, __u32 bMode);
 extern __s32 PHY_ResetChip(__u32 nChip);
+extern __s32 PHY_SetDefaultParam(__u32 bank);
 
 //for simplie(boot0)
 extern __s32 PHY_SimpleErase(struct boot_physical_param * eraseop);

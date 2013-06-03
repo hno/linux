@@ -1,3 +1,27 @@
+/*
+* (C) Copyright 2007-2012
+* Allwinner Technology Co., Ltd. <www.allwinnertech.com>
+* Neil Peng<penggang@allwinnertech.com>
+*
+* See file CREDITS for list of people who contributed to this
+* project.
+*
+* This program is free software; you can redistribute it and/or
+* modify it under the terms of the GNU General Public License as
+* published by the Free Software Foundation; either version 2 of
+* the License, or (at your option) any later version.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.	 See the
+* GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License
+* along with this program; if not, write to the Free Software
+* Foundation, Inc., 59 Temple Place, Suite 330, Boston,
+* MA 02111-1307 USA
+*/
+
 #include <linux/kernel.h>
 #include <linux/slab.h>
 #include <linux/module.h>
@@ -124,7 +148,7 @@ extern __u32 NAND_GetIOBaseAddr(void);
 DEFINE_SEMAPHORE(nand_mutex);
 static unsigned char volatile IS_IDLE = 1;
 static int nand_flush(struct nand_blk_dev *dev);
-static int nand_logrelease(struct nand_blk_dev *dev);
+
 
 static int nand_flush_force(__u32 dev_num);
 static struct nand_state nand_reg_state;
@@ -822,7 +846,7 @@ static int collect_thread(void *tmparg)
 {
 	unsigned long ret;
 	struct collect_ops *arg = tmparg;
-	int log_release_flag;
+
 
 	current->flags |= PF_MEMALLOC | PF_NOFREEZE;
 	daemonize("%sd", "nfmt");
@@ -831,7 +855,7 @@ static int collect_thread(void *tmparg)
 	sigfillset(&current->blocked);
 	recalc_sigpending();
 	spin_unlock_irq(&current->sighand->siglock);
-#if 0
+
 	while (!arg->quit)
 	{
 		ret = wait_event_interruptible_timeout(arg->wait, 0, arg->timeout*HZ);
@@ -842,31 +866,7 @@ static int collect_thread(void *tmparg)
 		}
 		arg->timeout = TIMEOUT;
 	}
-#else
-	while (!arg->quit)
-	{
-		ret = wait_event_interruptible(arg->wait,after_rw);
-		if(ret==0)
-		{
-			do{
-				after_rw = 0;
-				msleep(arg->timeout);
-			}while(after_rw);
-			//IS_IDLE = 1;
-			nand_flush(NULL);
-			//IS_IDLE = 1;
 
-			while(!after_rw)
-			{
-				log_release_flag = nand_logrelease(NULL);
-				if(log_release_flag<=0)
-					break;
-
-				msleep(100);
-			}
-		}
-	}
-#endif
 	complete_and_exit(&arg->thread_exit, 0);
 }
 #endif
@@ -1017,27 +1017,6 @@ static int nand_flush(struct nand_blk_dev *dev)
 	return 0;
 }
 
-static int nand_logrelease(struct nand_blk_dev *dev)
-{
-    __s32 log_cnt =-1;
-	
-    #ifdef NAND_LOG_AUTO_MERGE
-	if (0 == down_trylock(&mytr.nand_ops_mutex))
-	{
-		IS_IDLE = 0;
-		log_cnt = BMM_RleaseLogBlock(NAND_LOG_RELEASE_LEVEL);
-		up(&mytr.nand_ops_mutex);
-		IS_IDLE = 1;
-		//PRINT("nand_log_release: %x \n", log_cnt);
-		if(log_cnt == NAND_LOG_RELEASE_LEVEL)
-			return 0;
-		else
-			return log_cnt;
-	}
-	#endif
-	
-	return -1;
-}
 
 static int nand_flush_force(__u32 dev_num)
 {
@@ -1294,20 +1273,22 @@ static int nand_resume(struct platform_device *plat_dev)
 			*(volatile u32 *)(NAND_GetIOBaseAddr()+ i*0x04) = nand_reg_state.nand_reg_back[i]; 
 		}
         //reset all chip
-    	for(i=1; i<8; i++)
+
+    	for(i=0; i<8; i++)
         {
-            if(NAND_GetChipConnect()&(0x1<<i)) //chip valid
+			__u32 bank=0;
+			if(NAND_GetChipConnect()&(0x1<<i)) //chip valid
             {
                 pr_info("nand reset chip %d!\n",i);
                 ret = PHY_ResetChip(i);
-                ret |= PHY_SynchBank(i, 0);
+				PHY_SetDefaultParam(bank);
+				RetryCount[i] = 0;
                 if(ret)
                     pr_info("nand reset chip %d failed!\n",i);
+				bank++;
             }
         }
-    	//init retry count
-    	for(i=0;i<8;i++)
-    	    RetryCount[i] = 0;
+
 		//process for super standby
 		//restore reg state
 		for(i=0; i<(NAND_REG_LENGTH); i++){
