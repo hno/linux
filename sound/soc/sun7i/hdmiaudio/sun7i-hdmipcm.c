@@ -2,7 +2,7 @@
  * sound\soc\sun7i\hdmiaudio\sun7i-hdmipcm.c
  * (C) Copyright 2007-2011
  * Reuuimlla Technology Co., Ltd. <www.reuuimllatech.com>
- * chenpailin <chenpailin@Reuuimllatech.com>
+ * huangxin <huangxin@Reuuimllatech.com>
  *
  * some simple description for this code
  *
@@ -19,17 +19,13 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/dma-mapping.h>
-
 #include <sound/core.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
-
 #include <asm/dma.h>
 #include <mach/hardware.h>
 #include <mach/dma.h>
-
-#include "sun7i-hdmiaudio.h"
 #include "sun7i-hdmipcm.h"
 static volatile unsigned int dmasrc = 0;
 static volatile unsigned int dmadst = 0;
@@ -43,13 +39,13 @@ static const struct snd_pcm_hardware sun7i_pcm_hardware = {
 	.rate_min		= 8000,
 	.rate_max		= 192000,
 	.channels_min		= 1,
-	.channels_max		= 2,
+	.channels_max		= 4,
 	.buffer_bytes_max	= 128*1024,    /* value must be (2^n)Kbyte size */
-	.period_bytes_min	= 1024*4,//1024*4,
-	.period_bytes_max	= 1024*32,//1024*32,
-	.periods_min		= 4,//4,
-	.periods_max		= 8,//8,
-	.fifo_size		= 128,//32,
+	.period_bytes_min	= 1024*4,
+	.period_bytes_max	= 1024*32,
+	.periods_min		= 2,
+	.periods_max		= 8,
+	.fifo_size			= 128,
 };
 
 struct sun7i_runtime_data {
@@ -73,7 +69,6 @@ static void sun7i_pcm_enqueue(struct snd_pcm_substream *substream)
 	dma_addr_t pos = prtd->dma_pos;
 	unsigned int limit;
 	int ret;
-	
 	unsigned long len = prtd->dma_period;
   	limit = prtd->dma_limit;
   	while(prtd->dma_loaded < limit)
@@ -201,7 +196,7 @@ static int sun7i_pcm_prepare(struct snd_pcm_substream *substream)
 	struct sun7i_runtime_data *prtd = substream->runtime->private_data;
 	dma_config_t codec_dma_conf;
 	int ret = 0;
-	
+	//printk("pcm:::%s,line:%d\n", __func__, __LINE__);
 	if (!prtd->params)
 		return 0;
 		
@@ -257,10 +252,11 @@ static int sun7i_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 	case SNDRV_PCM_TRIGGER_START:
 	case SNDRV_PCM_TRIGGER_RESUME:
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
-		printk("[HDMI-AUDIO] PCM trigger start...\n");
+		
 		/*
 		* start dma transfer
 		*/
+		
 		if (0 != sw_dma_ctl(prtd->dma_hdl, DMA_OP_START, NULL)) {
 			printk("%s err, dma start err\n", __FUNCTION__);
 			return -EINVAL;
@@ -270,7 +266,7 @@ static int sun7i_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 	case SNDRV_PCM_TRIGGER_SUSPEND:
 	case SNDRV_PCM_TRIGGER_STOP:
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
-		printk("[HDMI-AUDIO] PCM trigger stop...\n");
+		
 		/*
 		* stop play dma transfer
 		*/

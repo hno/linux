@@ -24,6 +24,7 @@
 #include <linux/mutex.h>
 #include <linux/slab.h>
 #include <linux/mutex.h>
+#include <linux/delay.h>
 
 #include <mach/system.h>
 #include <mach/hardware.h>
@@ -248,10 +249,11 @@ struct bma250_data {
 };
 
 /* Addresses to scan */
-static const unsigned short normal_i2c[] = {0x18, I2C_CLIENT_END};
+static const unsigned short normal_i2c[] = {0x19, I2C_CLIENT_END};
 static __u32 twi_id = 0;
 static int i2c_num = 0;
-static const unsigned short i2c_address[4] = {0x08,0x18,0x19,0x38};
+static const unsigned short i2c_address[4] = {0x18,0x38,0x08,0x19};
+static const int chip_id_value[4] = {0x02,0x03,0xf9,0xfa};
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static void bma250_early_suspend(struct early_suspend *h);
@@ -314,29 +316,32 @@ script_get_err:
 static int gsensor_detect(struct i2c_client *client, struct i2c_board_info *info)
 {
 	struct i2c_adapter *adapter = client->adapter;
-	int ret;
+	int ret , i = 0 ,retry = 2;
+	
 	if (!i2c_check_functionality(adapter, I2C_FUNC_SMBUS_BYTE_DATA))
 		return -ENODEV;
-            
+    
 	if (twi_id == adapter->nr) {
-		for (i2c_num = 0; i2c_num < (sizeof(i2c_address)/sizeof(i2c_address[0]));i2c_num++) {
-			client->addr = i2c_address[i2c_num];
-			ret = i2c_smbus_read_byte_data(client,BMA250_CHIP_ID_REG);
-			dprintk(DEBUG_INIT, "%s:addr = 0x%x, i2c_num:%d, Read ID value is :%d",
-			        __func__, client->addr, i2c_num, ret);
-			        
-			if ((ret &0x00FF) == BMA250_CHIP_ID) {
-				strlcpy(info->type, SENSOR_NAME, I2C_NAME_SIZE);
-				return 0; 
-			} else if((ret &0x00FF) == BMA150_CHIP_ID) { 
-				strlcpy(info->type, SENSOR_NAME, I2C_NAME_SIZE);
-				return 0; 	
-			} else if((ret &0x00FF) == BMA250E_CHIP_ID) { 
-				strlcpy(info->type, SENSOR_NAME, I2C_NAME_SIZE);
-				return 0; 	
-			}                                                                                                               
-		}
-        
+	        while(retry--) {
+        		for (i2c_num = 0; i2c_num < (sizeof(i2c_address)/sizeof(i2c_address[0]));i2c_num++) {
+        			i = 0;
+        			client->addr = i2c_address[i2c_num];
+        			
+        			ret = i2c_smbus_read_byte_data(client,BMA250_CHIP_ID_REG);
+        			
+        			dprintk(DEBUG_INIT, "%s:addr = 0x%x, i2c_num:%d, Read ID value is :%d\n",
+        			        __func__, client->addr, i2c_num, ret);
+        			        
+        			while((chip_id_value[i++]) && (i < 5)){
+        			        dprintk(DEBUG_INIT, "chip:%d\n", chip_id_value[i - 1]);
+                                        if((ret & 0x00FF) == chip_id_value[i - 1]){
+                            	                strlcpy(info->type, SENSOR_NAME, I2C_NAME_SIZE);
+                    		                return 0;
+                                        }  
+                                }                 
+        		}
+        	}
+
 		dprintk(DEBUG_INIT, "%s:Bosch Sensortec Device not found,\
 		         maybe the other gsensor equipment! \n",__func__);
 		return -ENODEV;
@@ -851,7 +856,7 @@ static DEVICE_ATTR(value, S_IRUGO,
 		bma250_value_show, NULL);
 static DEVICE_ATTR(delay, S_IRUGO|S_IWUSR|S_IWGRP,
 		bma250_delay_show, bma250_delay_store);
-static DEVICE_ATTR(enable, S_IRUGO|S_IWUSR|S_IWGRP|S_IWOTH,
+static DEVICE_ATTR(enable, S_IRUGO|S_IWUSR|S_IWGRP,
 		bma250_enable_show, bma250_enable_store);
 
 static struct attribute *bma250_attributes[] = {
@@ -911,7 +916,7 @@ static int bma250_probe(struct i2c_client *client,
 	struct bma250_data *data;
 
 	dprintk(DEBUG_INIT, "bma250: probe\n");
-	dprintk(DEBUG_INIT, "bma250 probe i2c address is %d \n", 
+	dprintk(DEBUG_INIT, "bma250 probe i2c address is 0x%x \n", 
 	        i2c_address[i2c_num]);
 	client->addr =i2c_address[i2c_num];
 

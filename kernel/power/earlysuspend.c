@@ -28,13 +28,15 @@ enum {
 	DEBUG_SUSPEND = 1U << 2,
 	DEBUG_VERBOSE = 1U << 3,
 };
-static int debug_mask = DEBUG_USER_STATE;
+static int debug_mask = DEBUG_USER_STATE | DEBUG_SUSPEND;
 module_param_named(debug_mask, debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP);
 
 static DEFINE_MUTEX(early_suspend_lock);
 static LIST_HEAD(early_suspend_handlers);
+static void sync_system(struct work_struct *work);
 static void early_suspend(struct work_struct *work);
 static void late_resume(struct work_struct *work);
+static DECLARE_WORK(sync_system_work, sync_system);
 static DECLARE_WORK(early_suspend_work, early_suspend);
 static DECLARE_WORK(late_resume_work, late_resume);
 static DEFINE_SPINLOCK(state_lock);
@@ -47,6 +49,15 @@ static int state;
 #ifdef CONFIG_EARLYSUSPEND_DELAY
 extern struct wake_lock ealysuspend_delay_work;
 #endif
+
+static void sync_system(struct work_struct *work)
+{
+	pr_info("%s +\n", __func__);
+	wake_lock(&sync_wake_lock);
+	sys_sync();
+	wake_unlock(&sync_wake_lock);
+	pr_info("%s -\n", __func__);
+}
 
 void register_early_suspend(struct early_suspend *handler)
 {
@@ -83,6 +94,10 @@ static void early_suspend(struct work_struct *work)
 	u64 usecs64;
 	int usecs;
 	ktime_t starttime;
+	struct timer_list timer;
+	struct pm_wd_data data;
+
+	pm_wd_add_timer(&timer, &data, 30);
 
 	mutex_lock(&early_suspend_lock);
 	spin_lock_irqsave(&state_lock, irqflags);
@@ -129,12 +144,16 @@ static void early_suspend(struct work_struct *work)
 	if (debug_mask & DEBUG_SUSPEND)
 		pr_info("early_suspend: sync\n");
 
-	sys_sync();
+	/* sys_sync(); */
+	queue_work(sync_work_queue, &sync_system_work);
+
 abort:
 	spin_lock_irqsave(&state_lock, irqflags);
 	if (state == SUSPEND_REQUESTED_AND_SUSPENDED)
 		wake_unlock(&main_wake_lock);
 	spin_unlock_irqrestore(&state_lock, irqflags);
+
+	pm_wd_del_timer(&timer);
 }
 
 static void late_resume(struct work_struct *work)
@@ -146,7 +165,11 @@ static void late_resume(struct work_struct *work)
 	u64 usecs64;
 	int usecs;
 	ktime_t starttime;
-	
+	struct timer_list timer;
+	struct pm_wd_data data;
+
+	pm_wd_add_timer(&timer, &data, 30);
+
 	mutex_lock(&early_suspend_lock);
 	spin_lock_irqsave(&state_lock, irqflags);
 	if (state == SUSPENDED)
@@ -190,6 +213,8 @@ static void late_resume(struct work_struct *work)
 	standby_level = STANDBY_INITIAL;
 abort:
 	mutex_unlock(&early_suspend_lock);
+
+	pm_wd_del_timer(&timer);
 }
 
 void request_suspend_state(suspend_state_t new_state)

@@ -1647,12 +1647,10 @@ HAL_INIT_PROFILE_TAG(HAL_INIT_STAGES_INIT_PW_ON);
 		goto exit;
 	}
 
-	// Set RF type for BB/RF configuration	
-	_InitRFType(Adapter);//->_ReadRFType()
-
 	// Save target channel
-	// <Roger_Notes> Current Channel will be updated again later.
 	pHalData->CurrentChannel = 6;//default set to 6
+
+
 	if(pwrctrlpriv->reg_rfoff == _TRUE){
 		pwrctrlpriv->rf_pwrstate = rf_off;
 	}

@@ -135,12 +135,12 @@ static int __devinit axp20_init_chip(struct axp_mfd_chip *chip)
 	axp20_correct_restcap(chip);
 	err = __axp_reads(chip->client, POWER20_INTSTS1, 5, v);
 	if (err) {
-	    printk("[AXP20-MFD] try to Read irq failed!\n");
+	    printk("[AXP20-MFD] try to clear irqs failed!\n");
 		return err;
 	}
 	err = __axp_writes(chip->client, POWER20_INTEN1, 19, v);
 	if (err) {
-	    printk("[AXP20-MFD] try to clear irq failed!\n");
+	    printk("[AXP20-MFD] try to enable irqs failed!\n");
 		return err;
 	}
 
@@ -151,7 +151,7 @@ static int __devinit axp20_init_chip(struct axp_mfd_chip *chip)
 	chip->irqs_enabled = 0xffffffff | (uint64_t)0xff << 32;
 	chip->ops->disable_irqs(chip, chip->irqs_enabled);
     #ifdef CONFIG_ARCH_SUN7I
-    writel(0x01,NMI_CTL_REG);
+    writel(0x00,NMI_CTL_REG);
     writel(0x01,NMI_IRG_PENDING_REG);
     writel(0x00,NMI_INT_ENABLE_REG);
     #endif

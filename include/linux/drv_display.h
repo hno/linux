@@ -8,6 +8,23 @@ typedef struct {__s32 x; __s32 y; __u32 width; __u32 height;}__disp_rect_t;
 typedef struct {__u32 width;__u32 height;                   }__disp_rectsz_t;
 typedef struct {__s32 x; __s32 y;                           }__disp_pos_t;
 
+typedef enum
+{
+	LCD_CMAP_B0	= 0x0,
+	LCD_CMAP_G0	= 0x1,
+	LCD_CMAP_R0	= 0x2,
+	LCD_CMAP_B1	= 0x4,
+	LCD_CMAP_G1	= 0x5,
+	LCD_CMAP_R1	= 0x6,
+	LCD_CMAP_B2	= 0x8,
+	LCD_CMAP_G2	= 0x9,
+	LCD_CMAP_R2	= 0xa,
+	LCD_CMAP_B3	= 0xc,
+	LCD_CMAP_G3	= 0xd,
+	LCD_CMAP_R3	= 0xe,
+}__lcd_cmap_color;
+
+
 
 typedef enum
 {
@@ -15,7 +32,7 @@ typedef enum
         DISP_FORMAT_2BPP        = 0x1,
         DISP_FORMAT_4BPP        = 0x2,
         DISP_FORMAT_8BPP        = 0x3,
-        DISP_FORMAT_RGB655      = 0x4,   
+        DISP_FORMAT_RGB655      = 0x4,
         DISP_FORMAT_RGB565      = 0x5,
         DISP_FORMAT_RGB556      = 0x6,
         DISP_FORMAT_ARGB1555    = 0x7,
@@ -211,7 +228,7 @@ typedef enum
         DISP_LCDC_SRC_DMA       = 2,
         DISP_LCDC_SRC_WHITE     = 3,
         DISP_LCDC_SRC_BLACK     = 4,
-        DISP_LCDC_SRC_BLUT      = 5,
+        DISP_LCDC_SRC_BLUE      = 5,
 }__disp_lcdc_src_t;
 
 typedef enum
@@ -266,6 +283,20 @@ typedef enum
 	DISP_EXIT_MODE_CLEAN_PARTLY = 1,//only clean interrupt temply
 }__disp_exit_mode_t;
 
+typedef enum
+{
+        DISP_ENHANCE_MODE_RED       = 0x0,
+        DISP_ENHANCE_MODE_GREEN     = 0x1,
+        DISP_ENHANCE_MODE_BLUE      = 0x2,
+        DISP_ENHANCE_MODE_CYAN      = 0x3,
+        DISP_ENHANCE_MODE_MAGENTA   = 0x4,
+        DISP_ENHANCE_MODE_YELLOW    = 0x5,
+        DISP_ENHANCE_MODE_FLESH     = 0x6,
+        DISP_ENHANCE_MODE_STANDARD  = 0x7,
+        DISP_ENHANCE_MODE_VIVID     = 0x8,
+        DISP_ENHANCE_MODE_SCENERY   = 0xa,
+}__disp_enhance_mode_t;
+
 
 typedef enum//only for debug!!!
 {
@@ -280,6 +311,7 @@ typedef enum//only for debug!!!
 	DISP_REG_CCMU 		= 8,
 	DISP_REG_PIOC 		= 9,
 	DISP_REG_PWM 		= 10,
+	DISP_REG_HDMI           = 11,
 }__disp_reg_index_t;
 
 
@@ -289,7 +321,7 @@ typedef enum
 	LCD_IF_HV	= 0,
 	LCD_IF_CPU	= 1,
 	LCD_IF_LVDS	= 3,
-	LCD_IF_DSI	= 4,
+	LCD_IF_HV2DSI	= 4,
 	LCD_IF_EDP  	= 5,
 }__lcd_if_t;
 
@@ -483,8 +515,8 @@ typedef struct
 
 typedef struct
 {
-	__s32 (*Hdmi_open)(void);
-	__s32 (*Hdmi_close)(void);
+	__s32 (*hdmi_open)(void);
+	__s32 (*hdmi_close)(void);
 	__s32 (*hdmi_set_mode)(__disp_tv_mode_t mode);
 	__s32 (*hdmi_mode_support)(__disp_tv_mode_t mode);
 	__s32 (*hdmi_get_HPD_status)(void);

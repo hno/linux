@@ -31,6 +31,7 @@ extern __s32 LCD_GPIO_write(__u32 sel,__u32 io_index, __u32 data);
 
 extern __s32 pwm_set_para(__u32 channel, __pwm_info_t * pwm_info);
 extern __s32 pwm_get_para(__u32 channel, __pwm_info_t * pwm_info);
+extern __s32 lcd_get_panel_para(__u32 sel,__panel_para_t * info);
 
 #define BIT0		  0x00000001  
 #define BIT1		  0x00000002  

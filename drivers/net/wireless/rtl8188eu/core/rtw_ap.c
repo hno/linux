@@ -331,7 +331,7 @@ u8 chk_sta_is_alive(struct sta_info *psta)
 	#endif
 
 	//if(sta_last_rx_pkts(psta) == sta_rx_pkts(psta))
-	if(psta->sta_stats.last_rx_data_pkts == psta->sta_stats.rx_data_pkts)
+	if((psta->sta_stats.last_rx_data_pkts + psta->sta_stats.last_rx_ctrl_pkts) == (psta->sta_stats.rx_data_pkts + psta->sta_stats.rx_ctrl_pkts))
 	{
 		#if 0
 		if(psta->state&WIFI_SLEEP_STATE)
@@ -461,28 +461,30 @@ void	expire_timeout_chk(_adapter *padapter)
 			#ifdef CONFIG_ACTIVE_KEEP_ALIVE_CHECK
 			struct mlme_ext_priv *pmlmeext = &padapter->mlmeextpriv;
 
-			if((psta->state&WIFI_SLEEP_STATE) && (!(psta->state & WIFI_STA_ALIVE_CHK_STATE)))
+			if (padapter->registrypriv.wifi_spec == 1)
 			{
-				//to check if alive by another methods if staion is at ps mode.					
 				psta->expire_to = pstapriv->expire_to;
-				psta->state |= WIFI_STA_ALIVE_CHK_STATE;
-
-				//DBG_871X("alive chk, sta:" MAC_FMT " is at ps mode!\n", MAC_ARG(psta->hwaddr));
-
-				//to update bcn with tim_bitmap for this station
-				pstapriv->tim_bitmap |= BIT(psta->aid);
-				update_beacon(padapter, _TIM_IE_, NULL, _FALSE);					
-				
 				continue;
 			}
-			else if(psta->state & WIFI_STA_ALIVE_CHK_STATE)
-			{					
-				DBG_871X("cancel WIFI_STA_ALIVE_CHK_STATE\n");
-				psta->state ^= WIFI_STA_ALIVE_CHK_STATE;
+
+			if (psta->state & WIFI_SLEEP_STATE) {
+				if (!(psta->state & WIFI_STA_ALIVE_CHK_STATE)) {
+					//to check if alive by another methods if staion is at ps mode.					
+					psta->expire_to = pstapriv->expire_to;
+					psta->state |= WIFI_STA_ALIVE_CHK_STATE;
+
+					//DBG_871X("alive chk, sta:" MAC_FMT " is at ps mode!\n", MAC_ARG(psta->hwaddr));
+
+					//to update bcn with tim_bitmap for this station
+					pstapriv->tim_bitmap |= BIT(psta->aid);
+					update_beacon(padapter, _TIM_IE_, NULL, _FALSE);
+
+					if(!pmlmeext->active_keep_alive_check)
+						continue;
+				}
 			}
 
-			if(pmlmeext->active_keep_alive_check && (!(psta->state&WIFI_SLEEP_STATE)))
-			{
+			if (pmlmeext->active_keep_alive_check) {
 				int stainfo_offset;
 
 				stainfo_offset = rtw_stainfo_offset(pstapriv, psta);
@@ -498,25 +500,7 @@ void	expire_timeout_chk(_adapter *padapter)
 			pstapriv->asoc_list_cnt--;
 
 			DBG_871X("asoc expire "MAC_FMT", state=0x%x\n", MAC_ARG(psta->hwaddr), psta->state);
-#if 0
-			//tear down Rx AMPDU
-			send_delba(padapter, 0, psta->hwaddr);// recipient
-
-			//tear down TX AMPDU
-			send_delba(padapter, 1, psta->hwaddr);// // originator
-			psta->htpriv.agg_enable_bitmap = 0x0;//reset
-			psta->htpriv.candidate_tid_bitmap = 0x0;//reset
-
-			issue_deauth(padapter, psta->hwaddr, WLAN_REASON_DEAUTH_LEAVING, _TRUE);
-
-			_enter_critical_bh(&(pstapriv->sta_hash_lock), &irqL);	
-			rtw_free_stainfo(padapter, psta);
-			_exit_critical_bh(&(pstapriv->sta_hash_lock), &irqL);
-#endif
-			//_exit_critical_bh(&pstapriv->asoc_list_lock, &irqL);
 			updated = ap_free_sta(padapter, psta, _TRUE, WLAN_REASON_DEAUTH_LEAVING);
-			//_enter_critical_bh(&pstapriv->asoc_list_lock, &irqL);
-
 		}	
 		else
 		{
@@ -535,32 +519,27 @@ void	expire_timeout_chk(_adapter *padapter)
 	_exit_critical_bh(&pstapriv->asoc_list_lock, &irqL);
 
 #ifdef CONFIG_ACTIVE_KEEP_ALIVE_CHECK
+if (chk_alive_num) {
+
+	u8 backup_oper_channel=0;
+	struct mlme_ext_priv *pmlmeext = &padapter->mlmeextpriv;
+	/* switch to correct channel of current network  before issue keep-alive frames */
+	if (rtw_get_oper_ch(padapter) != pmlmeext->cur_channel) {
+		backup_oper_channel = rtw_get_oper_ch(padapter);
+		SelectChannel(padapter, pmlmeext->cur_channel);
+	}
+
 	/* issue null data to check sta alive*/
 	for (i = 0; i < chk_alive_num; i++) {
-		struct mlme_ext_priv *pmlmeext = &padapter->mlmeextpriv;
+		
 		int ret = _FAIL;
-		u8 backup_oper_channel=0;
+
 		psta = rtw_get_stainfo_by_offset(pstapriv, chk_alive_list[i]);
 
-		/* switch to correct channel of current network  before issue keep-alive frames */
-		#ifdef CONFIG_CONCURRENT_MODE
-		if(padapter->pcodatapriv && padapter->pcodatapriv->co_ch != pmlmeext->cur_channel)
-		{
-			backup_oper_channel = padapter->pcodatapriv->co_ch;
-			SelectChannel(padapter, pmlmeext->cur_channel);
-		}
-		#else /* CONFIG_CONCURRENT_MODE */
-		if(pmlmeext->oper_channel != pmlmeext->cur_channel)
-		{
-			backup_oper_channel = pmlmeext->oper_channel;
-			SelectChannel(padapter, pmlmeext->cur_channel);
-		}
-		#endif /* CONFIG_CONCURRENT_MODE */
-
-		ret = issue_nulldata(padapter, psta->hwaddr, 0, 3, 50);
-
-		if (backup_oper_channel>0) /* back to the original operation channel */
-			SelectChannel(padapter, backup_oper_channel);
+		if (psta->state & WIFI_SLEEP_STATE)
+			ret = issue_nulldata(padapter, psta->hwaddr, 0, 1, 50);
+		else
+			ret = issue_nulldata(padapter, psta->hwaddr, 0, 3, 50);
 
 		psta->keep_alive_trycnt++;
 		if (ret == _SUCCESS)
@@ -587,6 +566,10 @@ void	expire_timeout_chk(_adapter *padapter)
 		_exit_critical_bh(&pstapriv->asoc_list_lock, &irqL);
 
 	}
+
+	if (backup_oper_channel>0) /* back to the original operation channel */
+		SelectChannel(padapter, backup_oper_channel);
+}
 #endif /* CONFIG_ACTIVE_KEEP_ALIVE_CHECK */
 
 	associated_clients_update(padapter, updated);
@@ -906,7 +889,9 @@ static void update_bmc_sta(_adapter *padapter)
 		//set ra_id, init_rate
 		psta->raid = raid;
 		psta->init_rate = init_rate;
-	 
+
+		rtw_stassoc_hw_rpt(padapter, psta);
+
 		_enter_critical_bh(&psta->lock, &irqL);
 		psta->state = _FW_LINKED;
 		_exit_critical_bh(&psta->lock, &irqL);
@@ -1116,7 +1101,9 @@ static void start_bss_network(_adapter *padapter, u8 *pbuf)
 
 	if(pmlmepriv->cur_network.join_res != _TRUE) //setting only at  first time
 	{		
-		flush_all_cam_entry(padapter);	//clear CAM
+		//WEP Key will be set before this function, do not clear CAM.
+		if ((psecuritypriv->dot11PrivacyAlgrthm != _WEP40_) && (psecuritypriv->dot11PrivacyAlgrthm != _WEP104_))
+			flush_all_cam_entry(padapter);	//clear CAM
 	}	
 
 	//set MSR to AP_Mode		
@@ -2566,7 +2553,7 @@ u8 ap_free_sta(_adapter *padapter, struct sta_info *psta, bool active, u16 reaso
 #endif //CONFIG_80211N_HT
 
 	if (active == _TRUE)
-		issue_deauth(padapter, psta->hwaddr, reason, _FALSE);
+		issue_deauth(padapter, psta->hwaddr, reason);
 
 	//report_del_sta_event(padapter, psta->hwaddr, reason);
 
@@ -2682,7 +2669,7 @@ int rtw_sta_flush(_adapter *padapter)
 	_exit_critical_bh(&pstapriv->asoc_list_lock, &irqL);
 
 
-	issue_deauth(padapter, bc_addr, WLAN_REASON_DEAUTH_LEAVING, _FALSE);
+	issue_deauth(padapter, bc_addr, WLAN_REASON_DEAUTH_LEAVING);
 
 	associated_clients_update(padapter, _TRUE);
 
@@ -2810,6 +2797,11 @@ void stop_ap_mode(_adapter *padapter)
 	pmlmepriv->update_bcn = _FALSE;
 	pmlmeext->bstart_bss = _FALSE;
 	//_rtw_spinlock_free(&pmlmepriv->bcn_update_lock);
+	
+	//reset and init security priv , this can refine with rtw_reset_securitypriv
+	_rtw_memset((unsigned char *)&padapter->securitypriv, 0, sizeof (struct security_priv));
+	padapter->securitypriv.ndisauthtype = Ndis802_11AuthModeOpen;
+	padapter->securitypriv.ndisencryptstatus = Ndis802_11WEPDisabled;
 
 	//for ACL
 	_enter_critical_bh(&(pacl_node_q->lock), &irqL);

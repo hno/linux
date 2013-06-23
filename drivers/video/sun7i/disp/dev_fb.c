@@ -1081,7 +1081,7 @@ static int Fb_ioctl(struct fb_info *info, unsigned int cmd,unsigned long arg)
 
                 case FBIO_WAITFORVSYNC:
                 {
-                        ret = Fb_wait_for_vsync(info);
+                        //ret = Fb_wait_for_vsync(info);
                         break;
                 }
 

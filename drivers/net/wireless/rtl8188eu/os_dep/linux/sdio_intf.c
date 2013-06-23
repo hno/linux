@@ -371,6 +371,10 @@ static void rtw_dev_unload(PADAPTER padapter)
 	RT_TRACE(_module_hci_intfs_c_, _drv_notice_, ("+rtw_dev_unload\n"));
 
 	padapter->bDriverStopped = _TRUE;
+	#ifdef CONFIG_XMIT_ACK
+	if (padapter->xmitpriv.ack_tx)
+		rtw_ack_tx_done(&padapter->xmitpriv, RTW_SCTX_DONE_DRV_STOP);
+	#endif
 
 	if (padapter->bup == _TRUE)
 	{
@@ -461,7 +465,6 @@ _adapter *rtw_sdio_if1_init(struct dvobj_priv *dvobj, const struct sdio_device_i
 	SET_NETDEV_DEV(pnetdev, dvobj_to_dev(dvobj));
 
 	padapter = rtw_netdev_priv(pnetdev);
-	padapter->bDriverStopped=_TRUE;
 
 #ifdef CONFIG_IOCTL_CFG80211
 	rtw_wdev_alloc(padapter, dvobj_to_dev(dvobj));
@@ -545,6 +548,7 @@ free_hal_data:
 free_wdev:
 	if(status != _SUCCESS) {
 		#ifdef CONFIG_IOCTL_CFG80211
+		rtw_wdev_unregister(padapter->rtw_wdev);
 		rtw_wdev_free(padapter->rtw_wdev);
 		#endif
 	}
@@ -566,33 +570,8 @@ static void rtw_sdio_if1_deinit(_adapter *if1)
 	struct net_device *pnetdev = if1->pnetdev;
 	struct mlme_priv *pmlmepriv= &if1->mlmepriv;
 
-#if defined(CONFIG_HAS_EARLYSUSPEND ) || defined(CONFIG_ANDROID_POWER)
-	rtw_unregister_early_suspend(&if1->pwrctrlpriv);
-#endif
-
-	if (if1->bSurpriseRemoved == _FALSE)
-	{
-		struct sdio_func *func = adapter_to_dvobj(if1)->intf_data.func;
-		
-		// test surprise remove
-		int err;
-
-		sdio_claim_host(func);
-		sdio_readb(func, 0, &err);
-		sdio_release_host(func);
-		if (err == -ENOMEDIUM) {
-			if1->bSurpriseRemoved = _TRUE;
-			DBG_871X(KERN_NOTICE "%s: device had been removed!\n", __func__);
-		}
-	}
-
-	rtw_pm_set_ips(if1, IPS_NONE);
-	rtw_pm_set_lps(if1, PS_MODE_ACTIVE);
-
-	LeaveAllPowerSaveMode(if1);
-
 	if(check_fwstate(pmlmepriv, _FW_LINKED))
-		disconnect_hdl(if1, NULL);
+		rtw_disassoc_cmd(if1, 0, _FALSE);
 
 #ifdef CONFIG_AP_MODE
 	free_mlme_ap_info(if1);
@@ -621,6 +600,7 @@ static void rtw_sdio_if1_deinit(_adapter *if1)
 	rtw_handle_dualmac(if1, 0);
 
 #ifdef CONFIG_IOCTL_CFG80211
+	rtw_wdev_unregister(if1->rtw_wdev);
 	rtw_wdev_free(if1->rtw_wdev);
 #endif
 
@@ -688,7 +668,8 @@ static int rtw_drv_init(
 free_if2:
 	if(status != _SUCCESS && if2) {
 		#ifdef CONFIG_CONCURRENT_MODE
-		rtw_drv_if2_free(if1);
+		rtw_drv_if2_stop(if2);
+		rtw_drv_if2_free(if2);
 		#endif
 	}
 free_if1:
@@ -711,11 +692,37 @@ _func_enter_;
 
 	RT_TRACE(_module_hci_intfs_c_, _drv_notice_, ("+rtw_dev_remove\n"));
 
+	if (padapter->bSurpriseRemoved == _FALSE) {
+		int err;
+
+		/* test surprise remove */
+		sdio_claim_host(func);
+		sdio_readb(func, 0, &err);
+		sdio_release_host(func);
+		if (err == -ENOMEDIUM) {
+			padapter->bSurpriseRemoved = _TRUE;
+			DBG_871X(KERN_NOTICE "%s: device had been removed!\n", __func__);
+		}
+	}
+
+#if defined(CONFIG_HAS_EARLYSUSPEND) || defined(CONFIG_ANDROID_POWER)
+	rtw_unregister_early_suspend(&padapter->pwrctrlpriv);
+#endif
+
+	rtw_pm_set_ips(padapter, IPS_NONE);
+	rtw_pm_set_lps(padapter, PS_MODE_ACTIVE);
+
+	LeaveAllPowerSaveMode(padapter);
+
 #ifdef CONFIG_CONCURRENT_MODE
-	rtw_drv_if2_free(padapter);
+	rtw_drv_if2_stop(dvobj->if2);
 #endif
 
 	rtw_sdio_if1_deinit(padapter);
+
+#ifdef CONFIG_CONCURRENT_MODE
+	rtw_drv_if2_free(dvobj->if2);
+#endif
 
 	sdio_dvobj_deinit(func);
 
@@ -810,9 +817,7 @@ static int rtw_sdio_suspend(struct device *dev)
 #else
 	{
 	//s2.
-	//s2-1.  issue rtw_disassoc_cmd to fw
-	disconnect_hdl(padapter, NULL);
-	//rtw_disassoc_cmd(padapter);
+	rtw_disassoc_cmd(padapter, 0, _FALSE);
 	}
 #endif //CONFIG_WOWLAN
 
@@ -1051,7 +1056,7 @@ int rtw_resume_process(_adapter *padapter)
 	if(!padapter->pwrctrlpriv.wowlan_mode){
 		rtw_roaming(padapter, NULL);
 	} else if (padapter->pwrctrlpriv.wowlan_wake_reason & FWDecisionDisconnect){
-		rtw_indicate_disconnect(padapter, 0);
+		rtw_indicate_disconnect(padapter);
 	} else if (padapter->pwrctrlpriv.wowlan_wake_reason & Rx_GTK){
 		rtw_roaming(padapter, NULL);
 	}

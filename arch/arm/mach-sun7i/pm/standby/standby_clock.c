@@ -496,3 +496,34 @@ __s32 standby_clk_apbexit(void)
     return 0;
 }
 
+
+/*
+*********************************************************************************************************
+*                                     standby_clk_apb_save
+*
+* Description: switch apb1 clock to 24M hosc.
+*
+* Arguments  : none
+*
+* Returns    : 0;
+*********************************************************************************************************
+*/
+__ccmu_sysclkl_ratio_reg0054_t sysclk_bak;
+
+__s32 standby_clk_ahb_2pll(void)
+{
+    sysclk_bak = CmuReg->SysClkDiv;
+    /* change ahb clock to axi */
+    CmuReg->SysClkDiv.AHBClkSrc = 0;
+    printk("sysclk_bak, %x!\n", sysclk_bak);
+    return 0;
+}
+
+__s32 standby_clk_ahb_restore(void)
+{
+    //sysclk_bak = CmuReg->SysClkDiv;
+    /* restore ahb clock */
+    CmuReg->SysClkDiv.AHBClkSrc = sysclk_bak.AHBClkSrc;
+    return 0;
+}
+

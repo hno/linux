@@ -37,7 +37,7 @@ static inline __aw_ccu_clk_id_e _parse_module0_clk_src(volatile __ccmu_module0_c
         case 0:
             return AW_SYS_CLK_HOSC;
         case 1:
-            return AW_SYS_CLK_PLL62;
+            return AW_SYS_CLK_PLL6;
         case 2:
             return AW_SYS_CLK_PLL5P;
         default:
@@ -67,7 +67,7 @@ static inline __s32 _set_module0_clk_src(volatile __ccmu_module0_clk_t *reg, __a
         case AW_SYS_CLK_HOSC:
             reg->ClkSrc = 0;
             break;
-        case AW_SYS_CLK_PLL62:
+        case AW_SYS_CLK_PLL6:
             reg->ClkSrc = 1;
             break;
         case AW_SYS_CLK_PLL5P:
@@ -413,7 +413,7 @@ static __aw_ccu_clk_id_e mod_clk_get_parent(__aw_ccu_clk_id_e id)
                 case 0:
                     return AW_SYS_CLK_HOSC;
                 case 1:
-                    return AW_SYS_CLK_PLL62;
+                    return AW_SYS_CLK_PLL6X2;
                 case 2:
                     return AW_SYS_CLK_PLL5P;
                 default:
@@ -1007,7 +1007,7 @@ static __s32 mod_clk_set_parent(__aw_ccu_clk_id_e id, __aw_ccu_clk_id_e parent)
                 case AW_SYS_CLK_PLL7:
                     aw_ccu_reg->Lcd0Ch0Clk.ClkSrc = 1;
                     return 0;
-                case AW_SYS_CLK_PLL62:
+                case AW_SYS_CLK_PLL6X2:
                     aw_ccu_reg->Lcd0Ch0Clk.ClkSrc = 3;
                     return 0;
                 default:
@@ -1225,7 +1225,7 @@ static __s32 mod_clk_set_parent(__aw_ccu_clk_id_e id, __aw_ccu_clk_id_e parent)
                 case AW_SYS_CLK_HOSC:
                     aw_ccu_reg->MBusClk.ClkSrc = 0;
                     break;
-                case AW_SYS_CLK_PLL62:
+                case AW_SYS_CLK_PLL6X2:
                     aw_ccu_reg->MBusClk.ClkSrc = 1;
                     break;
                 case AW_SYS_CLK_PLL5P:
@@ -2047,6 +2047,7 @@ static __s32 mod_clk_set_rate(__aw_ccu_clk_id_e id, __s64 rate)
         }
 
         case AW_MOD_CLK_MBUS: {
+#if 0
             if (rate > 16 * 8) {
                 return -1;
             } else if (rate > 16 * 4) {
@@ -2067,6 +2068,36 @@ static __s32 mod_clk_set_rate(__aw_ccu_clk_id_e id, __s64 rate)
             } else {
                 return -1;
             }
+#else
+            /* valid frequency of mbus:
+             *  200M: N=1, M=2, rate = 6
+             *  300M: N=1, M=1, rate = 4
+             *  400M: N=0, M=2, rate = 3
+             *
+             *  FIXME
+             *  mbus will up to 400M when cpu@1008M, sys vdd@1.3V
+             *  delay 20us util mbus stable.
+             */
+            __ccmu_mbus_clk_reg015c_t mbusclk = aw_ccu_reg->MBusClk;
+            if (6 == rate) {
+                mbusclk.ClkDivN = 1;
+                mbusclk.ClkDivM = 2;
+                aw_ccu_reg->MBusClk = mbusclk;
+                __delay((1008000000 >> 20) * 20);
+            } else if (4 == rate) {
+                mbusclk.ClkDivN = 1;
+                mbusclk.ClkDivM = 1;
+                aw_ccu_reg->MBusClk = mbusclk;
+                __delay((1008000000 >> 20) * 20);
+            } else if (3 == rate) {
+                mbusclk.ClkDivN = 0;
+                mbusclk.ClkDivM = 2;
+                aw_ccu_reg->MBusClk = mbusclk;
+                __delay((1008000000 >> 20) * 20);
+            } else {
+                return -1;
+            }
+#endif
             return 0;
         }
 

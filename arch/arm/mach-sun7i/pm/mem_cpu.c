@@ -458,6 +458,8 @@ void set_copro_default(void)
 	asm volatile ("mcr p15, 0, %0, c13, c0, 2" : : "r"(ctxt->urwtpid));
 	asm volatile ("mcr p15, 0, %0, c13, c0, 3" : : "r"(ctxt->urotpid));
 	asm volatile ("mcr p15, 0, %0, c13, c0, 4" : : "r"(ctxt->potpid));
+	asm volatile ("dsb");
+	asm volatile ("isb");
 	return;
 }
 

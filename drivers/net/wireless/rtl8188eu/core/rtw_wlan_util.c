@@ -447,14 +447,70 @@ void Set_MSR(_adapter *padapter, u8 type)
 	}
 }
 
+inline u8 rtw_get_oper_ch(_adapter *adapter)
+{
+#ifdef CONFIG_CONCURRENT_MODE
+	if (adapter->pcodatapriv)
+		return adapter->pcodatapriv->co_ch;
+	else
+#endif
+	return adapter->mlmeextpriv.oper_channel;
+}
+
+inline void rtw_set_oper_ch(_adapter *adapter, u8 ch)
+{
+#ifdef CONFIG_CONCURRENT_MODE
+	if (adapter->pcodatapriv)
+		adapter->pcodatapriv->co_ch = ch;
+#endif
+	adapter->mlmeextpriv.oper_channel = ch;
+}
+
+inline u8 rtw_get_oper_bw(_adapter *adapter)
+{
+#ifdef CONFIG_CONCURRENT_MODE
+	if (adapter->pcodatapriv)
+		return adapter->pcodatapriv->co_bw;
+	else
+#endif
+	return adapter->mlmeextpriv.oper_bwmode;
+}
+
+inline void rtw_set_oper_bw(_adapter *adapter, u8 bw)
+{
+#ifdef CONFIG_CONCURRENT_MODE
+	if (adapter->pcodatapriv)
+		adapter->pcodatapriv->co_bw = bw;
+#endif
+	adapter->mlmeextpriv.oper_bwmode = bw;
+}
+
+inline u8 rtw_get_oper_choffset(_adapter *adapter)
+{
+#ifdef CONFIG_CONCURRENT_MODE
+	if (adapter->pcodatapriv)
+		return adapter->pcodatapriv->co_ch_offset;
+	else
+#endif
+	return adapter->mlmeextpriv.oper_ch_offset;
+}
+
+inline void rtw_set_oper_choffset(_adapter *adapter, u8 offset)
+{
+#ifdef CONFIG_CONCURRENT_MODE
+	if (adapter->pcodatapriv)
+		adapter->pcodatapriv->co_ch_offset = offset;
+#endif
+	adapter->mlmeextpriv.oper_ch_offset = offset;
+}
+
 void SelectChannel(_adapter *padapter, unsigned char channel)
 {
-	unsigned int scanMode;
 	struct mlme_ext_priv *pmlmeext = &padapter->mlmeextpriv;	
 
 #ifdef CONFIG_DUALMAC_CONCURRENT
 	//saved channel info
-	pmlmeext->oper_channel = channel;
+	rtw_set_oper_ch(padapter, channel);
 	dc_SelectChannel(padapter, channel);
 #else //CONFIG_DUALMAC_CONCURRENT
 
@@ -464,19 +520,9 @@ void SelectChannel(_adapter *padapter, unsigned char channel)
 #endif
 	
 	//saved channel info
-	pmlmeext->oper_channel = channel;
-	
-	scanMode = (pmlmeext->sitesurvey_res.scan_mode == SCAN_ACTIVE)? 1: 0;//todo:
+	rtw_set_oper_ch(padapter, channel);
 
-	{
-#ifdef CONFIG_CONCURRENT_MODE
-		if(padapter->pcodatapriv)
-		{
-			padapter->pcodatapriv->co_ch = channel;
-		}
-#endif //CONFIG_CONCURRENT_MODE	
-		rtw_hal_set_chan(padapter, channel);
-	}	
+	rtw_hal_set_chan(padapter, channel);
 	
 
 #ifdef CONFIG_CONCURRENT_MODE
@@ -492,8 +538,8 @@ void SetBWMode(_adapter *padapter, unsigned short bwmode, unsigned char channel_
 
 #ifdef CONFIG_DUALMAC_CONCURRENT
 	//saved bw info
-	pmlmeext->oper_bwmode = bwmode;
-	pmlmeext->oper_ch_offset = channel_offset;
+	rtw_set_oper_bw(padapter, bwmode);
+	rtw_set_oper_choffset(padapter, channel_offset);
 	dc_SetBWMode(padapter, bwmode, channel_offset);
 #else //CONFIG_DUALMAC_CONCURRENT
 
@@ -502,19 +548,10 @@ void SetBWMode(_adapter *padapter, unsigned short bwmode, unsigned char channel_
 #endif
 
 	//saved bw info
-	pmlmeext->oper_bwmode = bwmode;
-	pmlmeext->oper_ch_offset = channel_offset;
+	rtw_set_oper_bw(padapter, bwmode);
+	rtw_set_oper_choffset(padapter, channel_offset);
 
-	{	
-#ifdef CONFIG_CONCURRENT_MODE
-		if(padapter->pcodatapriv)
-		{
-			padapter->pcodatapriv->co_bw = bwmode;
-			padapter->pcodatapriv->co_ch_offset = channel_offset;
-		}
-#endif //CONFIG_CONCURRENT_MODE
-		rtw_hal_set_bwmode(padapter, (HT_CHANNEL_WIDTH)bwmode, channel_offset);
-	}	
+	rtw_hal_set_bwmode(padapter, (HT_CHANNEL_WIDTH)bwmode, channel_offset);
 
 #ifdef CONFIG_CONCURRENT_MODE
 	_exit_critical_mutex(padapter->psetbw_mutex, NULL);
@@ -526,8 +563,12 @@ void SetBWMode(_adapter *padapter, unsigned short bwmode, unsigned char channel_
 void set_channel_bwmode(_adapter *padapter, unsigned char channel, unsigned char channel_offset, unsigned short bwmode)
 {
 	u8 center_ch;
-	unsigned int scanMode;
 	struct mlme_ext_priv *pmlmeext = &padapter->mlmeextpriv;
+
+	if ( padapter->bNotifyChannelChange )
+	{
+		DBG_871X( "[%s] ch = %d, offset = %d, bwmode = %d\n", __FUNCTION__, channel, channel_offset, bwmode );
+	}
 
 	if((bwmode == HT_CHANNEL_WIDTH_20)||(channel_offset == HAL_PRIME_CHNL_OFFSET_DONT_CARE))
 	{
@@ -550,11 +591,11 @@ void set_channel_bwmode(_adapter *padapter, unsigned char channel, unsigned char
 	}	
 
 	//set Channel
-#ifdef CONFIG_DUALMAC_Ccenter_chONCURRENT
+#ifdef CONFIG_DUALMAC_CONCURRENT
 	//saved channel/bw info
-	pmlmeext->oper_channel = channel;
-	pmlmeext->oper_bwmode = bwmode;
-	pmlmeext->oper_ch_offset = channel_offset;
+	rtw_set_oper_ch(padapter, channel);
+	rtw_set_oper_bw(padapter, bwmode);
+	rtw_set_oper_choffset(padapter, channel_offset);
 	dc_SelectChannel(padapter, center_ch);// set center channel
 #else //CONFIG_DUALMAC_CONCURRENT
 
@@ -564,22 +605,11 @@ void set_channel_bwmode(_adapter *padapter, unsigned char channel, unsigned char
 #endif
 	
 	//saved channel/bw info
-	pmlmeext->oper_channel = channel;
-	pmlmeext->oper_bwmode = bwmode;
-	pmlmeext->oper_ch_offset = channel_offset;
-	
-	scanMode = (pmlmeext->sitesurvey_res.scan_mode == SCAN_ACTIVE)? 1: 0;//todo:
+	rtw_set_oper_ch(padapter, channel);
+	rtw_set_oper_bw(padapter, bwmode);
+	rtw_set_oper_choffset(padapter, channel_offset);
 
-	{
-#ifdef CONFIG_CONCURRENT_MODE
-		if(padapter->pcodatapriv)
-		{
-			padapter->pcodatapriv->co_ch = channel;//save primary channel
-		}
-#endif //CONFIG_CONCURRENT_MODE	
-		rtw_hal_set_chan(padapter, center_ch); // set center channel
-	}	
-	
+	rtw_hal_set_chan(padapter, center_ch); // set center channel
 
 #ifdef CONFIG_CONCURRENT_MODE
 	_exit_critical_mutex(padapter->psetch_mutex, NULL);

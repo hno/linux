@@ -8,6 +8,7 @@
 *			2011-12-07			Berg        1.0     create file from A10
 *			2012-01-11			Berg		1.1		kill bug for 1/2 rank decision
 *			2012-01-31			Berg		1.2		kill bug for clock frequency > 600MHz
+*	  		2013-03-06	 		CPL		  	1.3	  	modify for A20
 *********************************************************************************************************
 */
 #include "dram_i.h"

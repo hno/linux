@@ -476,6 +476,10 @@ u8 PS_RDY_CHECK(_adapter * padapter)
 		DBG_871X("Group handshake still in progress !!!\n");
 		return _FALSE;
 	}
+#ifdef CONFIG_IOCTL_CFG80211
+	if (!rtw_cfg80211_pwr_mgmt(padapter))
+		return _FALSE;
+#endif	
 
 	return _TRUE;
 }
@@ -691,9 +695,7 @@ _func_enter_;
 			#elif defined(CONFIG_P2P)
 			|| !rtw_p2p_chk_state(b_pwdinfo, P2P_STATE_NONE)
 			#endif
-			#ifdef CONFIG_SET_SCAN_DENY_TIMER
-			|| (ATOMIC_READ(&b_pmlmepriv->set_scan_deny)==1)
-			#endif //CONFIG_SET_SCAN_DENY_TIMER			
+			|| rtw_is_scan_deny(buddy)
 		) {
 			return;
 		}
@@ -1581,6 +1583,13 @@ u8 rtw_interface_ps_func(_adapter *padapter,HAL_INTF_PS_FUNC efunc_id,u8* val)
 	return bResult;
 }
 
+
+inline void rtw_set_ips_deny(_adapter *padapter, u32 ms)
+{
+	struct pwrctrl_priv *pwrpriv = &padapter->pwrctrlpriv;
+	pwrpriv->ips_deny_time = rtw_get_current_time() + rtw_ms_to_systime(ms);
+}
+
 /*
 * rtw_pwr_wakeup - Wake the NIC up from: 1)IPS. 2)USB autosuspend
 * @adapter: pointer to _adapter structure
@@ -1605,7 +1614,9 @@ int _rtw_pwr_wakeup(_adapter *padapter, u32 ips_deffer_ms, const char *caller)
 	}
 #endif
 
-	pwrpriv->ips_deny_time = rtw_get_current_time() + rtw_ms_to_systime(ips_deffer_ms);
+	if (pwrpriv->ips_deny_time < rtw_get_current_time() + rtw_ms_to_systime(ips_deffer_ms))
+		pwrpriv->ips_deny_time = rtw_get_current_time() + rtw_ms_to_systime(ips_deffer_ms);
+
 {
 	u32 start = rtw_get_current_time();
 	if (pwrpriv->ps_processing) {
@@ -1707,7 +1718,8 @@ int _rtw_pwr_wakeup(_adapter *padapter, u32 ips_deffer_ms, const char *caller)
 	}
 
 exit:
-	pwrpriv->ips_deny_time = rtw_get_current_time() + rtw_ms_to_systime(ips_deffer_ms);
+	if (pwrpriv->ips_deny_time < rtw_get_current_time() + rtw_ms_to_systime(ips_deffer_ms))
+		pwrpriv->ips_deny_time = rtw_get_current_time() + rtw_ms_to_systime(ips_deffer_ms);
 	return ret;
 
 }

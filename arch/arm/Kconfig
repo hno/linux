@@ -1586,6 +1586,12 @@ config HAVE_ARM_TWD
 	help
 	  This options enables support for the ARM timer and watchdog unit
 
+config AW_TIME_DELAY
+	bool "Timer counter delay"
+	depends on ARCH_SUN7I
+	---help---
+	  The udelay will use timer0 counter, not use bogomips.
+
 choice
 	prompt "Memory split"
 	default VMSPLIT_3G

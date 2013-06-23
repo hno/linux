@@ -31,21 +31,21 @@ void Lcd_Panel_Parameter_Check(__u32 sel)
 	
 	info = &(gpanel_info[sel]);
 	
-	if(info->lcd_if==0 && info->lcd_hv_if==1 && info->lcd_hv_smode==0)
+	if((info->lcd_if== LCD_IF_HV||info->lcd_if== LCD_IF_HV2DSI) && info->lcd_hv_if==1 && info->lcd_hv_smode==0)
 		cycle_num = 3;
-	else if(info->lcd_if==0 && info->lcd_hv_if==1 && info->lcd_hv_smode==1)
+	else if((info->lcd_if== LCD_IF_HV||info->lcd_if== LCD_IF_HV2DSI) && info->lcd_hv_if==1 && info->lcd_hv_smode==1)
 		cycle_num = 2;
-	else if(info->lcd_if==1 && info->lcd_cpu_if==1)
+	else if(info->lcd_if== LCD_IF_CPU && info->lcd_cpu_if==1)
 		cycle_num = 3;
-	else if(info->lcd_if==1 && info->lcd_cpu_if==2)
+	else if(info->lcd_if== LCD_IF_CPU && info->lcd_cpu_if==2)
 		cycle_num = 2;
-	else if(info->lcd_if==1 && info->lcd_cpu_if==3)
+	else if(info->lcd_if== LCD_IF_CPU && info->lcd_cpu_if==3)
 		cycle_num = 2;
-	else if(info->lcd_if==1 && info->lcd_cpu_if==5)
+	else if(info->lcd_if== LCD_IF_CPU && info->lcd_cpu_if==5)
 		cycle_num = 2;
-	else if(info->lcd_if==1 && info->lcd_cpu_if==6)
+	else if(info->lcd_if== LCD_IF_CPU && info->lcd_cpu_if==6)
 		cycle_num = 3;
-	else if(info->lcd_if==1 && info->lcd_cpu_if==7)
+	else if(info->lcd_if== LCD_IF_CPU && info->lcd_cpu_if==7)
 		cycle_num = 2;
 	else
 		cycle_num = 1;	
@@ -104,13 +104,13 @@ void Lcd_Panel_Parameter_Check(__u32 sel)
 	}
 
 
-	if((info->lcd_if==1 && info->lcd_cpu_if==0)	
-	 ||(info->lcd_if==3 && info->lcd_lvds_bitwidth==1))
+	if((info->lcd_if== LCD_IF_CPU && info->lcd_cpu_if==0)	
+	 ||(info->lcd_if== LCD_IF_LVDS && info->lcd_lvds_bitwidth==1))
 	{
 		if(info->lcd_frm != 1)
 			Lcd_Panel_Wrn_Flag |= BIT0;		
 	}
-	else if(info->lcd_if==1 && info->lcd_cpu_if==4)
+	else if(info->lcd_if== LCD_IF_CPU && info->lcd_cpu_if==4)
 	{
 		if(info->lcd_frm != 2)
 			Lcd_Panel_Wrn_Flag |= BIT1;					
@@ -143,19 +143,19 @@ void Lcd_Panel_Parameter_Check(__u32 sel)
 		
 		OSAL_PRINTF("*** \n");	
 		OSAL_PRINTF("*** Interface:");
-		if(info->lcd_if==0 && info->lcd_hv_if==0)
+		if((info->lcd_if== LCD_IF_HV||info->lcd_if== LCD_IF_HV2DSI) && info->lcd_hv_if==0)
 			{OSAL_PRINTF("*** Parallel HV Panel\n");}
-		else if(info->lcd_if==0 && info->lcd_hv_if==1)
+		else if((info->lcd_if== LCD_IF_HV||info->lcd_if== LCD_IF_HV2DSI) && info->lcd_hv_if==1)
 			{OSAL_PRINTF("*** Serial HV Panel\n");}
-		else if(info->lcd_if==0 && info->lcd_hv_if==2)
+		else if((info->lcd_if== LCD_IF_HV||info->lcd_if== LCD_IF_HV2DSI) && info->lcd_hv_if==2)
 			{OSAL_PRINTF("*** Serial YUV Panel\n");}
-		else if(info->lcd_if==3 && info->lcd_lvds_bitwidth==0)
+		else if(info->lcd_if== LCD_IF_LVDS && info->lcd_lvds_bitwidth==0)
 			{OSAL_PRINTF("*** 24Bit LVDS Panel\n");}
-		else if(info->lcd_if==3 && info->lcd_lvds_bitwidth==1)
+		else if(info->lcd_if== LCD_IF_LVDS && info->lcd_lvds_bitwidth==1)
 			{OSAL_PRINTF("*** 18Bit LVDS Panel\n");}	
-		else if(info->lcd_if==1 && info->lcd_cpu_if==0)
+		else if(info->lcd_if== LCD_IF_CPU && info->lcd_cpu_if==0)
 			{OSAL_PRINTF("*** 18Bit CPU Panel\n");}	
-		else if(info->lcd_if==1 && info->lcd_cpu_if==4)
+		else if(info->lcd_if== LCD_IF_CPU && info->lcd_cpu_if==4)
 			{OSAL_PRINTF("*** 16Bit CPU Panel\n");}
 		else
 		{
@@ -496,7 +496,7 @@ void LCD_get_sys_config(__u32 sel, __disp_lcd_cfg_t *lcd_cfg)
         }
 
         //lcd_gpio
-        for(i=0; i<4; i++)
+        for(i=0; i<6; i++)
         {
                 sprintf(sub_name, "lcd_gpio_%d", i);
 
@@ -1039,7 +1039,7 @@ __s32 LCD_GPIO_init(__u32 sel)
 {
         __u32 i = 0;
 
-        for(i=0; i<4; i++)
+        for(i=0; i<6; i++)
         {
                 gdisp.screen[sel].gpio_hdl[i] = 0;
 
@@ -1057,7 +1057,7 @@ __s32 LCD_GPIO_exit(__u32 sel)
 {
         __u32 i = 0;
 
-        for(i=0; i<4; i++)
+        for(i=0; i<6; i++)
         {
                 if(gdisp.screen[sel].gpio_hdl[i])
                 {
@@ -1115,7 +1115,7 @@ __s32 Disp_lcdc_pin_cfg(__u32 sel, __disp_output_type_t out_type, __u32 bon)
                                 }
                                 else
                                 {
-                                        if((gpanel_info[sel].lcd_if == 3) && (gpio_info->mul_sel==2))
+                                        if((gpanel_info[sel].lcd_if == LCD_IF_LVDS) && (gpio_info->mul_sel==2))
                                         {
                                                 gpio_info->mul_sel = 3;
                                         }
@@ -1209,7 +1209,7 @@ __s32 Disp_lcdc_init(__u32 sel)
         if(sel == 0)
         {        
                 OSAL_RegISR(INTC_IRQNO_LCDC0,0,Disp_lcdc_event_proc,(void*)sel,0,0);
-                LCD_get_panel_funs_0(&lcd_panel_fun[sel]);
+                //LCD_get_panel_funs_0(&lcd_panel_fun[sel]);
 #ifndef __LINUX_OSAL__
                 OSAL_InterruptEnable(INTC_IRQNO_LCDC0);
 #endif
@@ -1217,7 +1217,7 @@ __s32 Disp_lcdc_init(__u32 sel)
         else
         {        
                 OSAL_RegISR(INTC_IRQNO_LCDC1,0,Disp_lcdc_event_proc,(void*)sel,0,0);
-                LCD_get_panel_funs_1(&lcd_panel_fun[sel]);
+                //LCD_get_panel_funs_1(&lcd_panel_fun[sel]);
 #ifndef __LINUX_OSAL__
                 OSAL_InterruptEnable(INTC_IRQNO_LCDC1);
 #endif
@@ -1970,6 +1970,12 @@ __s32 BSP_disp_restore_lcdc_reg(__u32 sel)
         return 0;
 }
 
+__s32 lcd_get_panel_para(__u32 sel, __panel_para_t * info)
+{    
+        memcpy(info, &gpanel_info[sel], sizeof(__panel_para_t));    
+        return DIS_SUCCESS;
+}
+
 #ifdef __LINUX_OSAL__
 EXPORT_SYMBOL(LCD_OPEN_FUNC);
 EXPORT_SYMBOL(LCD_CLOSE_FUNC);
@@ -1996,6 +2002,7 @@ EXPORT_SYMBOL(pwm_set_para);
 EXPORT_SYMBOL(pwm_get_para);
 EXPORT_SYMBOL(pwm_set_duty_ns);
 EXPORT_SYMBOL(pwm_enable);
+EXPORT_SYMBOL(lcd_get_panel_para);
 
 #endif
 

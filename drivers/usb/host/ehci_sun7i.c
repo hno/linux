@@ -573,7 +573,7 @@ void sw_ehci_hcd_shutdown(struct platform_device* pdev)
 	}
 
  	DMSG_INFO("[%s]: ehci shutdown start\n", sw_ehci->hci_name);
-
+    sw_ehci->probe = 0;
     usb_hcd_platform_shutdown(pdev);
 
     sw_stop_ehci(sw_ehci);
@@ -878,7 +878,7 @@ int sw_usb_enable_ehci(__u32 usbc_no)
 		return -1;
 	}
 
-	sw_ehci->probe = 1;
+	//sw_ehci->probe = 1;
 
 	DMSG_INFO("[%s]: sw_usb_enable_ehci\n", sw_ehci->hci_name);
 

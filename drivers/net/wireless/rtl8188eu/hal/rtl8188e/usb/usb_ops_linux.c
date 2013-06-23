@@ -595,7 +595,7 @@ static s32 pre_recv_entry(union recv_frame *precvframe, struct recv_stat *prxsta
 	_adapter *secondary_padapter = primary_padapter->pbuddy_adapter;
 	struct recv_priv *precvpriv = &primary_padapter->recvpriv;
 	_queue *pfree_recv_queue = &precvpriv->free_recv_queue;
-	u8	*pbuf = precvframe->u.hdr.rx_head;
+	u8	*pbuf = precvframe->u.hdr.rx_data;
 	
 	if(!secondary_padapter)
 		return ret;
@@ -753,11 +753,13 @@ static s32 pre_recv_entry(union recv_frame *precvframe, struct recv_stat *prxsta
 				{
 					pkt_copy->dev = secondary_padapter->pnetdev;
 					precvframe_if2->u.hdr.pkt = pkt_copy;
+					precvframe_if2->u.hdr.rx_head = pkt_copy->data;
+					precvframe_if2->u.hdr.rx_end = pkt_copy->data + alloc_sz;
 					skb_reserve( pkt_copy, 8 - ((SIZE_PTR)( pkt_copy->data ) & 7 ));//force pkt_copy->data at 8-byte alignment address
 					skb_reserve( pkt_copy, shift_sz );//force ip_hdr at 8-byte alignment address according to shift_sz.
 					_rtw_memcpy(pkt_copy->data, pbuf, skb_len);
-					precvframe_if2->u.hdr.rx_head = precvframe_if2->u.hdr.rx_data = precvframe_if2->u.hdr.rx_tail = pkt_copy->data;
-					precvframe_if2->u.hdr.rx_end = pkt_copy->data + alloc_sz;
+					precvframe_if2->u.hdr.rx_data = precvframe_if2->u.hdr.rx_tail = pkt_copy->data;
+					
 			
 					recvframe_put(precvframe_if2, skb_len);
 					if (pattrib->physt) 
@@ -911,11 +913,12 @@ static int recvbuf2recvframe(_adapter *padapter, struct recv_buf *precvbuf)
 		{
 			pkt_copy->dev = padapter->pnetdev;
 			precvframe->u.hdr.pkt = pkt_copy;
+			precvframe->u.hdr.rx_head = pkt_copy->data;
+			precvframe->u.hdr.rx_end = pkt_copy->data + alloc_sz;
 			skb_reserve( pkt_copy, 8 - ((SIZE_PTR)( pkt_copy->data ) & 7 ));//force pkt_copy->data at 8-byte alignment address
 			skb_reserve( pkt_copy, shift_sz );//force ip_hdr at 8-byte alignment address according to shift_sz.
 			_rtw_memcpy(pkt_copy->data, (pbuf + pattrib->drvinfo_sz + RXDESC_SIZE), skb_len);
-			precvframe->u.hdr.rx_head = precvframe->u.hdr.rx_data = precvframe->u.hdr.rx_tail = pkt_copy->data;
-			precvframe->u.hdr.rx_end = pkt_copy->data + alloc_sz;
+			precvframe->u.hdr.rx_data = precvframe->u.hdr.rx_tail = pkt_copy->data;
 		}
 		else
 		{
@@ -1305,11 +1308,12 @@ static int recvbuf2recvframe(_adapter *padapter, _pkt *pskb)
 		{
 			pkt_copy->dev = padapter->pnetdev;
 			precvframe->u.hdr.pkt = pkt_copy;
+			precvframe->u.hdr.rx_head = pkt_copy->data;
+			precvframe->u.hdr.rx_end = pkt_copy->data + alloc_sz;
 			skb_reserve( pkt_copy, 8 - ((SIZE_PTR)( pkt_copy->data ) & 7 ));//force pkt_copy->data at 8-byte alignment address
 			skb_reserve( pkt_copy, shift_sz );//force ip_hdr at 8-byte alignment address according to shift_sz.
 			_rtw_memcpy(pkt_copy->data, (pbuf + pattrib->drvinfo_sz + RXDESC_SIZE), skb_len);
-			precvframe->u.hdr.rx_head = precvframe->u.hdr.rx_data = precvframe->u.hdr.rx_tail = pkt_copy->data;
-			precvframe->u.hdr.rx_end = pkt_copy->data + alloc_sz;
+			precvframe->u.hdr.rx_data = precvframe->u.hdr.rx_tail = pkt_copy->data;
 		}
 		else
 		{

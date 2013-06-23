@@ -33,6 +33,7 @@ __aw_ccu_clk_t aw_ccu_clk_tbl[] =
     make_aw_clk_inf(AW_SYS_CLK_PLL6,        CLK_SYS_PLL6        ),
     make_aw_clk_inf(AW_SYS_CLK_PLL6M,       CLK_SYS_PLL6M       ),
     make_aw_clk_inf(AW_SYS_CLK_PLL62,       CLK_SYS_PLL62       ),
+    make_aw_clk_inf(AW_SYS_CLK_PLL6X2,      CLK_SYS_PLL6X2      ),
     make_aw_clk_inf(AW_SYS_CLK_PLL7,        CLK_SYS_PLL7        ),
     make_aw_clk_inf(AW_SYS_CLK_PLL7X2,      CLK_SYS_PLL7X2      ),
     make_aw_clk_inf(AW_SYS_CLK_PLL8,        CLK_SYS_PLL8        ),

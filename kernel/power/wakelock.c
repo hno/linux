@@ -31,7 +31,7 @@ enum {
 	DEBUG_EXPIRE = 1U << 3,
 	DEBUG_WAKE_LOCK = 1U << 4,
 };
-static int debug_mask = DEBUG_EXIT_SUSPEND | DEBUG_WAKEUP;
+static int debug_mask = DEBUG_EXIT_SUSPEND | DEBUG_WAKEUP | DEBUG_SUSPEND;
 module_param_named(debug_mask, debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP);
 
 #define WAKE_LOCK_TYPE_MASK              (0x0f)
@@ -45,7 +45,9 @@ static LIST_HEAD(inactive_locks);
 static struct list_head active_wake_locks[WAKE_LOCK_TYPE_COUNT];
 static int current_event_num;
 struct workqueue_struct *suspend_work_queue;
+struct workqueue_struct *sync_work_queue;
 struct wake_lock main_wake_lock;
+struct wake_lock sync_wake_lock;
 suspend_state_t requested_suspend_state = PM_SUSPEND_MEM;
 static struct wake_lock unknown_wakeup;
 static struct wake_lock suspend_backoff_lock;
@@ -290,6 +292,16 @@ static void suspend(struct work_struct *work)
 	if (debug_mask & DEBUG_SUSPEND)
 		pr_info("suspend: enter suspend\n");
 	getnstimeofday(&ts_entry);
+
+	if (debug_mask & DEBUG_EXIT_SUSPEND) {
+		struct rtc_time tm;
+		rtc_time_to_tm(ts_entry.tv_sec, &tm);
+		pr_info("suspend: enter suspend, "
+			"(%d-%02d-%02d %02d:%02d:%02d.%09lu UTC)\n",
+			tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+			tm.tm_hour, tm.tm_min, tm.tm_sec, ts_entry.tv_nsec);
+	}
+
 	ret = pm_suspend(requested_suspend_state);
 	getnstimeofday(&ts_exit);
 
@@ -581,6 +593,7 @@ static int __init wakelocks_init(void)
 			"deleted_wake_locks");
 #endif
 	wake_lock_init(&main_wake_lock, WAKE_LOCK_SUSPEND, "main");
+	wake_lock_init(&sync_wake_lock, WAKE_LOCK_SUSPEND, "sync_system");
 	wake_lock(&main_wake_lock);
 	wake_lock_init(&unknown_wakeup, WAKE_LOCK_SUSPEND, "unknown_wakeups");
 	wake_lock_init(&suspend_backoff_lock, WAKE_LOCK_SUSPEND,
@@ -600,10 +613,16 @@ static int __init wakelocks_init(void)
 		goto err_platform_driver_register;
 	}
 
-	suspend_work_queue = create_singlethread_workqueue("suspend");
+	suspend_work_queue = alloc_workqueue("suspend", WQ_HIGHPRI, 0);
 	if (suspend_work_queue == NULL) {
 		ret = -ENOMEM;
 		goto err_suspend_work_queue;
+	}
+
+	sync_work_queue = create_singlethread_workqueue("sync_system_work");
+	if (sync_work_queue == NULL) {
+		ret = -ENOMEM;
+		goto err_sync_work_queue;
 	}
 
 #ifdef CONFIG_WAKELOCK_STAT
@@ -612,6 +631,8 @@ static int __init wakelocks_init(void)
 
 	return 0;
 
+err_sync_work_queue:
+	destroy_workqueue(suspend_work_queue);
 err_suspend_work_queue:
 	platform_driver_unregister(&power_driver);
 err_platform_driver_register:
@@ -622,6 +643,7 @@ err_platform_device_register:
 #endif
 	wake_lock_destroy(&suspend_backoff_lock);
 	wake_lock_destroy(&unknown_wakeup);
+	wake_lock_destroy(&sync_wake_lock);
 	wake_lock_destroy(&main_wake_lock);
 #ifdef CONFIG_WAKELOCK_STAT
 	wake_lock_destroy(&deleted_wake_locks);
@@ -639,10 +661,12 @@ static void  __exit wakelocks_exit(void)
 	wake_lock_destroy(&ealysuspend_delay_work);
 #endif
 	destroy_workqueue(suspend_work_queue);
+	destroy_workqueue(sync_work_queue);
 	platform_driver_unregister(&power_driver);
 	platform_device_unregister(&power_device);
 	wake_lock_destroy(&suspend_backoff_lock);
 	wake_lock_destroy(&unknown_wakeup);
+	wake_lock_destroy(&sync_wake_lock);
 	wake_lock_destroy(&main_wake_lock);
 #ifdef CONFIG_WAKELOCK_STAT
 	wake_lock_destroy(&deleted_wake_locks);

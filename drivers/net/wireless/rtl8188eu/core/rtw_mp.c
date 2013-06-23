@@ -649,7 +649,7 @@ s32 mp_start_test(PADAPTER padapter)
 
 	//init mp_start_test status
 	if (check_fwstate(pmlmepriv, _FW_LINKED) == _TRUE) {
-		rtw_disassoc_cmd(padapter);
+		rtw_disassoc_cmd(padapter, 500, _TRUE);
 		rtw_indicate_disconnect(padapter);
 		rtw_free_assoc_resources(padapter, 1);
 	}

@@ -1483,8 +1483,8 @@ static int internal_s_input(struct csi_dev *dev, unsigned int i)
 			goto altend;
 	}
 	/* Alternate the device info and select target device*/
-  ret = update_ccm_info(dev, dev->ccm_cfg[i]);
-  if (ret < 0)
+        ret = update_ccm_info(dev, dev->ccm_cfg[i]);
+        if (ret < 0)
 	{
 		csi_err("Error when set ccm info when selecting input!,input_num = %d\n",i);
 		goto recover;
@@ -1497,8 +1497,8 @@ static int internal_s_input(struct csi_dev *dev, unsigned int i)
 	csi_dbg(0,"dev->ccm_info->mclk = %d\n",dev->ccm_info->mclk);
 	
 	dev->csi_mode.vref       = dev->ccm_info->vref;
-  dev->csi_mode.href       = dev->ccm_info->href;
-  dev->csi_mode.clock      = dev->ccm_info->clock;
+        dev->csi_mode.href       = dev->ccm_info->href;
+        dev->csi_mode.clock      = dev->ccm_info->clock;
   
 //  bsp_csi_configure(dev,&dev->csi_mode);
 	csi_clk_out_set(dev);
@@ -1540,8 +1540,12 @@ altend:
 	
 recover:
 	/*Power down target device*/
-	if (dev->input == -1) {
-		dev->input = (i ==0 ? 1 : 0 );
+	if (dev->input == -1) 
+        {
+                if(dev->dev_qty == 1)
+		        goto altend;
+		else
+			dev->input = (i ==0 ? 1 : 0 );
 	}
 	ret = v4l2_subdev_call(dev->sd,core, s_power, CSI_SUBDEV_STBY_ON);
 	if(ret < 0)
@@ -1550,8 +1554,8 @@ recover:
 		goto altend;
 	}
 	/* Alternate the device info and select the current device*/
-  ret = update_ccm_info(dev, dev->ccm_cfg[dev->input]);
-  if (ret < 0)
+        ret = update_ccm_info(dev, dev->ccm_cfg[dev->input]);
+        if (ret < 0)
 	{
 		csi_err("Error when set ccm info when selecting input!\n");
 		goto altend;
@@ -1560,13 +1564,15 @@ recover:
 	
 	/*Re Initial current device*/
 	ret = v4l2_subdev_call(dev->sd,core, s_power, CSI_SUBDEV_STBY_OFF);
-	if (ret!=0) {
-	  csi_err("sensor standby off error when selecting back current device!\n");
-	  goto recover;
+	if (ret!=0)
+        {
+	        csi_err("sensor standby off error when selecting back current device!\n");
+	        goto recover;
 	}
 	
 	ret = v4l2_subdev_call(dev->sd,core, init, 0);
-	if (ret!=0) {
+	if (ret!=0) 
+        {
 		csi_err("sensor recovering error when selecting back current device!\n");
 	}
 	ret = 0;
@@ -2680,11 +2686,6 @@ static int csi_probe(struct platform_device *pdev)
   	        csi_err("sw_gpio_setall_range failed\n");
   	        //goto err_gpio;
   	    }
-      	for(i = 0; i < cnt; i++)
-      	{
-            //printk("request gpio cnt=%d, i=%d\n", cnt, i);
-      	    gpio_free(gpio_list[i].gpio.gpio);
-      	}
 	}    
     
     

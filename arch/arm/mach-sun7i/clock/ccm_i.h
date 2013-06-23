@@ -20,7 +20,7 @@
 #include <asm/div64.h>
 #include <mach/includes.h>
 
-#define CCU_DEBUG_LEVEL 3
+#define CCU_DEBUG_LEVEL 2
 
 #if (CCU_DEBUG_LEVEL == 1)
     #define CCU_DBG(format,args...)     do {} while (0)
@@ -56,6 +56,7 @@ typedef enum __AW_CCU_CLK_ID
     AW_SYS_CLK_PLL6,        /* "sata_pll"       ,PLL6 clock                     */
     AW_SYS_CLK_PLL6M,       /* "sata_pll_m"     ,PLL6 M clock, just for SATA    */
     AW_SYS_CLK_PLL62,       /* "sata_pll_2"     ,PLL6 2 clock, for module       */
+    AW_SYS_CLK_PLL6X2,      /* "sata_pllx2"     ,PLL6 2x clock, for module      */
     AW_SYS_CLK_PLL7,        /* "video_pll1"     ,PLL7 clock                     */
     AW_SYS_CLK_PLL7X2,      /* "video_pll1x2"   ,PLL7 2x clock                  */
     AW_SYS_CLK_PLL8,        /* "gpu_pll"        ,PLL8 clock                     */

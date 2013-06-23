@@ -66,6 +66,7 @@ typedef enum __AW_CCU_CLK_RESET {
 #define CLK_SYS_PLL6            "sata_pll"
 #define CLK_SYS_PLL6M           "sata_pll_m"
 #define CLK_SYS_PLL62           "sata_pll_2"
+#define CLK_SYS_PLL6X2          "sata_pllx2"
 #define CLK_SYS_PLL7            "video_pll1"
 #define CLK_SYS_PLL7X2          "video_pll1x2"
 #define CLK_SYS_PLL8            "gpu_pll"

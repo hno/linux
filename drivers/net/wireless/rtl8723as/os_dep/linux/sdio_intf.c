@@ -53,54 +53,17 @@
 
 #include <rtw_android.h>
 
-#ifdef CONFIG_PLATFORM_ARM_SUNxI
-#if defined(CONFIG_MMC_SUNXI_POWER_CONTROL)
 
-#ifdef CONFIG_WITS_EVB_V13
-#define SDIOID	0
-#else
-#define SDIOID (CONFIG_CHIP_ID==1123 ? 3 : 1)
-#endif
-
-#define SUNXI_SDIO_WIFI_NUM_RTL8189ES  3
-extern void sunximmc_rescan_card(unsigned id, unsigned insert);
-extern int mmc_pm_get_mod_type(void);
-extern int mmc_pm_gpio_ctrl(char* name, int level);
-/*
-*	rtl8189es_shdn	= port:PH09<1><default><default><0>
-*	rtl8189es_wakeup	= port:PH10<1><default><default><1>
-*	rtl8189es_vdd_en  = port:PH11<1><default><default><0>
-*	rtl8189es_vcc_en  = port:PH12<1><default><default><0>
-*/
-
-int rtl8189es_sdio_powerup(void)
-{
-	mmc_pm_gpio_ctrl("rtl8189es_vdd_en", 1);
-	udelay(100);
-	mmc_pm_gpio_ctrl("rtl8189es_vcc_en", 1);
-	udelay(50);
-	mmc_pm_gpio_ctrl("rtl8189es_shdn", 1);
-	return 0;
-}
-int rtl8189es_sdio_poweroff(void)
-{
-	mmc_pm_gpio_ctrl("rtl8189es_shdn", 0);
-	mmc_pm_gpio_ctrl("rtl8189es_vcc_en", 0);
-	mmc_pm_gpio_ctrl("rtl8189es_vdd_en", 0);
-	return 0;
-}
-#endif //defined(CONFIG_MMC_SUNXI_POWER_CONTROL)
-#endif //CONFIG_PLATFORM_ARM_SUNxI
-
-#ifdef CONFIG_PLATFORM_ARM_SUN6I
+#ifdef CONFIG_PLATFORM_AW
 #ifdef CONFIG_MMC
-#define SDIOID 1
+#include <mach/sys_config.h>
+static sdcid = 0;
 #define SUNXI_SDIO_WIFI_NUM_RTL8723AS  3
 extern void sw_mci_rescan_card(unsigned id, unsigned insert);
 extern int wifi_pm_get_mod_type(void);
 extern void wifi_pm_power(int on);
 #endif //CONFIG_MMC
-#endif //CONFIG_PLATFORM_ARM_SUN6I
+#endif //CONFIG_PLATFORM_AW
 
 #ifndef dev_to_sdio_func
 #define dev_to_sdio_func(d)     container_of(d, struct sdio_func, dev)
@@ -1236,60 +1199,43 @@ extern int sdhci_device_attached(void);
 #endif
 #endif // CONFIG_PLATFORM_SPRD
 
-#define SDIOID	0
+
 static int __init rtw_drv_entry(void)
 {
 	int ret = 0;
 
-#ifdef CONFIG_PLATFORM_ARM_SUNxI
-/*depends on sunxi power control */
-#if defined CONFIG_MMC_SUNXI_POWER_CONTROL
-	unsigned int mod_sel = mmc_pm_get_mod_type();
-#endif
-#endif
-
-#ifdef CONFIG_PLATFORM_ARM_SUN6I
+#ifdef CONFIG_PLATFORM_AW
 #ifdef CONFIG_MMC
-	unsigned int mod_sel = wifi_pm_get_mod_type();
+    script_item_value_type_e type;
+    script_item_u item;
+    
+    unsigned int mod_sel = wifi_pm_get_mod_type();
+    
+	type = script_get_item("wifi_para", "wifi_sdc_id", &item);	
+	if(SCIRPT_ITEM_VALUE_TYPE_INT != type){		
+		printk("ERR: script_get_item wifi_sdc_id failed\n");		
+		return -ENOMEM;		
+	}		
+	sdcid = item.val;
 #endif //CONFIG_MMC
-#endif //CONFIG_PLATFORM_ARM_SUN6I
+#endif //CONFIG_PLATFORM_AW
 
-       DBG_871X_LEVEL(_drv_always_, "module init start version:"DRIVERVERSION"\n");
+    DBG_871X_LEVEL(_drv_always_, "module init start version:"DRIVERVERSION"\n");
 
 //	DBG_871X(KERN_INFO "+%s", __func__);
 	RT_TRACE(_module_hci_intfs_c_, _drv_notice_, ("+rtw_drv_entry\n"));
 	DBG_871X(DRV_NAME " driver version=%s\n", DRIVERVERSION);
 	DBG_871X("build time: %s %s\n", __DATE__, __TIME__);
 
-#ifdef CONFIG_PLATFORM_ARM_SUNxI
-/*depends on sunxi power control */
-#if defined CONFIG_MMC_SUNXI_POWER_CONTROL
 
-	if(mod_sel == SUNXI_SDIO_WIFI_NUM_RTL8189ES)
-	{
-		rtl8189es_sdio_powerup();
-		sunximmc_rescan_card(SDIOID, 1);
-		DBG_8192C("[rtl8189es] %s: power up, rescan card.\n", __FUNCTION__);  			
-	}
-	else
-	{
-		ret = -1;
-		DBG_8192C("[rtl8189es] %s: mod_sel = %d is incorrect.\n", __FUNCTION__, mod_sel);	
-	}
-#endif	// defined CONFIG_MMC_SUNXI_POWER_CONTROL
-	if(ret != 0)
-		goto exit;
-	
-#endif //CONFIG_PLATFORM_ARM_SUNxI
-
-#ifdef CONFIG_PLATFORM_ARM_SUN6I
+#ifdef CONFIG_PLATFORM_AW
 #ifdef CONFIG_MMC
-	DBG_871X("----- %s mod_sel: %d, sdio num: %d\n", __FUNCTION__, mod_sel, SUNXI_SDIO_WIFI_NUM_RTL8723AS);
+	printk("----- %s mod_sel: %d, sdio num: %d\n", __FUNCTION__, mod_sel, sdcid);
 	if(mod_sel == SUNXI_SDIO_WIFI_NUM_RTL8723AS)
 	{
 		wifi_pm_power(1);
 		mdelay(10);
-		sw_mci_rescan_card(SDIOID, 1);
+		sw_mci_rescan_card(sdcid, 1);
 		printk("[rtl8723as] %s: power up, rescan card.\n", __FUNCTION__);  			
 	}
 	else
@@ -1300,7 +1246,7 @@ static int __init rtw_drv_entry(void)
 #endif	//CONFIG_MMC
 	if(ret != 0)
 		goto exit;		
-#endif //CONFIG_PLATFORM_ARM_SUN6I
+#endif //CONFIG_PLATFORM_AW
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24)) 
 	//console_suspend_enabled=0;
@@ -1404,23 +1350,14 @@ static void __exit rtw_drv_halt(void)
 
 #endif // CONFIG_PLATFORM_SPRD
 
-#ifdef CONFIG_PLATFORM_ARM_SUNxI
-#if defined(CONFIG_MMC_SUNXI_POWER_CONTROL)	
-	sunximmc_rescan_card(SDIOID, 0);
-#ifdef CONFIG_RTL8188E
-	rtl8189es_sdio_poweroff();
-	DBG_8192C("[rtl8189es] %s: remove card, power off.\n", __FUNCTION__);
-#endif //CONFIG_RTL8188E
-#endif //defined(CONFIG_MMC_SUNXI_POWER_CONTROL)
-#endif //CONFIG_PLATFORM_ARM_SUNxI
 
-#ifdef CONFIG_PLATFORM_ARM_SUN6I
+#ifdef CONFIG_PLATFORM_AW
 #ifdef CONFIG_MMC
 	wifi_pm_power(0);
-	sw_mci_rescan_card(SDIOID, 0);
+	sw_mci_rescan_card(sdcid, 0);
 	printk("[rtl8723as] %s: remove card, power off.\n", __FUNCTION__);
 #endif //CONFIG_MMC
-#endif //CONFIG_PLATFORM_ARM_SUN6I
+#endif //CONFIG_PLATFORM_AW
 
        	DBG_871X_LEVEL(_drv_always_, "module exit success\n");
 }

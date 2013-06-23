@@ -258,6 +258,12 @@ struct hal_ops {
 	void (*hal_reset_security_engine)(_adapter * adapter);
 	s32 (*c2h_handler)(_adapter *padapter, struct c2h_evt_hdr *c2h_evt);
 	c2h_id_filter c2h_id_filter_ccx;
+#if defined(CONFIG_CHECK_BT_HANG) && defined(CONFIG_BT_COEXIST)
+	void (*hal_init_checkbthang_workqueue)(_adapter * padapter);
+	void (*hal_free_checkbthang_workqueue)(_adapter * padapter);
+	void (*hal_cancel_checkbthang_workqueue)(_adapter * padapter);
+	void (*hal_checke_bt_hang)(_adapter * padapter);	
+#endif	
 };
 
 typedef	enum _RT_EEPROM_TYPE{

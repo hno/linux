@@ -807,7 +807,7 @@ static int check_down(struct cpufreq_policy *policy)
 #define DECRASE_FREQ_STEP_LIMIT1    (300000)   /* decrase frequency limited to 300Mhz when frequency is [900Mhz, 1008Mhz] */
 #define DECRASE_FREQ_STEP_LIMIT2    (200000)   /* decrase frequency limited to 200Mhz when frequency is [600Mhz,  900Mhz) */
 #define DECRASE_FREQ_STEP_LIMIT3    (100000)   /* decrase frequency limited to 100Mhz when frequency is [200Mhz,  600Mhz) */
-#define DECRASE_FREQ_STEP_LIMIT4    (20000)    /* decrase frequency limited to  20Mhz when frequency is [60Mhz,   200Mhz) */
+#define DECRASE_FREQ_STEP_LIMIT4    (30000)    /* decrase frequency limited to  30Mhz when frequency is [60Mhz,   200Mhz) */
 
 static int check_freq_up(struct cpufreq_policy *policy, unsigned int *target)
 {

@@ -83,6 +83,8 @@ static int standby_timeout = 5;
 static int standby_axp_enable = 1;
 static int standby_timeout = 0;
 #endif
+static int standby_crc_addr = DRAM_BACKUP_BASE_ADDR;
+static int standby_crc_size = DRAM_BACKUP_SIZE;
 
 static int suspend_freq = SUSPEND_FREQ;
 static int suspend_delay_ms = SUSPEND_DELAY_MS;
@@ -259,9 +261,12 @@ static int aw_pm_valid(suspend_state_t state)
 *             will be called before devices suspened;
 *********************************************************************************************************
 */
+unsigned int backup_max_freq = 0;
+unsigned int backup_min_freq = 0;
+
 int aw_pm_begin(suspend_state_t state)
 {
-    struct cpufreq_policy policy;
+    struct cpufreq_policy *policy;
 
     PM_DBG("%d state begin:%d\n", state,debug_mask);
 
@@ -270,11 +275,21 @@ int aw_pm_begin(suspend_state_t state)
     //cpufreq_user_event_notify();
 #endif
     
-    if (cpufreq_get_policy(&policy, 0))
+    backup_max_freq = 0;
+    backup_min_freq = 0;
+    policy = cpufreq_cpu_get(0);
+    if (!policy)
+    {
+        PM_DBG("line:%d cpufreq_cpu_get failed!\n", __LINE__);
         goto out;
+    }
 
-    cpufreq_driver_target(&policy, suspend_freq, CPUFREQ_RELATION_L);
-
+    backup_max_freq = policy->max;
+    backup_min_freq = policy->min;
+    policy->user_policy.max= suspend_freq;
+    policy->user_policy.min = suspend_freq;
+    cpufreq_cpu_put(policy);
+    cpufreq_update_policy(0);
 
     /*must init perfcounter, because delay_us and delay_ms is depandant perf counter*/
 #ifndef GET_CYCLE_CNT
@@ -372,6 +387,11 @@ static int aw_early_suspend(void)
     mem_twi_save(&(saved_twi_state));
     mem_sram_save(&(saved_sram_state));    
 
+    if (unlikely((mem_para_info.debug_mask)&PM_STANDBY_PRINT_CHECK_CRC))
+    {
+        standby_enable_crc(1);
+        standby_set_crc((void *)standby_crc_addr, standby_crc_size);
+    }
 
     if (likely(mem_para_info.axp_enable))
     {
@@ -623,7 +643,6 @@ static int aw_pm_enter(suspend_state_t state)
 {
 //  asm volatile ("stmfd sp!, {r1-r12, lr}" );
     normal_standby_func standby;
-    int i = 0;
     
     PM_DBG("enter state %d\n", state);
 
@@ -745,6 +764,8 @@ void aw_pm_finish(void)
 */
 void aw_pm_end(void)
 {
+    struct cpufreq_policy *policy;
+
 #ifndef GET_CYCLE_CNT
     #ifndef IO_MEASURE
             restore_perfcounter();
@@ -762,6 +783,21 @@ void aw_pm_end(void)
         {
             show_reg(userdef_reg_addr, userdef_reg_size*4, "user defined");
         }
+    }
+
+    if (backup_max_freq != 0 && backup_min_freq != 0)
+    {
+        policy = cpufreq_cpu_get(0);
+        if (!policy)
+        {
+            printk("cpufreq_cpu_get err! check it! aw_pm_end:%d\n", __LINE__);
+            return;
+        }
+        
+        policy->user_policy.max = backup_max_freq;
+        policy->user_policy.min = backup_min_freq;
+        cpufreq_cpu_put(policy);
+        cpufreq_update_policy(0);
     }
     PM_DBG("aw_pm_end!\n");
 }
@@ -983,6 +1019,8 @@ module_param_named(suspend_freq, suspend_freq, int, S_IRUGO | S_IWUSR | S_IWGRP)
 module_param_named(suspend_delay_ms, suspend_delay_ms, int, S_IRUGO | S_IWUSR | S_IWGRP);
 module_param_named(userdef_reg_addr, userdef_reg_addr, ulong, S_IRUGO | S_IWUSR | S_IWGRP);
 module_param_named(userdef_reg_size, userdef_reg_size, int, S_IRUGO | S_IWUSR | S_IWGRP);
+module_param_named(standby_crc_addr, standby_crc_addr, int, S_IRUGO | S_IWUSR | S_IWGRP);
+module_param_named(standby_crc_size, standby_crc_size, int, S_IRUGO | S_IWUSR | S_IWGRP);
 module_init(aw_pm_init);
 module_exit(aw_pm_exit);
 

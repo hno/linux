@@ -47,7 +47,7 @@
 
 #define MMC_SRCCLK_HOSC         "hosc"
 #define MMC_SRCCLK_PLL5         "sdram_pll_p"
-#define MMC_SRCCLK_PLL6         "sata_pll_2"
+#define MMC_SRCCLK_PLL6         "sata_pll"
 #define MMC_AHBCLK_PREFIX       "ahb_sdc"
 #define MMC_MODCLK_PREFIX       "sdc"
 #define MMC3_DMA_TL             (0x20070008)

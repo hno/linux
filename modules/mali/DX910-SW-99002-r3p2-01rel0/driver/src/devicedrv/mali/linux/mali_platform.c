@@ -24,16 +24,18 @@
 #include <mach/clock.h>
 #include <mach/sys_config.h>
 #include <mach/includes.h>
-
+#include <linux/regulator/consumer.h>
 
 int mali_clk_div = 3;
-struct clk *h_ahb_mali, *h_mali_clk, *h_ve_pll;
+struct clk *h_ahb_mali, *h_mali_clk, *h_gpu_pll;
 int mali_clk_flag=0;
 module_param(mali_clk_div, int, S_IRUSR | S_IWUSR | S_IWGRP | S_IRGRP | S_IROTH);
 MODULE_PARM_DESC(mali_clk_div, "Clock divisor for mali");
 
 static void mali_platform_device_release(struct device *device);
 void mali_gpu_utilization_handler(u32 utilization);
+
+struct regulator *mali_regulator = NULL;
 
 typedef enum mali_power_mode_tag
 {
@@ -69,6 +71,99 @@ static struct mali_gpu_device_data mali_gpu_data =
     .utilization_handler = mali_gpu_utilization_handler,
 };
 
+////////////for dynamic freq//////////////////////////////
+static ssize_t mali_clk_show(struct device *dev,
+		struct device_attribute *attr, char *buf){
+    int mali_clk = 0;
+    
+    if (h_mali_clk){
+        mali_clk = clk_get_rate(h_mali_clk);
+    }
+    return sprintf(buf, "%d\n", mali_clk);
+}
+
+static ssize_t mali_vol_show(struct device *dev,
+		struct device_attribute *attr, char *buf){
+	int mali_vol = 0;
+	
+    if (mali_regulator){
+    	mali_vol = regulator_get_voltage(mali_regulator);
+    }
+	return sprintf(buf, "%d\n", mali_vol);
+}
+
+static ssize_t mali_vol_store(struct device *dev,struct device_attribute *attr,
+		const char *buf, size_t size){
+    unsigned long mali_vol = 0;
+    int ret = 0;
+    
+    ret = strict_strtoul(buf, 10, &mali_vol);
+    if (ret){
+        printk("mali vol failed to set:%d\n", (int)mali_vol);
+        return size;
+    }
+    ret = -1;
+    if (mali_regulator)
+        ret = regulator_set_voltage(mali_regulator, mali_vol, mali_vol);
+	return size;
+}
+
+static ssize_t mali_clk_store(struct device *dev,struct device_attribute *attr,
+		const char *buf, size_t size){
+    unsigned long mali_clk = 0;
+    int ret = 0;
+	
+	ret = strict_strtoul(buf,10, &mali_clk);
+    if (ret){
+        printk("err to set mali clk ret:%d\n", ret);
+        return size;    
+    }
+    if(clk_set_rate(h_gpu_pll, mali_clk)){
+        MALI_PRINT(("try to set mali clock failed!\n"));
+        return size;
+	}
+	
+	return size;
+}
+
+static DEVICE_ATTR(mali_clk, 0600, mali_clk_show, mali_clk_store);
+static DEVICE_ATTR(mali_vol, 0600, mali_vol_show, mali_vol_store);
+
+static struct attribute *sunxi_reg_attributes[] = {
+	&dev_attr_mali_clk.attr,
+	&dev_attr_mali_vol.attr,
+	NULL
+};
+
+static struct attribute_group sunxi_reg_attribute_group = {
+	.name = "aw_mali_freq",
+	.attrs = sunxi_reg_attributes
+};
+
+static int  mali_freq_init(void) {
+	int err;
+
+	err = sysfs_create_group(&mali_gpu_device.dev.kobj,
+						 &sunxi_reg_attribute_group);
+	if(err){
+    	pr_err("%s sysfs_create_group  error\n", __FUNCTION__);
+	}
+
+	mali_regulator = regulator_get(NULL, "axp20_ddr");
+	if (!mali_regulator){
+	    printk("mali_regulator get failed!\n");
+	    return -1;
+	}
+	return err;
+}
+
+static void mali_freq_exit(void) {
+
+	sysfs_remove_group(&mali_gpu_device.dev.kobj,
+						 &sunxi_reg_attribute_group);
+    regulator_put(mali_regulator);
+}
+////////////////////////////////////////////////////////////////////////
 static void mali_platform_device_release(struct device *device)
 {
     MALI_DEBUG_PRINT(2,("mali_platform_device_release() called\n"));
@@ -79,7 +174,7 @@ _mali_osk_errcode_t mali_platform_init(void)
 	unsigned long rate;
     script_item_u   mali_use, clk_drv;
     
-    h_ahb_mali = h_mali_clk = h_ve_pll = 0;
+    h_ahb_mali = h_mali_clk = h_gpu_pll = 0;
 	//get mali ahb clock
     h_ahb_mali = clk_get(NULL, CLK_AHB_MALI); 
 	if(!h_ahb_mali || IS_ERR(h_ahb_mali)){
@@ -90,28 +185,28 @@ _mali_osk_errcode_t mali_platform_init(void)
 
 	//get mali clk
 	h_mali_clk = clk_get(NULL, CLK_MOD_MALI);
-	if(!h_mali_clk || IS_ERR(h_ahb_mali)){
+	if(!h_mali_clk || IS_ERR(h_mali_clk)){
 		MALI_PRINT(("try to get mali clock failed!\n"));
         return _MALI_OSK_ERR_FAULT;
 	} else
 		pr_info("%s(%d): get %s handle success!\n", __func__, __LINE__, CLK_MOD_MALI);
 
-	h_ve_pll = clk_get(NULL, CLK_SYS_PLL8);
-	if(!h_ve_pll || IS_ERR(h_ahb_mali)){
+	h_gpu_pll = clk_get(NULL, CLK_SYS_PLL8);
+	if(!h_gpu_pll || IS_ERR(h_gpu_pll)){
 		MALI_PRINT(("try to get ve pll clock failed!\n"));
         return _MALI_OSK_ERR_FAULT;
 	} else
 		pr_info("%s(%d): get %s handle success!\n", __func__, __LINE__, CLK_SYS_PLL4);
 
 	//set mali parent clock
-	if(clk_set_parent(h_mali_clk, h_ve_pll)){
+	if(clk_set_parent(h_mali_clk, h_gpu_pll)){
 		MALI_PRINT(("try to set mali clock source failed!\n"));
         return _MALI_OSK_ERR_FAULT;
 	} else
 		pr_info("%s(%d): set mali clock source success!\n", __func__, __LINE__);
 	
 	//set mali clock
-	rate = clk_get_rate(h_ve_pll);
+	rate = clk_get_rate(h_gpu_pll);
 	pr_info("%s(%d): get ve pll rate %d!\n", __func__, __LINE__, (int)rate);
 
 	if(SCIRPT_ITEM_VALUE_TYPE_INT == script_get_item("mali_para", "mali_used", &mali_use)) {
@@ -147,14 +242,12 @@ _mali_osk_errcode_t mali_platform_init(void)
 		//printk(KERN_WARNING "enable mali clock\n");
 		MALI_PRINT(("enable mali clock\n"));
 		mali_clk_flag = 1;
-	       if(clk_enable(h_ahb_mali))
-	       {
+        if(clk_enable(h_ahb_mali)){
 		     MALI_PRINT(("try to enable mali ahb failed!\n"));
-	       }
-	       if(clk_enable(h_mali_clk))
-	       {
-		       MALI_PRINT(("try to enable mali clock failed!\n"));
-	        }
+        }
+        if(clk_enable(h_mali_clk)){
+            MALI_PRINT(("try to enable mali clock failed!\n"));
+        }
 	}
     MALI_SUCCESS;
 }
@@ -225,8 +318,8 @@ int sun7i_mali_platform_device_register(void)
 #endif
 				pm_runtime_enable(&(mali_gpu_device.dev));
 #endif
-                 MALI_PRINT(("sun7i_mali_platform_device_register() sucess!!\n"));
-
+                MALI_PRINT(("sun7i_mali_platform_device_register() sucess!!\n"));
+                mali_freq_init();
                 return 0;
             }
         }
@@ -243,6 +336,7 @@ void mali_platform_device_unregister(void)
     MALI_DEBUG_PRINT(2, ("mali_platform_device_unregister() called!\n"));
     
     mali_platform_deinit();
+    mali_freq_exit();
     platform_device_unregister(&mali_gpu_device);
 }
 

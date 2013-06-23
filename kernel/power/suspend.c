@@ -221,7 +221,7 @@ int suspend_devices_and_enter(suspend_state_t state)
 		if (error)
 			goto Close;
 	}
-	//suspend_console();
+	suspend_console();
 	suspend_test_start();
 	error = dpm_suspend_start(PMSG_SUSPEND);
 	if (error) {
@@ -268,6 +268,40 @@ static void suspend_finish(void)
 	pm_restore_console();
 }
 
+#ifdef CONFIG_PM_WATCHDOG_TIMEOUT
+void pm_wd_timeout(unsigned long data)
+{
+	struct pm_wd_data *wd_data = (void *)data;
+	struct task_struct *tsk = wd_data->tsk;
+
+	pr_emerg("%s: PM watchdog timeout: %d seconds\n",  __func__,
+			wd_data->timeout);
+
+	pr_emerg("stack:\n");
+	show_stack(tsk, NULL);
+
+	BUG();
+}
+
+void pm_wd_add_timer(struct timer_list *timer, struct pm_wd_data *data,
+			int timeout)
+{
+	data->timeout = timeout;
+	data->tsk = get_current();
+	init_timer_on_stack(timer);
+	timer->expires = jiffies + HZ * data->timeout;
+	timer->function = pm_wd_timeout;
+	timer->data = (unsigned long)data;
+	add_timer(timer);
+}
+
+void pm_wd_del_timer(struct timer_list *timer)
+{
+	del_timer_sync(timer);
+	destroy_timer_on_stack(timer);
+}
+#endif
+
 /**
  *	enter_state - Do common work of entering low-power state.
  *	@state:		pm_state structure for state we're entering.
@@ -281,6 +315,8 @@ static void suspend_finish(void)
 int enter_state(suspend_state_t state)
 {
 	int error;
+	struct timer_list timer;
+	struct pm_wd_data data;
 
 	if (!valid_state(state))
 		return -ENODEV;
@@ -306,8 +342,12 @@ int enter_state(suspend_state_t state)
 	pm_restore_gfp_mask();
 
  Finish:
+	pm_wd_add_timer(&timer, &data, 15);
+
 	pr_debug("PM: Finishing wakeup.\n");
 	suspend_finish();
+
+	pm_wd_del_timer(&timer);
  Unlock:
 	mutex_unlock(&pm_mutex);
 	return error;

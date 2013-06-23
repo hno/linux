@@ -58,13 +58,21 @@ typedef struct _RSSI_STA{
 
 struct	stainfo_stats	{
 
-	//u64	rx_pkts;
 	u64 rx_mgnt_pkts;
+		u64 rx_beacon_pkts;
+		u64 rx_probereq_pkts;
+		u64 rx_probersp_pkts;
+		u64 rx_probersp_bm_pkts;
+		u64 rx_probersp_uo_pkts;
 	u64 rx_ctrl_pkts;
 	u64 rx_data_pkts;
 
-	//u64	last_rx_pkts;
 	u64	last_rx_mgnt_pkts;
+		u64 last_rx_beacon_pkts;
+		u64 last_rx_probereq_pkts;
+		u64 last_rx_probersp_pkts;
+		u64 last_rx_probersp_bm_pkts;
+		u64 last_rx_probersp_uo_pkts;
 	u64	last_rx_ctrl_pkts;
 	u64	last_rx_data_pkts;
 	
@@ -296,9 +304,56 @@ struct sta_info {
 	+ sta->sta_stats.last_rx_ctrl_pkts \
 	+ sta->sta_stats.last_rx_data_pkts)
 
+#define sta_rx_data_pkts(sta) \
+	(sta->sta_stats.rx_data_pkts)
+
+#define sta_last_rx_data_pkts(sta) \
+	(sta->sta_stats.last_rx_data_pkts)
+
+#define sta_rx_mgnt_pkts(sta) \
+	(sta->sta_stats.rx_mgnt_pkts)
+
+#define sta_last_rx_mgnt_pkts(sta) \
+	(sta->sta_stats.last_rx_mgnt_pkts)
+
+#define sta_rx_beacon_pkts(sta) \
+	(sta->sta_stats.rx_beacon_pkts)
+
+#define sta_last_rx_beacon_pkts(sta) \
+	(sta->sta_stats.last_rx_beacon_pkts)
+
+#define sta_rx_probereq_pkts(sta) \
+	(sta->sta_stats.rx_probereq_pkts)
+
+#define sta_last_rx_probereq_pkts(sta) \
+	(sta->sta_stats.last_rx_probereq_pkts)
+
+#define sta_rx_probersp_pkts(sta) \
+	(sta->sta_stats.rx_probersp_pkts)
+
+#define sta_last_rx_probersp_pkts(sta) \
+	(sta->sta_stats.last_rx_probersp_pkts)
+
+#define sta_rx_probersp_bm_pkts(sta) \
+	(sta->sta_stats.rx_probersp_bm_pkts)
+
+#define sta_last_rx_probersp_bm_pkts(sta) \
+	(sta->sta_stats.last_rx_probersp_bm_pkts)
+
+#define sta_rx_probersp_uo_pkts(sta) \
+	(sta->sta_stats.rx_probersp_uo_pkts)
+
+#define sta_last_rx_probersp_uo_pkts(sta) \
+	(sta->sta_stats.last_rx_probersp_uo_pkts)
+
 #define sta_update_last_rx_pkts(sta) \
 	do { \
 		sta->sta_stats.last_rx_mgnt_pkts = sta->sta_stats.rx_mgnt_pkts; \
+		sta->sta_stats.last_rx_beacon_pkts = sta->sta_stats.rx_beacon_pkts; \
+		sta->sta_stats.last_rx_probereq_pkts = sta->sta_stats.rx_probereq_pkts; \
+		sta->sta_stats.last_rx_probersp_pkts = sta->sta_stats.rx_probersp_pkts; \
+		sta->sta_stats.last_rx_probersp_bm_pkts = sta->sta_stats.rx_probersp_bm_pkts; \
+		sta->sta_stats.last_rx_probersp_uo_pkts = sta->sta_stats.rx_probersp_uo_pkts; \
 		sta->sta_stats.last_rx_ctrl_pkts = sta->sta_stats.rx_ctrl_pkts; \
 		sta->sta_stats.last_rx_data_pkts = sta->sta_stats.rx_data_pkts; \
 	} while(0)

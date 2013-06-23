@@ -11,6 +11,7 @@
 *     2012-06-12      Daniel      1.3     Change itm_disable to Add Delay to CKE after Clock Stable
 *     2012-06-12      Daniel      1.4     Function "mctl_enable_dllx", Add DQS Phase Adjust Option
 *     2012-06-15      Daniel      1.5     Adjust Initial Delay(including relation among RST/CKE/CLK)
+*	  2013-03-06	  CPL		  1.6	  modify for A20
 *********************************************************************************************************
 */
 #include "dram_i.h"
@@ -53,6 +54,7 @@ void mctl_set_drive(void)
     reg_val |= (0x6<<12);
 		reg_val |= 0xFFC;
     reg_val &= ~0x3;
+    reg_val &= ~(0x3<<28);
     mctl_write_w(SDR_CR, reg_val);
 }
 
@@ -158,24 +160,32 @@ void mctl_disable_dll(void)
 }
 
 __u32 hpcr_value[32] = {
-		0x0,0x0,0x0,0x0,		
-		0x0,0x0,0x0,0x0,
-		0x0,0x0,0x0,0x0,
-		0x0,0x0,0x0,0x0,
-		0x00001031,0x00001031,0x00000735,0x00001035,
-		0x00001035,0x00000731,0x00001031,0x0,
 		0x00000301,0x00000301,0x00000301,0x00000301,
-		0x00000301,0x00000301,0x00000301,0x0		
+		0x00000301,0x00000301,0x00000301,0x00000301,
+		0x0,       0x0,       0x0,       0x0,
+		0x0,       0x0,       0x0,       0x0,
+		0x00001031,0x00001031,0x00000735,0x00001035,
+		0x00001035,0x00000731,0x00001031,0x00000735,
+		0x00001035,0x00001031,0x00000731,0x00001035,
+		0x00001031,0x00000301,0x00000301,0x00000731,	
 };
 
 void mctl_configure_hostport(void)
 {
     __u32 i;
 
-    for(i=0; i<32; i++)
-    {
-        mctl_write_w(SDR_HPCR + (i<<2), hpcr_value[i]);
-    }
+ 	for(i=0; i<8; i++)
+	{
+		mctl_write_w(SDR_HPCR + (i<<2), hpcr_value[i]);
+	}
+	
+	for(i=16; i<28; i++)
+	{
+		mctl_write_w(SDR_HPCR + (i<<2), hpcr_value[i]);
+	}	
+	
+	mctl_write_w(SDR_HPCR + (29<<2), hpcr_value[i]);
+	mctl_write_w(SDR_HPCR + (31<<2), hpcr_value[i]);
 }
 
 void mctl_setup_dram_clock(__u32 clk)

@@ -63,6 +63,17 @@ int pmu_usbcurnew = 0;
 int axp_usbcurflag = 0;
 int axp_usbvolflag = 0;
 
+int axp_usb_det(void)
+{
+    uint8_t ret;
+    axp_read(axp_charger->master, AXP20_CHARGE_STATUS, &ret);
+    if(ret & 0x10)
+        return 1;
+    else
+        return 0;
+}
+EXPORT_SYMBOL_GPL(axp_usb_det);
+
 int axp_usbvol(void)
 {
 	axp_usbvolflag = 1;

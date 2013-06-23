@@ -54,6 +54,7 @@
 static struct usb_cfg g_usb_cfg;
 
 #ifdef CONFIG_USB_SW_SUN7I_USB0_OTG
+__u32 thread_suspend_flag = 0;
 static __u32 thread_run_flag = 1;
 static __u32 thread_stopped_flag = 1;
 #endif
@@ -87,13 +88,13 @@ static int usb_hardware_scan_thread(void * pArg)
 
 	while(thread_run_flag){
 		DMSG_DBG_MANAGER("\n\n");
-
+		msleep(1000);  /* 1s */
+        if(thread_suspend_flag)
+            continue;
 		usb_hw_scan(cfg);
 		usb_msg_center(cfg);
 
-		DMSG_DBG_MANAGER("\n\n");
-
-		msleep(1000);  /* 1s */
+		DMSG_DBG_MANAGER("\n\n");		
 	}
 
 	thread_stopped_flag = 1;
@@ -234,6 +235,15 @@ static __s32 usb_script_parse(struct usb_cfg *cfg)
             DMSG_PANIC("ERR: get usbc(%d) det_vbus failed\n", i);
         }
 
+        /* enable ac */
+        type = script_get_item(set_usbc, "usb_ac_enable_gpio", &(cfg->port[i].ac_enable.gpio_set));
+        if(type == SCIRPT_ITEM_VALUE_TYPE_PIO){
+            cfg->port[i].ac_enable.valid = 1;
+        }else{
+            cfg->port[i].ac_enable.valid = 0;
+            DMSG_PANIC("ERR: get usbc(%d) ac_enable failed\n", i);
+        }
+        
         /* usbc usb_restrict */
         type = script_get_item(set_usbc, KEY_USB_RESTRICT_GPIO, &(cfg->port[i].restrict_gpio_set.gpio_set));
         if(type == SCIRPT_ITEM_VALUE_TYPE_PIO){

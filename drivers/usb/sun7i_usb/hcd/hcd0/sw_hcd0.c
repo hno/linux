@@ -88,6 +88,7 @@ static sw_hcd_io_t g_sw_hcd_io;
 static __u32 usbc_no = 0;
 
 #ifdef  CONFIG_USB_SW_SUN7I_USB0_OTG
+extern __u32 thread_suspend_flag;
 static struct platform_device *g_hcd0_pdev = NULL;
 #endif
 
@@ -2198,7 +2199,7 @@ static int sw_hcd_suspend(struct device *dev)
 	struct sw_hcd	*sw_hcd = dev_to_sw_hcd(&pdev->dev);
 
 	DMSG_INFO_HCD0("sw_hcd_suspend start\n");
-
+    thread_suspend_flag = 1;
 	if(!sw_hcd->enable){
 		DMSG_INFO("wrn: hcd is disable, need not enter to suspend\n");
 		return 0;
@@ -2248,7 +2249,7 @@ static int sw_hcd_resume(struct device *dev)
 	struct sw_hcd	*sw_hcd = dev_to_sw_hcd(&pdev->dev);
 
 	DMSG_INFO_HCD0("sw_hcd_resume start\n");
-
+    thread_suspend_flag = 0;
 	if(!sw_hcd->enable){
 		DMSG_INFO("wrn: hcd is disable, need not resume\n");
 		return 0;

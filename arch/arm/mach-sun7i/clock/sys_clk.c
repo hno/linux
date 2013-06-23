@@ -233,14 +233,17 @@ static __u64 sys_clk_get_rate(__aw_ccu_clk_id_e id)
             return sys_clk_get_rate(AW_SYS_CLK_PLL5) >> aw_ccu_reg->Pll5Ctl.FactorP;
         }
         case AW_SYS_CLK_PLL6: {
-            return (__s64)24000000 * aw_ccu_reg->Pll6Ctl.FactorN * (aw_ccu_reg->Pll6Ctl.FactorK + 1);
+            return (__s64)24000000 * aw_ccu_reg->Pll6Ctl.FactorN * (aw_ccu_reg->Pll6Ctl.FactorK + 1) >> 1;
         }
         case AW_SYS_CLK_PLL6M: {
             return ccu_clk_uldiv((__s64)24000000 * aw_ccu_reg->Pll6Ctl.FactorN * (aw_ccu_reg->Pll6Ctl.FactorK + 1),   \
                                  (aw_ccu_reg->Pll6Ctl.FactorM + 1) * 6);
         }
         case AW_SYS_CLK_PLL62: {
-            return (__s64)24000000 * aw_ccu_reg->Pll6Ctl.FactorN * (aw_ccu_reg->Pll6Ctl.FactorK + 1) >> 1;
+            return (__s64)24000000 * aw_ccu_reg->Pll6Ctl.FactorN * (aw_ccu_reg->Pll6Ctl.FactorK + 1) >> 2;
+        }
+        case AW_SYS_CLK_PLL6X2: {
+            return (__s64)24000000 * aw_ccu_reg->Pll6Ctl.FactorN * (aw_ccu_reg->Pll6Ctl.FactorK + 1);
         }
         case AW_SYS_CLK_PLL7: {
             if (!aw_ccu_reg->Pll7Ctl.ModeSel) {
@@ -541,13 +544,37 @@ static int sys_clk_set_rate(__aw_ccu_clk_id_e id, __u64 rate)
             ccm_clk_get_pll_para(&factor, rate);
             /* set factor */
             tmp_pll = aw_ccu_reg->Pll1Ctl;
-            tmp_pll.FactorN = factor.FactorN;
-            tmp_pll.FactorK = factor.FactorK;
-            tmp_pll.FactorM = factor.FactorM;
-            tmp_pll.PLLDivP = factor.FactorP;
-            aw_ccu_reg->Pll1Ctl = tmp_pll;
-            /* delay 500us for pll be stably */
-            __delay((rate >> 20) * 500 / 2);
+            if (tmp_pll.PLLDivP < factor.FactorP) {
+                tmp_pll.PLLDivP = factor.FactorP;
+                aw_ccu_reg->Pll1Ctl = tmp_pll;
+                __delay(rate >> 20);
+
+                tmp_pll.FactorN = factor.FactorN;
+                tmp_pll.FactorK = factor.FactorK;
+                tmp_pll.FactorM = factor.FactorM;
+                aw_ccu_reg->Pll1Ctl = tmp_pll;
+                /* delay 500us for pll be stably */
+                __delay((rate >> 20) * 500);
+            } else if (tmp_pll.PLLDivP == factor.FactorP) {
+                tmp_pll.FactorN = factor.FactorN;
+                tmp_pll.FactorK = factor.FactorK;
+                tmp_pll.FactorM = factor.FactorM;
+                tmp_pll.PLLDivP = factor.FactorP;
+                aw_ccu_reg->Pll1Ctl = tmp_pll;
+                /* delay 500us for pll be stably */
+                __delay((rate >> 20) * 500);
+            } else {
+                tmp_pll.FactorN = factor.FactorN;
+                tmp_pll.FactorK = factor.FactorK;
+                tmp_pll.FactorM = factor.FactorM;
+                aw_ccu_reg->Pll1Ctl = tmp_pll;
+                /* delay 500us for pll be stably */
+                __delay((rate >> 20) * 500);
+
+                tmp_pll.PLLDivP = factor.FactorP;
+                aw_ccu_reg->Pll1Ctl = tmp_pll;
+                __delay(rate >> 20);
+            }
 
             return 0;
         }
@@ -598,7 +625,7 @@ static int sys_clk_set_rate(__aw_ccu_clk_id_e id, __u64 rate)
                 aw_ccu_reg->Pll3Ctl.FracSet = 1;
             } else {
                 aw_ccu_reg->Pll3Ctl.ModeSel = 1;
-                aw_ccu_reg->Pll3Ctl.FactorM = ccu_clk_uldiv(rate + (3000000 - 1), 3000000);
+                aw_ccu_reg->Pll3Ctl.FactorM = ccu_clk_uldiv(rate, 3000000);
             }
             return 0;
         }
@@ -650,7 +677,7 @@ static int sys_clk_set_rate(__aw_ccu_clk_id_e id, __u64 rate)
                 return -1;
             }
 
-            tmpFactorN = ccu_clk_uldiv(rate + (((tmpFactorK + 1) * 24000000) - 1), ((tmpFactorK + 1) * 24000000));
+            tmpFactorN = ccu_clk_uldiv(rate, ((tmpFactorK + 1) * 24000000));
             if (tmpFactorN > 31) {
                 CCU_ERR("rate (%llu) is invaid for PLL5\n", rate);
                 return -1;
@@ -671,7 +698,7 @@ static int sys_clk_set_rate(__aw_ccu_clk_id_e id, __u64 rate)
                 return -1;
             }
 
-            tmpFactorM = ccu_clk_uldiv(tmpPLL5 + (rate - 1), rate);
+            tmpFactorM = ccu_clk_uldiv(tmpPLL5, rate);
             aw_ccu_reg->Pll5Ctl.FactorM = tmpFactorM - 1;
 
             return 0;
@@ -697,15 +724,15 @@ static int sys_clk_set_rate(__aw_ccu_clk_id_e id, __u64 rate)
             __s32   tmpFactorN, tmpFactorK;
 
             if (rate <= 600000000)
-                tmpFactorK = 0;
-            else if (rate <= 1200000000)
                 tmpFactorK = 1;
+            else if (rate <= 1200000000)
+                tmpFactorK = 2;
             else {
                 CCU_ERR("rate (%llu) is invaid for PLL6\n", rate);
                 return -1;
             }
 
-            tmpFactorN = ccu_clk_uldiv(rate, ((tmpFactorK + 1) * 24000000));
+            tmpFactorN = ccu_clk_uldiv(rate, ((tmpFactorK + 1) * 24000000) >> 1);
             if (tmpFactorN > 31) {
                 CCU_ERR("rate (%llu) is invaid for PLL6\n", rate);
                 return -1;
@@ -725,7 +752,9 @@ static int sys_clk_set_rate(__aw_ccu_clk_id_e id, __u64 rate)
             return 0;
         }
         case AW_SYS_CLK_PLL62: {
-            /* rate of AW_SYS_CLK_PLL62 is always the half of the rate of AW_SYS_CLK_PLL6 */
+            return 0;
+        }
+        case AW_SYS_CLK_PLL6X2: {
             return 0;
         }
         case AW_SYS_CLK_PLL7: {
@@ -742,7 +771,7 @@ static int sys_clk_set_rate(__aw_ccu_clk_id_e id, __u64 rate)
                 aw_ccu_reg->Pll7Ctl.FracSet = 1;
             } else {
                 aw_ccu_reg->Pll7Ctl.ModeSel = 1;
-                aw_ccu_reg->Pll7Ctl.FactorM = ccu_clk_uldiv(rate + (3000000 - 1), 3000000);
+                aw_ccu_reg->Pll7Ctl.FactorM = ccu_clk_uldiv(rate, 3000000);
             }
             return 0;
         }
@@ -787,7 +816,7 @@ static int sys_clk_set_rate(__aw_ccu_clk_id_e id, __u64 rate)
             }
         }
         case AW_SYS_CLK_AXI: {
-            __s32   tmpDiv = ccu_clk_uldiv(sys_clk_get_rate(AW_SYS_CLK_CPU) + (rate - 1), rate);
+            __s32   tmpDiv = ccu_clk_uldiv(sys_clk_get_rate(AW_SYS_CLK_CPU), rate);
             if (tmpDiv > 4) {
                 CCU_ERR("rate (%llu) is invalid when set axi rate\n", rate);
                 return -1;
@@ -798,7 +827,7 @@ static int sys_clk_set_rate(__aw_ccu_clk_id_e id, __u64 rate)
             return 0;
         }
         case AW_SYS_CLK_ATB: {
-            __s32   tmpDiv = ccu_clk_uldiv(sys_clk_get_rate(AW_SYS_CLK_CPU) + (rate - 1), rate);
+            __s32   tmpDiv = ccu_clk_uldiv(sys_clk_get_rate(AW_SYS_CLK_CPU), rate);
             if (tmpDiv > 4) {
                 CCU_ERR("rate (%llu) is invalid when set atb rate\n", rate);
                 return -1;
@@ -813,7 +842,7 @@ static int sys_clk_set_rate(__aw_ccu_clk_id_e id, __u64 rate)
             return 0;
         }
         case AW_SYS_CLK_AHB: {
-            __s32   tmpVal = -1, tmpDiv = ccu_clk_uldiv(sys_clk_get_rate(sys_clk_get_parent(AW_SYS_CLK_AHB)) + (rate - 1), rate);
+            __s32   tmpVal = -1, tmpDiv = ccu_clk_uldiv(sys_clk_get_rate(sys_clk_get_parent(AW_SYS_CLK_AHB)), rate);
 
             if (tmpDiv > 8) {
                 CCU_ERR("rate (%llu) is invalid for set AHB rate\n", rate);
@@ -829,7 +858,7 @@ static int sys_clk_set_rate(__aw_ccu_clk_id_e id, __u64 rate)
             return 0;
         }
         case AW_SYS_CLK_APB0: {
-            __s32   tmpVal = -1, tmpDiv = ccu_clk_uldiv(sys_clk_get_rate(AW_SYS_CLK_AHB) + (rate - 1), rate);
+            __s32   tmpVal = -1, tmpDiv = ccu_clk_uldiv(sys_clk_get_rate(AW_SYS_CLK_AHB), rate);
 
             if (tmpDiv > 8) {
                 CCU_ERR("rate (%llu) is invalid for set APB0 rate\n", rate);
@@ -853,7 +882,7 @@ static int sys_clk_set_rate(__aw_ccu_clk_id_e id, __u64 rate)
                 return -1;
             }
 
-            tmpRate = ccu_clk_uldiv(tmpRate + (rate - 1), rate);
+            tmpRate = ccu_clk_uldiv(tmpRate, rate);
             if (tmpRate <= 4) {
                 tmpDivP = 0;
                 tmpDivM = tmpRate - 1;

@@ -29,6 +29,14 @@ KERNEL_VERSION="3.3"
 LICHEE_KDIR=`pwd`
 LICHEE_MOD_DIR=${LICHEE_KDIR}/output/lib/modules/${KERNEL_VERSION}
 
+update_kernel_ver()
+{
+    if [ -r include/generated/utsrelease.h ] ; then
+        KERNEL_VERSION=`cat include/generated/utsrelease.h | awk -F\" '{print $2}'`
+    fi
+    LICHEE_MOD_DIR=${LICHEE_KDIR}/output/lib/modules/${KERNEL_VERSION}
+}
+
 build_standby()
 {
     echo "build standby"
@@ -97,6 +105,7 @@ build_kernel()
 
     ${OBJCOPY} -R .note.gnu.build-id -S -O binary vmlinux bImage
 
+    update_kernel_ver
     rm -rf output
     mkdir -p ${LICHEE_MOD_DIR}
     cp bImage output/
@@ -121,11 +130,9 @@ build_modules()
         printf "Please build kernel first\n"
         exit 1
     fi
+    update_kernel_ver
 
     make -C modules/example LICHEE_MOD_DIR=${LICHEE_MOD_DIR} LICHEE_KDIR=${LICHEE_KDIR} \
-        install
-
-    make -C modules/axp_gpio_test LICHEE_MOD_DIR=${LICHEE_MOD_DIR} LICHEE_KDIR=${LICHEE_KDIR} \
         install
 
     build_nand_lib

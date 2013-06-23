@@ -580,10 +580,9 @@ void rtw_cfg80211_indicate_disconnect(_adapter *padapter)
 
 		if(pwdev->sme_state==CFG80211_SME_CONNECTING)
 			cfg80211_connect_result(padapter->pnetdev, NULL, NULL, 0, NULL, 0, 
-								WLAN_STATUS_UNSPECIFIED_FAILURE, GFP_ATOMIC/*GFP_KERNEL*/);
+				WLAN_STATUS_UNSPECIFIED_FAILURE, GFP_ATOMIC/*GFP_KERNEL*/);
 		else if(pwdev->sme_state==CFG80211_SME_CONNECTED)
-			cfg80211_disconnected(padapter->pnetdev, 0,
-				   				NULL, 0, GFP_ATOMIC);
+			cfg80211_disconnected(padapter->pnetdev, 0, NULL, 0, GFP_ATOMIC);
 		//else
 			//DBG_8192C("pwdev->sme_state=%d\n", pwdev->sme_state);
 
@@ -812,7 +811,7 @@ static int rtw_cfg80211_ap_set_encryption(struct net_device *dev, struct ieee_pa
 					
 		psecuritypriv->dot11DefKeylen[wep_key_idx] = wep_key_len;
 
-		set_wep_key(padapter, param->u.crypt.key, wep_key_len, wep_key_idx);		
+		set_wep_key(padapter, param->u.crypt.key, wep_key_len, wep_key_idx);
 
 		goto exit;
 		
@@ -1505,7 +1504,7 @@ static int cfg80211_rtw_get_station(struct wiphy *wiphy,
 		&& check_fwstate(pmlmepriv, _FW_LINKED)
 	)
 	{
-		struct wlan_network  *cur_network = &(pmlmepriv->cur_network);		
+		struct wlan_network  *cur_network = &(pmlmepriv->cur_network);
 		
 		if (_rtw_memcmp(mac, cur_network->network.MacAddress, ETH_ALEN) == _FALSE)
 		{
@@ -1696,7 +1695,7 @@ void rtw_cfg80211_indicate_scan_done(struct rtw_wdev_priv *pwdev_priv, bool abor
 		{
 			cfg80211_scan_done(pwdev_priv->scan_request, aborted);
 		}
-		
+
 		pwdev_priv->scan_request = NULL;
 		
 	} else {
@@ -1975,7 +1974,12 @@ if (padapter->registrypriv.mp_mode == 1)
 		DBG_8192C("%s, bBusyTraffic == _TRUE\n", __func__);
 		need_indicate_scan_done = _TRUE;
 		goto check_need_indicate_scan_done;
-	} 
+	}
+	if (rtw_is_scan_deny(padapter)){
+		DBG_871X(FUNC_NDEV_FMT  ": scan deny\n", FUNC_NDEV_ARG(ndev));
+		need_indicate_scan_done = _TRUE;
+		goto check_need_indicate_scan_done;
+	}
 
 #ifdef CONFIG_CONCURRENT_MODE
 	if(pbuddy_mlmepriv && (pbuddy_mlmepriv->LinkDetectInfo.bBusyTraffic == _TRUE))	
@@ -1984,14 +1988,6 @@ if (padapter->registrypriv.mp_mode == 1)
 		need_indicate_scan_done = _TRUE;
 		goto check_need_indicate_scan_done;
 	}
-#ifdef CONFIG_SET_SCAN_DENY_TIMER
-	if(pbuddy_mlmepriv && (ATOMIC_READ(&pbuddy_mlmepriv->set_scan_deny)==1)){
-		DBG_871X(FUNC_NDEV_FMT  ": deny scan by buddy_intf\n", FUNC_NDEV_ARG(ndev));
-		need_indicate_scan_done = _TRUE;
-		goto check_need_indicate_scan_done;
-
-	}
-#endif //CONFIG_SET_SCAN_DENY_TIMER	
 #endif //CONFIG_CONCURRENT_MODE
 
 	if (check_fwstate(pmlmepriv, _FW_UNDER_SURVEY|_FW_UNDER_LINKING) == _TRUE)
@@ -2581,13 +2577,13 @@ static int cfg80211_rtw_connect(struct wiphy *wiphy, struct net_device *ndev,
 	}
 
 #ifdef CONFIG_CONCURRENT_MODE
-	if (check_buddy_fwstate(padapter, _FW_UNDER_SURVEY|_FW_UNDER_LINKING) == _TRUE)
-	{		
-		DBG_8192C("%s, but buddy_intf is under scanning or linking\n", __FUNCTION__);
-		
+	if (check_buddy_fwstate(padapter, _FW_UNDER_LINKING) == _TRUE) {
+		DBG_8192C("%s, but buddy_intf is under linking\n", __FUNCTION__);
 		ret = -EINVAL;
-		
 		goto exit;
+	}
+	if (check_buddy_fwstate(padapter, _FW_UNDER_SURVEY) == _TRUE) {
+		rtw_scan_abort(padapter->pbuddy_adapter);
 	}
 #endif
 
@@ -2697,10 +2693,9 @@ static int cfg80211_rtw_connect(struct wiphy *wiphy, struct net_device *ndev,
 
 	if (rtw_set_802_11_infrastructure_mode(padapter, pnetwork->network.InfrastructureMode) == _FALSE)
 	{
-		ret = -EPERM;			
+		ret = -EPERM;
 		goto exit;
 	}
-		
 
 	psecuritypriv->ndisencryptstatus = Ndis802_11EncryptionDisabled;
 	psecuritypriv->dot11PrivacyAlgrthm = _NO_PRIVACY_;
@@ -2858,9 +2853,11 @@ static int cfg80211_rtw_disconnect(struct wiphy *wiphy, struct net_device *ndev,
 
 	if(check_fwstate(&padapter->mlmepriv, _FW_LINKED)) 
 	{
-		rtw_disassoc_cmd(padapter);
+		rtw_scan_abort(padapter);
+		LeaveAllPowerSaveMode(padapter);
+		rtw_disassoc_cmd(padapter, 500, _FALSE);
 		
-		DBG_871X("%s...call rtw_indicate_disconnect\n ", __FUNCTION__);
+		DBG_871X("%s...call rtw_indicate_disconnect\n", __FUNCTION__);
 		
 		padapter->mlmepriv.not_indic_disco = _TRUE;
 		rtw_indicate_disconnect(padapter);
@@ -2920,23 +2917,28 @@ static int cfg80211_rtw_get_txpower(struct wiphy *wiphy, int *dbm)
 	return 0;
 }
 
+inline bool rtw_cfg80211_pwr_mgmt(_adapter *adapter)
+{
+	struct rtw_wdev_priv *rtw_wdev_priv = wdev_to_priv(adapter->rtw_wdev);
+	return rtw_wdev_priv->power_mgmt;
+}
+
 static int cfg80211_rtw_set_power_mgmt(struct wiphy *wiphy,
 				       struct net_device *ndev,
 				       bool enabled, int timeout)
 {
 	_adapter *padapter = wiphy_to_adapter(wiphy);
-
+	struct rtw_wdev_priv *rtw_wdev_priv = wdev_to_priv(padapter->rtw_wdev);
+	
 	DBG_871X(FUNC_NDEV_FMT" enabled:%u, timeout:%d\n", FUNC_NDEV_ARG(ndev),
 		enabled, timeout);
-	
-#if defined(CONFIG_CONCURRENT_MODE)
-	return -EPERM;
-#endif /* defined(CONFIG_CONCURRENT_MODE) */
 
-	if(enabled)
-		rtw_pm_set_lps(padapter, PS_MODE_MIN);
-	else
-		rtw_pm_set_lps(padapter, PS_MODE_ACTIVE);
+	rtw_wdev_priv->power_mgmt = enabled;
+
+	#ifdef CONFIG_LPS
+	if (!enabled)
+		LPS_Leave(padapter);
+	#endif
 
 	return 0;
 }
@@ -3252,14 +3254,27 @@ static int rtw_cfg80211_monitor_if_xmit_entry(struct sk_buff *skb, struct net_de
 		struct mlme_ext_priv	*pmlmeext = &(padapter->mlmeextpriv);
 		u8 *buf = skb->data;
 		u32 len = skb->len;
+		u8 category, action;
+		int type = -1;
 
-		#ifdef CONFIG_P2P
-		if(rtw_p2p_check_frames(padapter, buf, len, _TRUE) < 0)
-		{
+		if (rtw_action_frame_parse(buf, len, &category, &action) == _FALSE) {
+			DBG_8192C(FUNC_NDEV_FMT" frame_control:0x%x\n", FUNC_NDEV_ARG(ndev),
+				le16_to_cpu(((struct rtw_ieee80211_hdr_3addr *)buf)->frame_ctl));
 			goto fail;
 		}
-		#endif // CONFIG_P2P
-	
+		
+		DBG_8192C("RTW_Tx:da="MAC_FMT" via "FUNC_NDEV_FMT"\n",
+			MAC_ARG(GetAddr1Ptr(buf)), FUNC_NDEV_ARG(ndev));
+		#ifdef CONFIG_P2P
+		if((type = rtw_p2p_check_frames(padapter, buf, len, _TRUE)) >= 0)
+			goto dump;
+		#endif
+		if (category == RTW_WLAN_CATEGORY_PUBLIC)
+			DBG_871X("RTW_Tx:%s\n", action_public_str(action));
+		else
+			DBG_871X("RTW_Tx:category(%u), action(%u)\n", category, action);
+
+dump:
 		//starting alloc mgmt frame to dump it
 		if ((pmgntframe = alloc_mgtxmitframe(pxmitpriv)) == NULL)
 		{			
@@ -3277,6 +3292,7 @@ static int rtw_cfg80211_monitor_if_xmit_entry(struct sk_buff *skb, struct net_de
 
 		_rtw_memcpy(pframe, (void*)buf, len);
 		#ifdef CONFIG_WFD
+		if (type >= 0)
 		{
 			struct wifi_display_info		*pwfd_info;
 			
@@ -3837,17 +3853,13 @@ void rtw_cfg80211_rx_action_p2p(_adapter *padapter, u8 *pmgmt_frame, uint frame_
 	int channel;
 	struct mlme_ext_priv *pmlmeext = &(padapter->mlmeextpriv);
 	u8 category, action;
-#ifdef CONFIG_CONCURRENT_MODE
-	if(padapter->pcodatapriv)
-		channel = padapter->pcodatapriv->co_ch;
-#else
-	channel = pmlmeext->cur_channel;
-#endif
+
+	channel = rtw_get_oper_ch(padapter);
 
 	DBG_8192C("RTW_Rx:cur_ch=%d\n", channel);
 	#ifdef CONFIG_P2P
 	type = rtw_p2p_check_frames(padapter, pmgmt_frame, frame_len, _FALSE);
-	if(type >= 0)
+	if (type >= 0)
 		goto indicate;
 	#endif
 	rtw_action_frame_parse(pmgmt_frame, frame_len, &category, &action);
@@ -3873,18 +3885,20 @@ void rtw_cfg80211_rx_p2p_action_public(_adapter *padapter, u8 *pmgmt_frame, uint
 	int channel;
 	struct mlme_ext_priv *pmlmeext = &(padapter->mlmeextpriv);
 	u8 category, action;
-#ifdef CONFIG_CONCURRENT_MODE
-	if(padapter->pcodatapriv)
-		channel = padapter->pcodatapriv->co_ch;
-#else
-	channel = pmlmeext->cur_channel;
-#endif
+
+	channel = rtw_get_oper_ch(padapter);
 
 	DBG_8192C("RTW_Rx:cur_ch=%d\n", channel);
 	#ifdef CONFIG_P2P
 	type = rtw_p2p_check_frames(padapter, pmgmt_frame, frame_len, _FALSE);
-	if(type >= 0)
+	if (type >= 0) {
+		switch (type) {
+		case P2P_GO_NEGO_CONF:
+		case P2P_PROVISION_DISC_RESP:
+			rtw_clear_scan_deny(padapter);
+		}
 		goto indicate;
+	}
 	#endif
 	rtw_action_frame_parse(pmgmt_frame, frame_len, &category, &action);
 	DBG_871X("RTW_Rx:category(%u), action(%u)\n", category, action);
@@ -3910,12 +3924,7 @@ void rtw_cfg80211_rx_action(_adapter *adapter, u8 *frame, uint frame_len, const 
 	struct rtw_wdev_priv *pwdev_priv = wdev_to_priv(adapter->rtw_wdev);
 	u8 category, action;
 	
-#ifdef CONFIG_CONCURRENT_MODE
-	if(adapter->pcodatapriv)
-		channel = adapter->pcodatapriv->co_ch;
-#else
-	channel = pmlmeext->cur_channel;
-#endif
+	channel = rtw_get_oper_ch(adapter);
 
 	rtw_action_frame_parse(frame, frame_len, &category, &action);
 
@@ -4296,8 +4305,7 @@ static s32 cfg80211_rtw_remain_on_channel(struct wiphy *wiphy, struct net_device
 				pmlmeext->cur_channel = remain_ch;
 			
 #ifdef	CONFIG_CONCURRENT_MODE
-			if(padapter->pcodatapriv)
-				co_channel = padapter->pcodatapriv->co_ch;
+			co_channel = rtw_get_oper_ch(padapter);
 
 			if(co_channel !=remain_ch)
 #endif
@@ -4334,11 +4342,14 @@ static s32 cfg80211_rtw_cancel_remain_on_channel(struct wiphy *wiphy, struct net
 
 	DBG_871X(FUNC_NDEV_FMT"\n", FUNC_NDEV_ARG(ndev));
 
-	//Modified by Kurt 20120114
-	_cancel_timer_ex(&padapter->cfg80211_wdinfo.remain_on_ch_timer);
-#ifdef CONFIG_CONCURRENT_MODE
-	ATOMIC_SET(&pwdev_priv->ro_ch_to, 1);
-#endif
+	if (pcfg80211_wdinfo->is_ro_ch == _TRUE) {
+		DBG_8192C("%s, cancel ro ch timer\n", __func__);
+		_cancel_timer_ex(&padapter->cfg80211_wdinfo.remain_on_ch_timer);
+		#ifdef CONFIG_CONCURRENT_MODE
+		ATOMIC_SET(&pwdev_priv->ro_ch_to, 1);
+		#endif
+		p2p_protocol_wk_hdl(padapter, P2P_RO_CH_WK);
+	}
 
 	#if 0
 	//	Disable P2P Listen State
@@ -4390,9 +4401,7 @@ static int _cfg80211_rtw_mgmt_tx(struct net_device *ndev, u8 tx_ch, const u8 *bu
 		goto exit;
 	}
 
-#ifdef CONFIG_SET_SCAN_DENY_TIMER
-	rtw_set_scan_deny(pmlmepriv, 1000);
-#endif //CONFIG_SET_SCAN_DENY_TIMER
+	rtw_set_scan_deny(padapter, 1000);
 
 	rtw_scan_abort(padapter);
 	#ifdef CONFIG_CONCURRENT_MODE		
@@ -4416,8 +4425,7 @@ static int _cfg80211_rtw_mgmt_tx(struct net_device *ndev, u8 tx_ch, const u8 *bu
 		PADAPTER pbuddy_adapter = padapter->pbuddy_adapter;			
 		struct mlme_ext_priv *pbuddy_mlmeext = &pbuddy_adapter->mlmeextpriv;	
 
-		if (padapter->pcodatapriv)
-			co_channel = padapter->pcodatapriv->co_ch;
+		co_channel = rtw_get_oper_ch(padapter);
 
 		if (tx_ch != pbuddy_mlmeext->cur_channel) {
 			if (ATOMIC_READ(&pwdev_priv->switch_ch_to)==1) {
@@ -4434,14 +4442,17 @@ static int _cfg80211_rtw_mgmt_tx(struct net_device *ndev, u8 tx_ch, const u8 *bu
 			_set_timer(&pwdinfo->ap_p2p_switch_timer, pwdinfo->ext_listen_period);	
 		}
 
-		pmlmeext->cur_channel = tx_ch;
+		if (!check_fwstate(&padapter->mlmepriv, _FW_LINKED ))
+			pmlmeext->cur_channel = tx_ch;
 
 		if (tx_ch != co_channel)
 			set_channel_bwmode(padapter, tx_ch, HAL_PRIME_CHNL_OFFSET_DONT_CARE, HT_CHANNEL_WIDTH_20);
 	}else 
 #endif //CONFIG_CONCURRENT_MODE
-	if (tx_ch != pmlmeext->cur_channel) {
-		pmlmeext->cur_channel = tx_ch;
+	//if (tx_ch != pmlmeext->cur_channel) {
+	if(tx_ch != rtw_get_oper_ch(padapter)) {
+		if (!check_fwstate(&padapter->mlmepriv, _FW_LINKED ))
+			pmlmeext->cur_channel = tx_ch;
 		set_channel_bwmode(padapter, tx_ch, HAL_PRIME_CHNL_OFFSET_DONT_CARE, HT_CHANNEL_WIDTH_20);
 	}
 
@@ -4535,6 +4546,7 @@ static int cfg80211_rtw_mgmt_tx(struct wiphy *wiphy, struct net_device *ndev,
 			u64 *cookie)
 {
 	_adapter *padapter = (_adapter *)rtw_netdev_priv(ndev);
+	struct rtw_wdev_priv *pwdev_priv = wdev_to_priv(padapter->rtw_wdev);
 	int ret = 0;
 	int tx_ret;
 	u32 dump_limit = RTW_MAX_MGMT_TX_CNT;
@@ -4588,6 +4600,23 @@ dump:
 		DBG_871X(FUNC_NDEV_FMT" %s (%d/%d)\n", FUNC_NDEV_ARG(ndev),
 			tx_ret==_SUCCESS?"OK":"FAIL", dump_cnt, dump_limit);
 	}
+
+	switch (type) {
+	case P2P_GO_NEGO_CONF:
+		rtw_clear_scan_deny(padapter);
+		break;
+	case P2P_INVIT_RESP:
+		if (pwdev_priv->invit_info.flags & BIT(0)
+			&& pwdev_priv->invit_info.status == 0) 
+		{
+			DBG_871X(FUNC_ADPT_FMT" agree with invitation of persistent group\n",
+				FUNC_ADPT_ARG(padapter));
+			rtw_set_scan_deny(padapter, 5000);
+			rtw_pwr_wakeup_ex(padapter, 5000);
+			rtw_clear_scan_deny(padapter);
+		}
+		break;
+	}	
 
 exit:
 	return ret;
@@ -5190,13 +5219,19 @@ int rtw_wdev_alloc(_adapter *padapter, struct device *dev)
 		
 	pwdev_priv->p2p_enabled = _FALSE;
 	pwdev_priv->provdisc_req_issued = _FALSE;
+	rtw_wdev_invit_info_init(&pwdev_priv->invit_info);
 		
 	pwdev_priv->bandroid_scan = _FALSE;
+
+	if(padapter->registrypriv.power_mgnt != PS_MODE_ACTIVE)
+		pwdev_priv->power_mgmt = _TRUE;
+	else
+		pwdev_priv->power_mgmt = _FALSE;
 	
 #ifdef CONFIG_CONCURRENT_MODE
 	ATOMIC_SET(&pwdev_priv->switch_ch_to, 1);	
 	ATOMIC_SET(&pwdev_priv->ro_ch_to, 1);	
-#endif	
+#endif
 
 	wdev->netdev = pnetdev;
 	//wdev->iftype = NL80211_IFTYPE_STATION;
@@ -5235,20 +5270,8 @@ void rtw_wdev_free(struct wireless_dev *wdev)
 
 	pwdev_priv = wdev_to_priv(wdev);
 	
-	DBG_8192C("%s, scan abort when device remove\n", __func__);	
-	rtw_cfg80211_indicate_scan_done(pwdev_priv, _TRUE);
-	
 	if(pwdev_priv->pmon_ndev)
-	{
-		DBG_8192C("%s, unregister monitor interface\n", __func__);
-	
-		unregister_netdev(pwdev_priv->pmon_ndev);
-		
 		free_netdev(pwdev_priv->pmon_ndev);
-	}		
-	
-
-	wiphy_unregister(wdev->wiphy);
 
 	rtw_spt_band_free(wdev->wiphy->bands[IEEE80211_BAND_2GHZ]);
 	rtw_spt_band_free(wdev->wiphy->bands[IEEE80211_BAND_5GHZ]);
@@ -5256,6 +5279,27 @@ void rtw_wdev_free(struct wireless_dev *wdev)
 	wiphy_free(wdev->wiphy);
 
 	rtw_mfree((u8*)wdev, sizeof(struct wireless_dev));
+}
+
+void rtw_wdev_unregister(struct wireless_dev *wdev)
+{
+	struct rtw_wdev_priv *pwdev_priv;
+
+	DBG_8192C("%s(wdev=%p)\n", __func__, wdev);
+
+	if (!wdev)
+		return;
+
+	pwdev_priv = wdev_to_priv(wdev);
+
+	rtw_cfg80211_indicate_scan_done(pwdev_priv, _TRUE);
+
+	if (pwdev_priv->pmon_ndev) {
+		DBG_8192C("%s, unregister monitor interface\n", __func__);
+		unregister_netdev(pwdev_priv->pmon_ndev);
+	}
+
+	wiphy_unregister(wdev->wiphy);
 }
 
 #endif //CONFIG_IOCTL_CFG80211

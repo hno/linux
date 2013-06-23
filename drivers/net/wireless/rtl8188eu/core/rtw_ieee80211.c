@@ -1471,7 +1471,7 @@ u8 *rtw_get_p2p_attr(u8 *p2p_ie, uint p2p_ielen, u8 target_attr_id ,u8 *buf_attr
 	if(len_attr)
 		*len_attr = 0;
 
-	if ( ( p2p_ie[0] != _VENDOR_SPECIFIC_IE_ ) ||
+	if ( !p2p_ie || ( p2p_ie[0] != _VENDOR_SPECIFIC_IE_ ) ||
 		( _rtw_memcmp( p2p_ie + 2, p2p_oui , 4 ) != _TRUE ) )
 	{
 		return attr_ptr;

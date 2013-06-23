@@ -523,7 +523,7 @@ static int sun7i_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 		case SNDRV_PCM_TRIGGER_START:
 		case SNDRV_PCM_TRIGGER_RESUME:
 		case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
-			printk("play dma trigge start:sun7i-i2sdma.c::func:%s(line:%d)\n",__func__,__LINE__);
+			//printk("play dma trigge start:sun7i-i2sdma.c::func:%s(line:%d)\n",__func__,__LINE__);
 			//printk("[IIS] 0x01c22400+0x24 = %#x, line= %d\n", readl(0xf1c22400+0x24), __LINE__);
 			
 			 /*
@@ -537,7 +537,7 @@ static int sun7i_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 		case SNDRV_PCM_TRIGGER_SUSPEND:
 		case SNDRV_PCM_TRIGGER_STOP:
 		case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
-	        pr_info("play dma stop:sun7i_i2sdma.c::func:%s(line:%d)\n",__func__,__LINE__);
+	        //pr_info("play dma stop:sun7i_i2sdma.c::func:%s(line:%d)\n",__func__,__LINE__);
 	        //printk("[IIS] 0x01c22400+0x24 = %#x, line= %d\n", readl(0xf1c22400+0x24), __LINE__);
 			
 			/*
@@ -562,7 +562,7 @@ static int sun7i_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 		case SNDRV_PCM_TRIGGER_RESUME:
 		case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
 			
-			pr_info("CAPTUR dma start:sun7i_i2sdma.c::func:%s(line:%d)\n",__func__,__LINE__);
+			//pr_info("CAPTUR dma start:sun7i_i2sdma.c::func:%s(line:%d)\n",__func__,__LINE__);
 				 /*
 		* start dma transfer
 		*/
@@ -574,7 +574,7 @@ static int sun7i_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 		case SNDRV_PCM_TRIGGER_SUSPEND:
 		case SNDRV_PCM_TRIGGER_STOP:
 		case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
-	        pr_info("CAPTUR dma stop:sun7i_i2sdma.c::func:%s(line:%d)\n",__func__,__LINE__);
+	       // pr_info("CAPTUR dma stop:sun7i_i2sdma.c::func:%s(line:%d)\n",__func__,__LINE__);
 	        //printk("[IIS] 0x01c22400+0x24 = %#x, line= %d\n", readl(0xf1c22400+0x24), __LINE__);
 		
 				/*

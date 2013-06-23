@@ -215,6 +215,12 @@ __s32 BSP_disp_print_reg(__bool b_force_on, __u32 id)
             size = 0x0c;
             sprintf(str, "pwm:\n");
             break;
+
+        case DISP_REG_HDMI:
+            base = gdisp.init_para.base_hdmi;
+            size = 0x580;
+            sprintf(str, "hdmi:\n");
+            break;
             
         default:
             return DIS_FAIL;
@@ -259,5 +265,18 @@ __s32 BSP_disp_print_reg(__bool b_force_on, __u32 id)
     }
     
     return DIS_SUCCESS;
+}
+
+
+__s32 bsp_disp_set_print_level(__u32 print_level)
+{
+        gdisp.print_level = print_level;
+
+        return 0;
+}
+
+__s32 bsp_disp_get_print_level(void)
+{
+        return gdisp.print_level;
 }
 

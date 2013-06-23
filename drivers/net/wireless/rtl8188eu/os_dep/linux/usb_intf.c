@@ -122,7 +122,7 @@ static void rtw_dev_remove(struct usb_interface *pusb_intf);
 
 #define USB_VENDER_ID_REALTEK		0x0BDA
 
-//DID_USB_v82_20110808
+/* DID_USB_v916_20130116 */
 #define RTL8192C_USB_IDS \
 	/*=== Realtek demoboard ===*/ \
 	{USB_DEVICE(USB_VENDER_ID_REALTEK, 0x8191)},/* Default ID */ \
@@ -232,6 +232,8 @@ static void rtw_dev_remove(struct usb_interface *pusb_intf);
 	{USB_DEVICE(0x07B8, 0x8193)},/* Abocom - Abocom */ \
 	/****** 8192DU-VS ********/ \
 	{USB_DEVICE(0x20F4, 0x664B)}, /* TRENDnet - Cameo */ \
+	{USB_DEVICE(0x04DD, 0x954F)},  /* Sharp */ \
+	{USB_DEVICE(0x04DD, 0x96A6)},  /* Sharp */ \
 	{USB_DEVICE(0x050D, 0x110A)}, /* Belkin - Edimax */ \
 	{USB_DEVICE(0x050D, 0x1105)}, /* Belkin - Edimax */ \
 	{USB_DEVICE(0x050D, 0x120A)}, /* Belkin - Edimax */ \
@@ -248,7 +250,10 @@ static void rtw_dev_remove(struct usb_interface *pusb_intf);
 #define RTL8188E_USB_IDS \
 	/*=== Realtek demoboard ===*/ \
 	{USB_DEVICE(USB_VENDER_ID_REALTEK, 0x8179)}, /* 8188EUS */ \
-	{USB_DEVICE(USB_VENDER_ID_REALTEK, 0x0179)}, /* 8188ETV */
+	{USB_DEVICE(USB_VENDER_ID_REALTEK, 0x0179)}, /* 8188ETV */ \
+	/*=== Customer ID ===*/ \
+	/****** 8188EUS ********/ \
+	{USB_DEVICE(0x8179, 0x07B8)}, /* Abocom - Abocom */
 
 #ifndef CONFIG_RTL8192C
 	#undef RTL8192C_USB_IDS
@@ -724,6 +729,10 @@ static void rtw_dev_unload(_adapter *padapter)
 		DBG_871X("===> rtw_dev_unload\n");
 
 		padapter->bDriverStopped = _TRUE;
+		#ifdef CONFIG_XMIT_ACK
+		if (padapter->xmitpriv.ack_tx)
+			rtw_ack_tx_done(&padapter->xmitpriv, RTW_SCTX_DONE_DRV_STOP);
+		#endif
 
 		//s3.
 		if(padapter->intf_stop)
@@ -805,9 +814,6 @@ static void process_spec_devid(const struct usb_device_id *pdid)
 }
 
 #ifdef SUPPORT_HW_RFOFF_DETECTED
-extern u8 disconnect_hdl(_adapter *padapter, u8 *pbuf);
-extern void rtw_os_indicate_disconnect( _adapter *adapter );
-
 int rtw_hw_suspend(_adapter *padapter )
 {
 	struct pwrctrl_priv *pwrpriv = &padapter->pwrctrlpriv;
@@ -839,9 +845,7 @@ int rtw_hw_suspend(_adapter *padapter )
 		}
 
 		//s2.
-		//s2-1.  issue rtw_disassoc_cmd to fw
-		//rtw_disassoc_cmd(padapter);//donnot enqueue cmd
-		disconnect_hdl(padapter, NULL);
+		rtw_disassoc_cmd(padapter, 500, _FALSE);
 		
 		//s2-2.  indicate disconnect to os
 		//rtw_indicate_disconnect(padapter);
@@ -1009,9 +1013,7 @@ static int rtw_suspend(struct usb_interface *pusb_intf, pm_message_t message)
 #else
 	{
 	//s2.
-	//s2-1.  issue rtw_disassoc_cmd to fw
-	disconnect_hdl(padapter, NULL);
-	//rtw_disassoc_cmd(padapter);
+	rtw_disassoc_cmd(padapter, 0, _FALSE);
 	}
 #endif //CONFIG_WOWLAN
 
@@ -1345,14 +1347,6 @@ extern void rtd2885_wlan_netlink_sendMsg(char *action_string, char *name);
 #include <mach/sys_config.h>
 extern int sw_usb_disable_hcd(__u32 usbc_no);
 extern int sw_usb_enable_hcd(__u32 usbc_no);
-static int usb_wifi_host = 1;
-#endif
-
-#ifdef CONFIG_ARCH_SUN7I
-#include <mach/sys_config.h>
-extern int sw_usb_disable_hcd(__u32 usbc_no);
-extern int sw_usb_enable_hcd(__u32 usbc_no);
-extern void wifi_pm_power(int on);
 static script_item_u item;
 #endif
 
@@ -1537,6 +1531,7 @@ free_hal_data:
 free_wdev:
 	if(status != _SUCCESS) {
 		#ifdef CONFIG_IOCTL_CFG80211
+		rtw_wdev_unregister(padapter->rtw_wdev);
 		rtw_wdev_free(padapter->rtw_wdev);
 		#endif
 	}
@@ -1560,30 +1555,8 @@ static void rtw_usb_if1_deinit(_adapter *if1)
 	struct net_device *pnetdev = if1->pnetdev;
 	struct mlme_priv *pmlmepriv= &if1->mlmepriv;
 
-#if defined(CONFIG_HAS_EARLYSUSPEND ) || defined(CONFIG_ANDROID_POWER)
-	rtw_unregister_early_suspend(&if1->pwrctrlpriv);
-#endif
-
-
-	if(usb_drv->drv_registered == _TRUE)
-	{
-		//DBG_871X("r871xu_dev_remove():padapter->bSurpriseRemoved == _TRUE\n");
-		if1->bSurpriseRemoved = _TRUE;
-	}
-	/*else
-	{
-		//DBG_871X("r871xu_dev_remove():module removed\n");
-		padapter->hw_init_completed = _FALSE;
-	}*/
-	
-
-	rtw_pm_set_ips(if1, IPS_NONE);
-	rtw_pm_set_lps(if1, PS_MODE_ACTIVE);
-
-	LeaveAllPowerSaveMode(if1);
-
 	if(check_fwstate(pmlmepriv, _FW_LINKED))
-		disconnect_hdl(if1, NULL);
+		rtw_disassoc_cmd(if1, 0, _FALSE);
 
 
 #ifdef CONFIG_AP_MODE
@@ -1613,6 +1586,7 @@ static void rtw_usb_if1_deinit(_adapter *if1)
 	rtw_handle_dualmac(if1, 0);
 
 #ifdef CONFIG_IOCTL_CFG80211
+	rtw_wdev_unregister(if1->rtw_wdev);
 	rtw_wdev_free(if1->rtw_wdev);
 #endif
 
@@ -1835,11 +1809,35 @@ _func_enter_;
 	DBG_871X("+rtw_dev_remove\n");
 	RT_TRACE(_module_hci_intfs_c_,_drv_err_,("+dev_remove()\n"));
 
+	if(usb_drv->drv_registered == _TRUE)
+	{
+		//DBG_871X("r871xu_dev_remove():padapter->bSurpriseRemoved == _TRUE\n");
+		padapter->bSurpriseRemoved = _TRUE;
+	}
+	/*else
+	{
+		//DBG_871X("r871xu_dev_remove():module removed\n");
+		padapter->hw_init_completed = _FALSE;
+	}*/
+
+#if defined(CONFIG_HAS_EARLYSUSPEND) || defined(CONFIG_ANDROID_POWER)
+	rtw_unregister_early_suspend(&padapter->pwrctrlpriv);
+#endif
+
+	rtw_pm_set_ips(padapter, IPS_NONE);
+	rtw_pm_set_lps(padapter, PS_MODE_ACTIVE);
+
+	LeaveAllPowerSaveMode(padapter);
+
 #ifdef CONFIG_CONCURRENT_MODE
-	rtw_drv_if2_free(padapter);
+	rtw_drv_if2_stop(dvobj->if2);
 #endif
 
 	rtw_usb_if1_deinit(padapter);
+
+#ifdef CONFIG_CONCURRENT_MODE
+	rtw_drv_if2_free(dvobj->if2);
+#endif
 
 	usb_dvobj_deinit(pusb_intf);
 
@@ -1873,21 +1871,6 @@ static int __init rtw_drv_entry(void)
 	writel(tmp,(volatile unsigned int*)0xb801a608);//write dummy register for 1055
 #endif
 #ifdef CONFIG_PLATFORM_ARM_SUNxI
-#ifndef CONFIG_RTL8723A
-	int ret = 0;
-	/* ----------get usb_wifi_usbc_num------------- */	
-	ret = script_parser_fetch("usb_wifi_para", "usb_wifi_usbc_num", (int *)&usb_wifi_host, 64);	
-	if(ret != 0){		
-		DBG_8192C("ERR: script_parser_fetch usb_wifi_usbc_num failed\n");		
-		ret = -ENOMEM;		
-		return ret;	
-	}	
-	DBG_8192C("sw_usb_enable_hcd: usbc_num = %d\n", usb_wifi_host);	
-	sw_usb_enable_hcd(usb_wifi_host);
-#endif //CONFIG_RTL8723A	
-#endif //CONFIG_PLATFORM_ARM_SUNxI
-
-#ifdef CONFIG_ARCH_SUN7I
 	script_item_value_type_e type;
 
 	type = script_get_item("wifi_para", "wifi_usbc_id", &item);	
@@ -1897,10 +1880,10 @@ static int __init rtw_drv_entry(void)
 	}
 	
 	printk("sw_usb_enable_hcd: usbc_num = %d\n", item.val);
-	//wifi_pm_power(1);
-	//mdelay(10);
+	
 	sw_usb_enable_hcd(item.val);	
-#endif //CONFIG_ARCH_SUN7I
+#endif //CONFIG_PLATFORM_ARM_SUNxI
+
 
 	RT_TRACE(_module_hci_intfs_c_,_drv_err_,("+rtw_drv_entry\n"));
 
@@ -1942,16 +1925,9 @@ static void __exit rtw_drv_halt(void)
 	_rtw_mutex_free(&usb_drv->setbw_mutex);
 #endif
 #ifdef CONFIG_PLATFORM_ARM_SUNxI
-#ifndef CONFIG_RTL8723A
-	DBG_8192C("sw_usb_disable_hcd: usbc_num = %d\n", usb_wifi_host);
-	sw_usb_disable_hcd(usb_wifi_host);
-#endif //ifndef CONFIG_RTL8723A	
-#endif	//CONFIG_PLATFORM_ARM_SUNxI
 
-#ifdef CONFIG_ARCH_SUN7I
-	sw_usb_disable_hcd(item.val);
-	//wifi_pm_power(0);
-#endif
+	sw_usb_disable_hcd(item.val);	
+#endif	//CONFIG_PLATFORM_ARM_SUNxI
 
 	DBG_871X("-rtw_drv_halt\n");
 }

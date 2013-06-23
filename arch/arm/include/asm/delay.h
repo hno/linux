@@ -34,11 +34,25 @@ extern void __const_udelay(unsigned long);
 
 #define MAX_UDELAY_MS 2
 
+#ifdef CONFIG_AW_TIME_DELAY
+
+extern void use_time_delay(void);
+extern void(*delay_fn)(unsigned long usecs);
 #define udelay(n)							\
 	(__builtin_constant_p(n) ?					\
-	  ((n) > (MAX_UDELAY_MS * 1000) ? __bad_udelay() :		\
+	 ((n) > (MAX_UDELAY_MS * 1000) ? __bad_udelay() :		\
+	  delay_fn(n)) :	\
+	 delay_fn(n))
+
+#else
+
+#define udelay(n)							\
+	(__builtin_constant_p(n) ?					\
+	 ((n) > (MAX_UDELAY_MS * 1000) ? __bad_udelay() :		\
 			__const_udelay((n) * ((2199023U*HZ)>>11))) :	\
-	  __udelay(n))
+	 __udelay(n))
+
+#endif
 
 #endif /* defined(_ARM_DELAY_H) */
 

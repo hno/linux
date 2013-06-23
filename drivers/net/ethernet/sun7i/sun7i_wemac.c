@@ -47,7 +47,7 @@
 
 #undef	PHY_POWER
 #undef	DYNAMIC_MAC_SYSCONFIG
-#undef	SYSCONFIG_GPIO
+#define	SYSCONFIG_GPIO
 #define	SYSCONFIG_CCMU
 
 #undef	PKT_DUMP
@@ -519,8 +519,10 @@ void emac_sys_setup(wemac_board_info_t * db)
 #ifdef SYSCONFIG_CCMU
 	/*  set up clock gating  */
 	db->emac_clk = clk_get(db->dev, CLK_AHB_EMAC);
-	if(IS_ERR(db->emac_clk))
+	if(!IS_ERR(db->emac_clk))
 		clk_enable(db->emac_clk);
+    else
+        printk(KERN_ERR "emac get clk failed!\n");
 #else
 	reg_val = readl(db->ccmu_vbase + CCM_AHB_GATING_REG0);
 	reg_val |= 0x1<<17;

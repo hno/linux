@@ -177,7 +177,7 @@ struct aw_gpio_chip gpio_chips[] = {
 static struct clk *g_apb_pio_clk = NULL;
 int gpio_clk_init(void)
 {
-    if (!g_apb_pio_clk) {
+    if (g_apb_pio_clk) {
         PIO_ERR("%s: apb pio clk handle not NULL\n", __func__);
     }
 
@@ -291,5 +291,5 @@ static __init int aw_gpio_init(void)
     PIO_INF("aw gpio init done\n");
     return 0;
 }
-core_initcall(aw_gpio_init);
+subsys_initcall(aw_gpio_init);
 

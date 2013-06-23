@@ -92,9 +92,7 @@ _func_enter_;
 
 	//allocate DMA-able/Non-Page memory for cmd_buf and rsp_buf
 
-	#ifdef CONFIG_SET_SCAN_DENY_TIMER
-	ATOMIC_SET(&pmlmepriv->set_scan_deny, 0);
-	#endif
+	rtw_clear_scan_deny(padapter);
 
 	#ifdef CONFIG_FTP_PROTECT
 	pmlmepriv->ftp_lock_flag = 0;
@@ -1477,9 +1475,7 @@ _func_enter_;
 	pmlmepriv->to_roaming=0;
 	#endif
 
-	#ifdef CONFIG_SET_SCAN_DENY_TIMER
-	rtw_set_scan_deny(pmlmepriv, 3000);
-	#endif
+	rtw_set_scan_deny(padapter, 3000);
 
 	RT_TRACE(_module_rtl871x_mlme_c_, _drv_err_, ("-rtw_indicate_connect: fw_state=0x%08x\n", get_fwstate(pmlmepriv)));
  
@@ -1538,6 +1534,9 @@ _func_enter_;
 	      _clr_fwstate_(pmlmepriv, _FW_LINKED);
 
 		rtw_led_control(padapter, LED_CTL_NO_LINK);
+
+		rtw_clear_scan_deny(padapter);
+
 	}
 
 #ifdef CONFIG_P2P_PS
@@ -1571,12 +1570,16 @@ void rtw_scan_abort(_adapter *adapter)
 	while (check_fwstate(pmlmepriv, _FW_UNDER_SURVEY)
 		&& rtw_get_passing_time_ms(start) <= 200) {
 
+		if (adapter->bDriverStopped || adapter->bSurpriseRemoved)
+			break;
+
 		DBG_871X(FUNC_NDEV_FMT"fw_state=_FW_UNDER_SURVEY!\n", FUNC_NDEV_ARG(adapter->pnetdev));
 		rtw_msleep_os(20);
 	}
 
 	if (check_fwstate(pmlmepriv, _FW_UNDER_SURVEY)) {
-		DBG_871X(FUNC_NDEV_FMT"waiting for scan_abort time out!\n", FUNC_NDEV_ARG(adapter->pnetdev));
+		if (!adapter->bDriverStopped && !adapter->bSurpriseRemoved)
+			DBG_871X(FUNC_NDEV_FMT"waiting for scan_abort time out!\n", FUNC_NDEV_ARG(adapter->pnetdev));
 		#ifdef CONFIG_PLATFORM_MSTAR_TITANIA12	
 		//_clr_fwstate_(pmlmepriv, _FW_UNDER_SURVEY);
 		set_survey_timer(pmlmeext, 0);
@@ -2195,7 +2198,7 @@ _func_exit_;
 void rtw_stadel_event_callback(_adapter *adapter, u8 *pbuf)
 {
 	_irqL irqL,irqL2;
-	int mac_id;
+	int mac_id=-1;
 	struct sta_info *psta;
 	struct wlan_network* pwlan = NULL;
 	WLAN_BSSID_EX    *pdev_network=NULL;
@@ -2215,7 +2218,7 @@ _func_enter_;
 
 	DBG_871X("%s(mac_id=%d)=" MAC_FMT "\n", __func__, mac_id, MAC_ARG(pstadel->macaddr));
 
-	if(mac_id>0){
+	if(mac_id>=0){
 		u16 media_status;
 		media_status = (mac_id<<8)|0; //  MACID|OPMODE:0 means disconnect
 		//for STA,AP,ADHOC mode, report disconnect stauts to FW
@@ -2444,7 +2447,7 @@ void rtw_scan_timeout_handler (_adapter *adapter)
 	_irqL irqL;
 	struct	mlme_priv *pmlmepriv = &adapter->mlmepriv;
 	
-	DBG_871X("%s, fw_state=%x\n", __FUNCTION__, get_fwstate(pmlmepriv));
+	DBG_871X(FUNC_ADPT_FMT" fw_state=%x\n", FUNC_ADPT_ARG(adapter), get_fwstate(pmlmepriv));
 
 	_enter_critical_bh(&pmlmepriv->lock, &irqL);
 	
@@ -2517,7 +2520,10 @@ void rtw_dynamic_check_timer_handlder(_adapter *adapter)
 
 	if(!adapter)
 		return;	
-
+#if defined(CONFIG_CHECK_BT_HANG) && defined(CONFIG_BT_COEXIST)	
+	if(adapter->HalFunc.hal_checke_bt_hang)
+		adapter->HalFunc.hal_checke_bt_hang(adapter);
+#endif
 	if(adapter->hw_init_completed == _FALSE)
 		return;
 
@@ -2600,20 +2606,48 @@ void rtw_dynamic_check_timer_handlder(_adapter *adapter)
 
 
 #ifdef CONFIG_SET_SCAN_DENY_TIMER
-void rtw_set_scan_deny_timer_hdl(_adapter *adapter)
+inline bool rtw_is_scan_deny(_adapter *adapter)
 {
 	struct mlme_priv *mlmepriv = &adapter->mlmepriv;
-
-	//allowed set scan
-	DBG_871X("clear scan deny\n");
-	ATOMIC_SET(&mlmepriv->set_scan_deny, 0);
+	return (ATOMIC_READ(&mlmepriv->set_scan_deny) != 0) ? _TRUE : _FALSE;
 }
 
-void rtw_set_scan_deny(struct mlme_priv *mlmepriv, u32 ms)
+inline void rtw_clear_scan_deny(_adapter *adapter)
 {
-	DBG_871X("%s\n", __func__);
+	struct mlme_priv *mlmepriv = &adapter->mlmepriv;
+	ATOMIC_SET(&mlmepriv->set_scan_deny, 0);
+	if (0)
+	DBG_871X(FUNC_ADPT_FMT"\n", FUNC_ADPT_ARG(adapter));
+}
+
+void rtw_set_scan_deny_timer_hdl(_adapter *adapter)
+{
+	rtw_clear_scan_deny(adapter);
+}
+
+void rtw_set_scan_deny(_adapter *adapter, u32 ms)
+{
+	struct mlme_priv *mlmepriv = &adapter->mlmepriv;
+#ifdef CONFIG_CONCURRENT_MODE
+	struct mlme_priv *b_mlmepriv;
+#endif
+
+	if (0)
+	DBG_871X(FUNC_ADPT_FMT"\n", FUNC_ADPT_ARG(adapter));
 	ATOMIC_SET(&mlmepriv->set_scan_deny, 1);
 	_set_timer(&mlmepriv->set_scan_deny_timer, ms);
+	
+#ifdef CONFIG_CONCURRENT_MODE
+	if (!adapter->pbuddy_adapter)
+		return;
+
+	if (0)
+	DBG_871X(FUNC_ADPT_FMT"\n", FUNC_ADPT_ARG(adapter->pbuddy_adapter));
+ 	b_mlmepriv = &adapter->pbuddy_adapter->mlmepriv;
+	ATOMIC_SET(&b_mlmepriv->set_scan_deny, 1);
+	_set_timer(&b_mlmepriv->set_scan_deny_timer, ms);	
+#endif
+	
 }
 #endif
 
@@ -2810,7 +2844,7 @@ _func_enter_;
 		else
 		#endif
 		{
-			rtw_disassoc_cmd(adapter);
+			rtw_disassoc_cmd(adapter, 0, _TRUE);
 			rtw_indicate_disconnect(adapter);
 			rtw_free_assoc_resources(adapter, 0);
 		}
@@ -2902,7 +2936,7 @@ _func_enter_;
 					}
 					else
 					{
-						rtw_disassoc_cmd(adapter);
+						rtw_disassoc_cmd(adapter, 0, _TRUE);
 						rtw_indicate_disconnect(adapter);
 						rtw_free_assoc_resources(adapter, 0);
 						_exit_critical_bh(&(pmlmepriv->scanned_queue.lock), &irqL);
@@ -2980,7 +3014,7 @@ _func_enter_;
 					else
 #endif						
 					{
-						rtw_disassoc_cmd(adapter);
+						rtw_disassoc_cmd(adapter, 0, _TRUE);
 						//rtw_indicate_disconnect(adapter);//
 						rtw_free_assoc_resources(adapter, 0);
 						_exit_critical_bh(&(pmlmepriv->scanned_queue.lock), &irqL);

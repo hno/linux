@@ -91,5 +91,11 @@ void io_init_high(void);
 void io_init_low(void);
 void io_high(int num);
 
+
+void standby_enable_crc(int enabled);
+void standby_set_crc(void *addr, int size);
+unsigned int standby_get_crc(void);
+
+
 #endif /*_PM_DEBUG_H*/
 

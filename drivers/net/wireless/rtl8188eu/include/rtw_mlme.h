@@ -22,6 +22,7 @@
 
 #include <drv_conf.h>
 #include <osdep_service.h>
+#include <mlme_osdep.h>
 #include <drv_types.h>
 #include <wlan_bssdef.h>
 
@@ -114,6 +115,14 @@ typedef enum _RT_SCAN_TYPE
 	SCAN_MIX,
 }RT_SCAN_TYPE, *PRT_SCAN_TYPE;
 
+enum SCAN_RESULT_TYPE
+{
+	SCAN_RESULT_P2P_ONLY = 0,		//	Will return all the P2P devices.
+	SCAN_RESULT_ALL = 1,			//	Will return all the scanned device, include AP.
+	SCAN_RESULT_WFD_TYPE = 2		//	Will just return the correct WFD device.
+									//	If this device is Miracast sink device, it will just return all the Miracast source devices.
+};
+
 /*
 
 there are several "locks" in mlme_priv,
@@ -177,24 +186,24 @@ struct tx_invite_resp_info{
 #ifdef CONFIG_WFD
 
 struct wifi_display_info{
-	u16					wfd_enable;			//	Eanble/Disable the WFD function.
-	u16					rtsp_ctrlport;		//	TCP port number at which the this WFD device listens for RTSP messages
-	u16					peer_rtsp_ctrlport;	//	TCP port number at which the peer WFD device listens for RTSP messages
-											//	This filed should be filled when receiving the gropu negotiation request
+	u16							wfd_enable;			//	Eanble/Disable the WFD function.
+	u16							rtsp_ctrlport;		//	TCP port number at which the this WFD device listens for RTSP messages
+	u16							peer_rtsp_ctrlport;	//	TCP port number at which the peer WFD device listens for RTSP messages
+													//	This filed should be filled when receiving the gropu negotiation request
 
-	u8					peer_session_avail;	//	WFD session is available or not for the peer wfd device.
-											//	This variable will be set when sending the provisioning discovery request to peer WFD device.
-											//	And this variable will be reset when it is read by using the iwpriv p2p_get wfd_sa command.
-	u8					ip_address[4];
-	u8					peer_ip_address[4];
-	u8					wfd_pc;				//	WFD preferred connection
-											//	0 -> Prefer to use the P2P for WFD connection on peer side.
-											//	1 -> Prefer to use the TDLS for WFD connection on peer side.
+	u8							peer_session_avail;	//	WFD session is available or not for the peer wfd device.
+													//	This variable will be set when sending the provisioning discovery request to peer WFD device.
+													//	And this variable will be reset when it is read by using the iwpriv p2p_get wfd_sa command.
+	u8							ip_address[4];
+	u8							peer_ip_address[4];
+	u8							wfd_pc;				//	WFD preferred connection
+													//	0 -> Prefer to use the P2P for WFD connection on peer side.
+													//	1 -> Prefer to use the TDLS for WFD connection on peer side.
 											
-	u8					wfd_device_type;	//	WFD Device Type
-											//	0 -> WFD Source Device
-											//	1 -> WFD Primary Sink Device
-
+	u8							wfd_device_type;	//	WFD Device Type
+													//	0 -> WFD Source Device
+													//	1 -> WFD Primary Sink Device
+	enum	SCAN_RESULT_TYPE	scan_result_type;	//	Used when P2P is enable. This parameter will impact the scan result.
 };
 #endif //CONFIG_WFD
 
@@ -224,6 +233,11 @@ struct group_id_info{
 	u8					ssid[ WLAN_SSID_MAXLEN ];	//	The SSID of this P2P group
 };
 
+struct scan_limit_info{
+	u8					scan_op_ch_only;			//	When this flag is set, the driver should just scan the operation channel
+	u8					operation_ch[2];				//	Store the operation channel of invitation request frame
+};
+
 #ifdef CONFIG_IOCTL_CFG80211
 struct cfg80211_wifidirect_info{
 	_timer					remain_on_ch_timer;
@@ -243,6 +257,8 @@ struct wifidirect_info{
 	
 	//	Used to do the scanning. After confirming the peer is availalble, the driver transmits the P2P frame to peer.
 	_timer					pre_tx_scan_timer;
+	_timer					reset_ch_sitesurvey;
+	_timer					reset_ch_sitesurvey2;	//	Just for resetting the scan limit function by using p2p nego
 #ifdef CONFIG_CONCURRENT_MODE
 	//	Used to switch the channel between legacy AP and listen state.
 	_timer					ap_p2p_switch_timer;
@@ -254,6 +270,8 @@ struct wifidirect_info{
 	struct tx_invite_resp_info	inviteresp_info;
 	struct tx_nego_req_info	nego_req_info;
 	struct group_id_info		groupid_info;	//	Store the group id information when doing the group negotiation handshake.
+	struct scan_limit_info		rx_invitereq_info;	//	Used for get the limit scan channel from the Invitation procedure
+	struct scan_limit_info		p2p_info;		//	Used for get the limit scan channel from the P2P negotiation handshake
 #ifdef CONFIG_WFD
 	struct wifi_display_info		*wfd_info;
 #endif	
@@ -729,8 +747,15 @@ extern void rtw_scan_timeout_handler(_adapter *adapter);
 
 extern void rtw_dynamic_check_timer_handlder(_adapter *adapter);
 #ifdef CONFIG_SET_SCAN_DENY_TIMER
-extern void rtw_set_scan_deny_timer_hdl(_adapter *adapter);
-void rtw_set_scan_deny(struct mlme_priv *mlmepriv, u32 ms);
+bool rtw_is_scan_deny(_adapter *adapter);
+void rtw_clear_scan_deny(_adapter *adapter);
+void rtw_set_scan_deny_timer_hdl(_adapter *adapter);
+void rtw_set_scan_deny(_adapter *adapter, u32 ms);
+#else
+#define rtw_is_scan_deny(adapter) _FALSE
+#define rtw_clear_scan_deny(adapter) do {} while (0)
+#define rtw_set_scan_deny_timer_hdl(adapter) do {} while (0)
+#define rtw_set_scan_deny(adapter, ms) do {} while (0)
 #endif
 
 
@@ -779,7 +804,7 @@ void rtw_roaming(_adapter *padapter, struct wlan_network *tgt_network);
 void _rtw_roaming(_adapter *padapter, struct wlan_network *tgt_network);
 #endif
 
-
+void rtw_stassoc_hw_rpt(_adapter *adapter,struct sta_info *psta);
 #ifdef CONFIG_INTEL_PROXIM
 void rtw_proxim_enable(_adapter *padapter);
 void rtw_proxim_disable(_adapter *padapter);

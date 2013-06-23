@@ -329,12 +329,8 @@ int rtw_cmd_filter(struct cmd_priv *pcmdpriv, struct cmd_obj *cmd_obj)
 		bAllow = _TRUE;
 
 	if( (pcmdpriv->padapter->hw_init_completed ==_FALSE && bAllow == _FALSE)
-		|| ((pcmdpriv->cmdthd_running== _FALSE	//com_thread not running
-#ifdef CONFIG_CONCURRENT_MODE
-			) && (pcmdpriv->padapter->isprimary == _TRUE
-#endif
-		))
-	)		
+		|| pcmdpriv->cmdthd_running== _FALSE	//com_thread not running
+	)
 	{
 		//DBG_871X("%s:%s: drop cmdcode:%u, hw_init_completed:%u, cmdthd_running:%u\n", caller_func, __FUNCTION__,
 		//	cmd_obj->cmdcode,
@@ -360,17 +356,17 @@ _func_enter_;
 		goto exit;
 	}
 
-	if( _FAIL == (res=rtw_cmd_filter(pcmdpriv, cmd_obj)) ) {
-		rtw_free_cmd_obj(cmd_obj);
-		goto exit;
-	}
-
 	cmd_obj->padapter = padapter;
 
 #ifdef CONFIG_CONCURRENT_MODE
 	if (padapter->adapter_type != PRIMARY_ADAPTER && padapter->pbuddy_adapter)
 		pcmdpriv = &(padapter->pbuddy_adapter->cmdpriv);
 #endif	
+
+	if( _FAIL == (res=rtw_cmd_filter(pcmdpriv, cmd_obj)) ) {
+		rtw_free_cmd_obj(cmd_obj);
+		goto exit;
+	}
 
 	res = _rtw_enqueue_cmd(&pcmdpriv->cmd_queue, cmd_obj);
 
@@ -1356,38 +1352,42 @@ _func_exit_;
 	return res;
 }
 
-u8 rtw_disassoc_cmd(_adapter*padapter) // for sta_mode
+u8 rtw_disassoc_cmd(_adapter*padapter, u32 deauth_timeout_ms, bool enqueue) /* for sta_mode */
 {
-	struct	cmd_obj*	pdisconnect_cmd;
-	struct	disconnect_parm* pdisconnect;
-	//struct 	mlme_priv *pmlmepriv = &padapter->mlmepriv;
-	struct	cmd_priv   *pcmdpriv = &padapter->cmdpriv;
-
-	u8	res=_SUCCESS;
+	struct cmd_obj *cmdobj = NULL;
+	struct disconnect_parm *param = NULL;
+	struct cmd_priv *cmdpriv = &padapter->cmdpriv;
+	u8 res = _SUCCESS;
 
 _func_enter_;
 
 	RT_TRACE(_module_rtl871x_cmd_c_, _drv_notice_, ("+rtw_disassoc_cmd\n"));
-	
-	//if ((check_fwstate(pmlmepriv, _FW_LINKED)) == _TRUE) {
 
-		pdisconnect_cmd = (struct	cmd_obj*)rtw_zmalloc(sizeof(struct	cmd_obj));
-		if(pdisconnect_cmd == NULL){
-			res=_FAIL;
-			goto exit;
-			}
+	/* prepare cmd parameter */
+	param = (struct disconnect_parm *)rtw_zmalloc(sizeof(*param));
+	if (param == NULL) {
+		res = _FAIL;
+		goto exit;
+	}
+	param->deauth_timeout_ms = deauth_timeout_ms;
 
-		pdisconnect = (struct	disconnect_parm*)rtw_zmalloc(sizeof(struct	disconnect_parm));
-		if(pdisconnect == NULL) {
-			rtw_mfree((u8 *)pdisconnect_cmd, sizeof(struct cmd_obj));
-			res= _FAIL;
+	if (enqueue) {
+		/* need enqueue, prepare cmd_obj and enqueue */
+		cmdobj = (struct cmd_obj *)rtw_zmalloc(sizeof(*cmdobj));
+		if (cmdobj == NULL) {
+			res = _FAIL;
+			rtw_mfree((u8 *)param, sizeof(*param));
 			goto exit;
 		}
-		
-		init_h2fwcmd_w_parm_no_rsp(pdisconnect_cmd, pdisconnect, _DisConnect_CMD_);
-		res = rtw_enqueue_cmd(pcmdpriv, pdisconnect_cmd);
-	//}
-	
+		init_h2fwcmd_w_parm_no_rsp(cmdobj, param, _DisConnect_CMD_);
+		res = rtw_enqueue_cmd(cmdpriv, cmdobj);
+	} else {
+		/* no need to enqueue, do the cmd hdl directly and free cmd parameter */
+		if (H2C_SUCCESS != disconnect_hdl(padapter, (u8 *)param))
+			res = _FAIL;
+		rtw_mfree((u8 *)param, sizeof(*param));
+	}
+
 exit:
 
 _func_exit_;	

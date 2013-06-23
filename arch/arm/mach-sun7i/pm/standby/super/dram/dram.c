@@ -7,6 +7,7 @@
 * Update  : date                auther      ver     notes
 *			2011-12-07			Berg        1.0     create file from aw1623
 *			2011-12-31			Berg        1.1     create file from aw1623
+*	  		2013-03-06	  		CPL		  	1.2	  	modify for A20
 *********************************************************************************************************
 */
 #include "dram_i.h"
@@ -46,11 +47,25 @@ void DRAMC_enter_selfrefresh(void)
 	__u32 i;
 	__u32 reg_val;
 
-	//disable all port
-	for(i=0; i<31; i++)
+//	//disable all port
+//	for(i=0; i<31; i++)
+//	{
+//		DRAMC_hostport_on_off(i, 0x0);
+//	}
+
+	for(i=0; i<8; i++)
 	{
-		DRAMC_hostport_on_off(i, 0x0);
+		mctl_write_w(SDR_HPCR + (i<<2), 0);
 	}
+	
+	for(i=16; i<28; i++)
+	{
+		mctl_write_w(SDR_HPCR + (i<<2), 0);
+	}	
+	
+	mctl_write_w(SDR_HPCR + (29<<2), 0);
+	mctl_write_w(SDR_HPCR + (31<<2), 0);
+
 /*
 	//disable auto-fresh
 	reg_val = mctl_read_w(SDR_DRR);
@@ -67,9 +82,16 @@ void DRAMC_enter_selfrefresh(void)
 	mctl_write_w(SDR_DCR, reg_val);
 	while( mctl_read_w(SDR_DCR)& (0x1U<<31) );
 	mem_delay(0x100);
+	
+	reg_val = mctl_read_w(SDR_CR);
+	reg_val &= ~(0x3<<28);
+	reg_val |= 0x2<<28;
+	mctl_write_w(SDR_CR, reg_val);
 
 	//dram pad odt hold
 	mctl_write_w(SDR_DPCR, 0x16510001);
+	
+	while(!(mctl_read_w(SDR_DPCR) & 0x1));
 }
 void mctl_mode_exit(void)
 {

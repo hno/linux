@@ -829,5 +829,13 @@ void rtl8723a_start_thread(_adapter *padapter);
 void rtl8723a_stop_thread(_adapter *padapter);
 
 s32 c2h_id_filter_ccx_8723a(u8 id);
+
+
+#if defined(CONFIG_CHECK_BT_HANG) && defined(CONFIG_BT_COEXIST)
+void rtl8723a_init_checkbthang_workqueue(_adapter * padapter);
+void rtl8723a_free_checkbthang_workqueue(_adapter * padapter);
+void rtl8723a_cancel_checkbthang_workqueue(_adapter * padapter);
+void rtl8723a_hal_check_bt_hang(_adapter * padapter);
+#endif
 #endif
 

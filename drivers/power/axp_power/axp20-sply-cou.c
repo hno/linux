@@ -79,11 +79,24 @@ int axp_usbvolflag = 0;
 static int flag_cou = 0;
 
 static int change_flag = 0;
+static int pmu_usb_delayed_work_inited = 0;
 
 void Cou_Count_Clear(struct	axp_charger	*charger);
 void Set_Rest_Cap(struct axp_charger *charger, int rest_cap);
 int	Get_Bat_Coulomb_Count(struct axp_charger *charger);
 extern int use_cou;
+
+int axp_usb_det(void)
+{
+    uint8_t ret;
+    
+    axp_read(axp_charger->master, AXP20_CHARGE_STATUS, &ret);
+    if(ret & 0x10)
+        return 1;
+    else
+        return 0;
+}
+EXPORT_SYMBOL_GPL(axp_usb_det);
 
 int axp_usbvol(void)
 {
@@ -249,7 +262,6 @@ static void axp_charger_update_state(struct axp_charger *charger)
 {
 	uint8_t val[2];
 	uint16_t tmp;
-
 	axp_reads(charger->master,AXP20_CHARGE_STATUS,2,val);
 	tmp = (val[1] << 8 )+ val[0];
 	charger->is_on = (val[1] & AXP20_IN_CHARGE) ? 1 : 0;
@@ -265,8 +277,10 @@ static void axp_charger_update_state(struct axp_charger *charger)
 	charger->batery_active = (tmp & AXP20_STATUS_BATINACT)?1:0;
 	charger->low_charge_current = (tmp & AXP20_STATUS_CHACURLOEXP)?1:0;
 	charger->int_over_temp = (tmp & AXP20_STATUS_ICTEMOV)?1:0;
+    
 	axp_read(charger->master,AXP20_CHARGE_CONTROL1,val);
 	charger->charge_on = ((val[0] >> 7) & 0x01);
+
 }
 
 static void axp_charger_update(struct axp_charger *charger)
@@ -573,10 +587,12 @@ static void axp_change(struct axp_charger *charger)
 	axp_charger_update(charger);
 	printk("charger->usb_valid = %d\n",charger->usb_valid);
 	if(!charger->usb_valid){
+       printk("pmu_usbcurnew=%d mA\n",pmu_usbcurnew);
 		printk("set usb vol-lim to %d mV, cur-lim to %d mA\n",pmu_usbvolnew,pmu_usbcurnew);
 		cancel_delayed_work_sync(&usbwork);
 		//reset usb-pc after usb removed 
 		if(pmu_usbcurnew){
+          
 			axp_clr_bits(charger->master, AXP20_CHARGE_VBUS, 0x01);
 			var = pmu_usbcurnew * 1000;
 			if(var >= 900000)
@@ -611,7 +627,10 @@ static void axp_change(struct axp_charger *charger)
 		else
 			axp_clr_bits(charger->master, AXP20_CHARGE_VBUS, 0x40);
 	} else {
-		schedule_delayed_work(&usbwork, msecs_to_jiffies(4 * 1000));
+	    if(pmu_usb_delayed_work_inited)
+	    {
+		    schedule_delayed_work(&usbwork, msecs_to_jiffies(4 * 1000));
+	    }
 	}
 	flag_state_change = 1;
 	power_supply_changed(&charger->batt);
@@ -1710,9 +1729,15 @@ static void axp_usb(struct work_struct *work)
 	struct axp_charger *charger;
 	
 	charger = axp_charger;
-	
+	if(axp_debug)
+	{
+		printk("[axp_usb]axp_usbcurflag = %d\n",axp_usbcurflag);
+	}
 	if(axp_usbcurflag){
-		printk("set usbcur %d mA\n",pmu_usbcurnew);
+		if(axp_debug)
+		{
+			printk("set usbcur_pc %d mA\n",pmu_usbcurnew);
+		}
 		if(pmu_usbcurnew){
 			axp_clr_bits(charger->master, AXP20_CHARGE_VBUS, 0x01);
 			var = pmu_usbcurnew * 1000;
@@ -1733,7 +1758,10 @@ static void axp_usb(struct work_struct *work)
 		else
 			axp_set_bits(charger->master, AXP20_CHARGE_VBUS, 0x03);			
 	}else {
-		printk("set usbcur %d mA\n",pmu_usbcur);
+		if(axp_debug)
+		  {
+			  printk("set usbcur %d mA\n",pmu_usbcur);
+		  }
 		if((pmu_usbcur) && (pmu_usbcur_limit)){
 			axp_clr_bits(charger->master, AXP20_CHARGE_VBUS, 0x01);
 			var = pmu_usbcur * 1000;
@@ -1755,7 +1783,10 @@ static void axp_usb(struct work_struct *work)
 	}
 		
 	if(axp_usbvolflag){
-		printk("set usbvol %d mV\n",pmu_usbvolnew);
+		if(axp_debug)
+		{
+			printk("set usbvol_pc %d mV\n",pmu_usbvolnew);
+		}
 		if(pmu_usbvolnew){
 		    axp_set_bits(charger->master, AXP20_CHARGE_VBUS, 0x40);
 		  	var = pmu_usbvolnew * 1000;
@@ -1772,7 +1803,10 @@ static void axp_usb(struct work_struct *work)
 		else
 		    axp_clr_bits(charger->master, AXP20_CHARGE_VBUS, 0x40);
 	}else {
-		printk("set usbvol %d mV\n",pmu_usbvol);
+		if(axp_debug)
+		{
+			printk("set usbvol %d mV\n",pmu_usbvol);
+		}
 		if((pmu_usbvol) && (pmu_usbvol_limit)){
 		    axp_set_bits(charger->master, AXP20_CHARGE_VBUS, 0x40);
 		  	var = pmu_usbvol * 1000;
@@ -2156,6 +2190,7 @@ static int axp_battery_probe(struct platform_device *pdev)
 	
 	/* set usb cur-vol limit*/
 	INIT_DELAYED_WORK(&usbwork, axp_usb);
+    pmu_usb_delayed_work_inited = 1;
 	if(charger->usb_valid){
 		schedule_delayed_work(&usbwork, msecs_to_jiffies(7 * 1000));
 	}

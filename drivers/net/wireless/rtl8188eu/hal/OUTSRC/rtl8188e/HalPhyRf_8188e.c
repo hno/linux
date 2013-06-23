@@ -1413,7 +1413,7 @@ phy_SimularityCompare_8188E(
 	u1Byte		final_candidate[2] = {0xFF, 0xFF};	//for path A and path B
 	BOOLEAN		bResult = TRUE;
 	BOOLEAN		is2T;
-	s4Byte tmp1 = 0,tmp2 = 0;
+	s4Byte tmp1 = 0,tmp2 = 0;
 		
 	if( (pDM_Odm->RFType ==ODM_2T2R )||(pDM_Odm->RFType ==ODM_2T3R )||(pDM_Odm->RFType ==ODM_2T4R ))
 		is2T = TRUE;

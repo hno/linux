@@ -34,6 +34,9 @@
 #include <asm/dma.h>
 #include <mach/dma.h>
 
+#include <linux/gpio.h>
+
+
 #include "sun7i-i2sdma.h"
 #include "sun7i-i2s.h"
 
@@ -668,28 +671,56 @@ static struct platform_driver sun7i_i2s_driver = {
 
 static int __init sun7i_i2s_init(void)
 {	
-	int err = 0;	
-	static script_item_u   val;
+	int err = 0;
+	int cnt = 0;
+	int i 	= 0;
+	script_item_u val;
+	script_item_u *list = NULL;
 	script_item_value_type_e  type;
-	type=script_get_item("i2s_para", "i2s_used", &val);
-	if(SCIRPT_ITEM_VALUE_TYPE_INT != type){
-		pr_info("i2s_used  type err\n");
+
+	type = script_get_item("i2s_para", "i2s_used", &val);
+	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
+        printk("[I2S] type err!\n");
+    }
+
+	i2s_used = val.val;
+ 	if (i2s_used) {
+		/* get gpio list */
+		cnt = script_get_pio_list("i2s_para", &list);
+		if (0 == cnt) {
+			printk("get i2s_para gpio list failed\n");
+			return -EFAULT;
+		}
+	/* req gpio */
+	for (i = 0; i < cnt; i++) {
+		if (0 != gpio_request(list[i].gpio.gpio, NULL)) {
+			printk("[i2s] request some gpio fail\n");
+			goto end;
+		}
 	}
-    i2s_used=val.val;
- 	if (i2s_used) {	
-	/*i2s_handle = gpio_request_ex("i2s_para", NULL);*/
-		
-		if((err = platform_device_register(&sun7i_i2s_device)) < 0)
-			return err;
-	
-		if ((err = platform_driver_register(&sun7i_i2s_driver)) < 0)
+	/* config gpio list */
+	if (0 != sw_gpio_setall_range(&list[0].gpio, cnt)) {
+		printk("sw_gpio_setall_range failed\n");
+	}
+
+	if((err = platform_device_register(&sun7i_i2s_device)) < 0)
+		return err;
+
+	if ((err = platform_driver_register(&sun7i_i2s_driver)) < 0)
 			return err;	
 	} else {
         printk("[I2S]sun7i-i2s cannot find any using configuration for controllers, return directly!\n");
         return 0;
     }
+
+end:
+	/* release gpio */
+	while(i--)
+		gpio_free(list[i].gpio.gpio);
+
 	return 0;
 }
+
 module_init(sun7i_i2s_init);
 
 static void __exit sun7i_i2s_exit(void)

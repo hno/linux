@@ -53,6 +53,30 @@ static struct usb_scan_info g_usb_scan_info;
 extern int axp_usb_det(void);
 void (*__usb_hw_scan) (struct usb_scan_info *);
 
+static void ac_enable(struct usb_scan_info *info)
+{
+    if(info->ac_enable)
+        return;
+    printk("ac_enable\n");
+    info->ac_enable = 1;
+    if(info->cfg->port[0].ac_enable.valid){
+        printk("gpio ac_enable pull up\n");
+		__gpio_set_value(info->cfg->port[0].ac_enable.gpio_set.gpio.gpio, 1);
+	}
+}
+
+static void ac_disable(struct usb_scan_info *info)
+{
+    if(!info->ac_enable)
+        return;
+    printk("ac_disable\n");
+    info->ac_enable = 0;
+    if(info->cfg->port[0].ac_enable.valid){
+        printk("gpio ac_enable pull down\n");
+		__gpio_set_value(info->cfg->port[0].ac_enable.gpio_set.gpio.gpio, 0);
+    }
+}
+
 /*
 *******************************************************************************
 *                     __get_pin_data
@@ -216,8 +240,7 @@ static u32 get_detect_vbus_state(struct usb_scan_info *info)
             }
         }
     }else if(info->cfg->port[0].det_vbus_type == USB_DET_VBUS_TYPE_AXP){
-        //if(axp_usb_det()){
-        if(1){
+        if(axp_usb_det()){        
             det_vbus_state = USB_DET_VBUS_VALID;
         }else{
             det_vbus_state = USB_DET_VBUS_INVALID;
@@ -470,6 +493,10 @@ static void do_vbus1_id1(struct usb_scan_info *info)
     			info->device_insmod_delay = 0;
 			    hw_insmod_usb_device();
 			}
+			else{
+			    ac_enable(info);
+			    return;
+			}
 		break;
 
 		case USB_ROLE_HOST:
@@ -483,7 +510,7 @@ static void do_vbus1_id1(struct usb_scan_info *info)
 		default:
 			DMSG_PANIC("ERR: unkown usb role(%d)\n", role);
 	}
-
+    ac_disable(info);
 	return;
 }
 
@@ -561,12 +588,12 @@ static void vbus_id_hw_scan(struct usb_scan_info *info)
 
 		case  0x03:
 			do_vbus1_id1(info);
-		break;
+		return;
 
 		default:
 			DMSG_PANIC("ERR: vbus_id_hw_scan: unkown vbus_id_state(0x%x)\n", vbus_id_state);
 	}
-
+    ac_disable(info);
 	return ;
 }
 
@@ -737,6 +764,19 @@ __s32 usb_hw_scan_init(struct usb_cfg *cfg)
 			ret = -1;
 			goto failed;
 	}
+    if(port_info->ac_enable.valid){
+        ret = gpio_request(port_info->ac_enable.gpio_set.gpio.gpio, "ac_enable");
+        if(ret != 0){
+            DMSG_PANIC("ERR: ac_enable gpio_request failed\n");
+            port_info->ac_enable.valid = 0;
+        }else{
+            /* set config, ouput */
+            sw_gpio_setcfg(port_info->ac_enable.gpio_set.gpio.gpio, 1);
+
+            /* reserved is pull down */
+            sw_gpio_setpull(port_info->ac_enable.gpio_set.gpio.gpio, 2);
+        }
+    }
 
 	return 0;
 

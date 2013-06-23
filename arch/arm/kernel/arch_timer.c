@@ -359,6 +359,9 @@ int __init arch_timer_sched_clock_init(void)
 	if (err)
 		return err;
 
+	local_irq_disable();
 	setup_sched_clock(arch_counter_get_cntvct32, 32, arch_timer_rate);
+	local_irq_enable();
+
 	return 0;
 }

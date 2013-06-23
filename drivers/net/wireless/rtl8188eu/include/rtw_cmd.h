@@ -241,7 +241,7 @@ Command Mode
 
 */
 struct disconnect_parm {
-	u32 rsvd;
+	u32 deauth_timeout_ms;
 };
 
 /*
@@ -941,7 +941,7 @@ extern u8 rtw_setphy_cmd(_adapter  *padapter, u8 modem, u8 ch);
 extern u8 rtw_setstakey_cmd(_adapter  *padapter, u8 *psta, u8 unicast_key);
 extern u8 rtw_clearstakey_cmd(_adapter *padapter, u8 *psta, u8 entry, u8 enqueue);
 extern u8 rtw_joinbss_cmd(_adapter  *padapter, struct wlan_network* pnetwork);
-extern u8 rtw_disassoc_cmd(_adapter  *padapter);
+u8 rtw_disassoc_cmd(_adapter *padapter, u32 deauth_timeout_ms, bool enqueue);
 extern u8 rtw_setopmode_cmd(_adapter  *padapter, NDIS_802_11_NETWORK_INFRASTRUCTURE networktype);
 extern u8 rtw_setdatarate_cmd(_adapter  *padapter, u8 *rateset);
 extern u8 rtw_setbasicrate_cmd(_adapter  *padapter, u8 *rateset);
@@ -977,7 +977,7 @@ u8 rtw_chk_hi_queue_cmd(_adapter*padapter);
 #endif
 
 u8 rtw_set_ch_cmd(_adapter*padapter, u8 ch, u8 bw, u8 ch_offset, u8 enqueue);
-extern u8 rtw_set_chplan_cmd(_adapter*padapter, u8 chplan, u8 enaueue);
+extern u8 rtw_set_chplan_cmd(_adapter*padapter, u8 chplan, u8 enqueue);
 extern u8 rtw_led_blink_cmd(_adapter*padapter, PLED_871x pLed);
 extern u8 rtw_set_csa_cmd(_adapter*padapter, u8 new_ch_no);
 extern u8 rtw_tdls_cmd(_adapter*padapter, u8 *addr, u8 option);

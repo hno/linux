@@ -9,6 +9,19 @@ static void LCD_power_off(__u32 sel);
 static void LCD_bl_open(__u32 sel);
 static void LCD_bl_close(__u32 sel);
 
+
+static void LCD_panel_init(__u32 sel);
+static void LCD_panel_exit(__u32 sel);
+void lp079x01_init(void);
+#define spi_csx_set(v)	(LCD_GPIO_write(0, 3, v))       //PA05,pio3
+#define spi_sck_set(v)  (LCD_GPIO_write(0, 0, v))	//PA06,pio0
+#define spi_sdi_set(v)  (LCD_GPIO_write(0, 1, v))	//PA07,pio1
+
+#define lcd_panel_rst(v)(LCD_GPIO_write(0, 2, v))       //PH24
+#define lcd_2828_rst(v) (LCD_GPIO_write(0, 4, v))	//PH23
+#define lcd_2828_pd(v)  (LCD_GPIO_write(0, 5, v))	//PH22
+
+
 #ifdef LCD_PARA_USE_CONFIG
 static __u8 g_gamma_tbl[][2] = 
 {
@@ -52,10 +65,10 @@ static void LCD_cfg_panel_info(__panel_para_t * info)
 
         info->lcd_hbp           = 215;      //hsync back porch
         info->lcd_ht            = 1055;     //hsync total cycle
-        info->lcd_hv_hspw       = 0;        //hsync plus width
+        info->lcd_hspw          = 0;        //hsync plus width
         info->lcd_vbp           = 34;       //vsync back porch
         info->lcd_vt            = 2 * 525;  //vysnc total cycle *2
-        info->lcd_hv_vspw       = 0;        //vysnc plus width
+        info->lcd_vspw          = 0;        //vysnc plus width
 
         info->lcd_hv_if         = 0;        //0:hv parallel 1:hv serial 
         info->lcd_hv_smode      = 0;        //0:RGB888 1:CCIR656
@@ -97,21 +110,47 @@ static void LCD_cfg_panel_info(__panel_para_t * info)
 }
 #endif
 
+void spi_24bit_3wire(__u32 tx)
+{
+	__u8 i;
+
+	spi_csx_set(0);
+
+	for(i=0;i<24;i++)
+	{
+		LCD_delay_us(1);
+		spi_sck_set(0);
+		LCD_delay_us(1);
+		if(tx & 0x800000)
+			spi_sdi_set(1);
+		else
+			spi_sdi_set(0);
+		LCD_delay_us(1);
+		spi_sck_set(1);
+		LCD_delay_us(1);
+		tx <<= 1;
+	}
+	spi_sdi_set(1);
+	LCD_delay_us(1);
+	spi_csx_set(1);
+	LCD_delay_us(3);
+}
+
 static __s32 LCD_open_flow(__u32 sel)
 {
-	LCD_OPEN_FUNC(sel, LCD_power_on, 50);   //open lcd power, and delay 50ms
-	LCD_OPEN_FUNC(sel, TCON_open, 500);     //open lcd controller, and delay 500ms
-	LCD_OPEN_FUNC(sel, LCD_bl_open, 0);     //open lcd backlight, and delay 0ms
-
+	LCD_OPEN_FUNC(sel, LCD_power_on, 50);           //open lcd power, and delay 50ms
+	LCD_OPEN_FUNC(sel, LCD_panel_init, 50);         //open lcd controller, and delay 100ms
+	LCD_OPEN_FUNC(sel, TCON_open,	200);           //open lcd power, than delay 200ms
+	LCD_OPEN_FUNC(sel, LCD_bl_open, 0);             //open lcd backlight, and delay 0ms
 	return 0;
 }
 
 static __s32 LCD_close_flow(__u32 sel)
 {	
-	LCD_CLOSE_FUNC(sel, LCD_bl_close, 0);       //close lcd backlight, and delay 0ms
-	LCD_CLOSE_FUNC(sel, TCON_close, 0);         //close lcd controller, and delay 0ms
-	LCD_CLOSE_FUNC(sel, LCD_power_off, 1000);   //close lcd power, and delay 1000ms
-
+	LCD_CLOSE_FUNC(sel, LCD_bl_close, 0);           //close lcd backlight, and delay 0ms
+	LCD_CLOSE_FUNC(sel, LCD_panel_exit, 0);         //close lcd controller, and delay 0ms
+	LCD_CLOSE_FUNC(sel, TCON_close,	50);            //open lcd power, than delay 200ms
+	LCD_CLOSE_FUNC(sel, LCD_power_off, 50);         //close lcd power, and delay 500ms
 	return 0;
 }
 
@@ -137,6 +176,30 @@ static void LCD_bl_close(__u32 sel)
         LCD_PWM_EN(sel, 0);//close pwm module
 }
 
+static void LCD_panel_init(__u32 sel)
+{
+        __panel_para_t *info = kmalloc(sizeof(__panel_para_t), GFP_KERNEL | __GFP_ZERO);        
+        lcd_get_panel_para(sel, info);    
+        if(info->lcd_if == LCD_IF_HV2DSI)
+        {
+                lcd_2828_rst(0);
+                lcd_panel_rst(0);     
+                lcd_2828_pd(0);
+                LCD_delay_ms(20);
+                lcd_2828_rst(1);
+                lcd_panel_rst(1);
+                LCD_delay_ms(50);
+                lp079x01_init();
+        }
+        kfree(info);
+        return;
+}
+
+static void LCD_panel_exit(__u32 sel)
+{
+	return ;
+}
+
 //sel: 0:lcd0; 1:lcd1
 static __s32 LCD_user_defined_func(__u32 sel, __u32 para1, __u32 para2, __u32 para3)
 {
@@ -152,5 +215,70 @@ void LCD_get_panel_funs_0(__lcd_panel_fun_t * fun)
         fun->cfg_close_flow = LCD_close_flow;
         fun->lcd_user_defined_func = LCD_user_defined_func;
 }
+
+void lp079x01_init(void)
+{
+	spi_24bit_3wire(0x7000B1);  //VSA=50, HAS=64
+	spi_24bit_3wire(0x723240);
+
+	spi_24bit_3wire(0x7000B2); //VBP=30+50, HBP=56+64
+	spi_24bit_3wire(0x725078);
+
+	spi_24bit_3wire(0x7000B3); //VFP=36, HFP=60
+	spi_24bit_3wire(0x72243C);
+
+	spi_24bit_3wire(0x7000B4); //HACT=768
+	spi_24bit_3wire(0x720300);
+
+	spi_24bit_3wire(0x7000B5); //VACT=1240
+	spi_24bit_3wire(0x720400);
+
+	spi_24bit_3wire(0x7000B6);
+	//todo, cfg to 18bpp packed
+	spi_24bit_3wire(0x72000B); //0x720009:burst mode, 18bpp packed
+														 //0x72000A:burst mode, 18bpp loosely packed
+							   						 //0x72000B:burst mode, 24bpp 
+							   						 
+	spi_24bit_3wire(0x7000DE); //no of lane=4
+	spi_24bit_3wire(0x720003);
+
+	spi_24bit_3wire(0x7000D6); //RGB order and packet number in blanking period
+	spi_24bit_3wire(0x720005);
+
+	spi_24bit_3wire(0x7000B9); //disable PLL
+	spi_24bit_3wire(0x720000);
+
+	spi_24bit_3wire(0x7000BA); //lane speed=560
+	spi_24bit_3wire(0x72C015); //may modify according to requirement, 500Mbps to  560Mbps, (n+1)*12M
+	
+	spi_24bit_3wire(0x7000BB); //LP clock
+	spi_24bit_3wire(0x720008);
+
+	spi_24bit_3wire(0x7000B9); //enable PPL
+	spi_24bit_3wire(0x720001);
+
+	spi_24bit_3wire(0x7000c4); //enable BTA
+	spi_24bit_3wire(0x720001);
+
+	spi_24bit_3wire(0x7000B7); //enter LP mode
+	spi_24bit_3wire(0x720342);
+
+	spi_24bit_3wire(0x7000B8); //VC
+	spi_24bit_3wire(0x720000);
+
+	spi_24bit_3wire(0x7000BC); //set packet size
+	spi_24bit_3wire(0x720000);
+
+	spi_24bit_3wire(0x700011); //sleep out cmd
+
+	LCD_delay_ms(200);
+	spi_24bit_3wire(0x700029); //display on
+
+	LCD_delay_ms(200);
+	spi_24bit_3wire(0x7000B7); //video mode on
+	spi_24bit_3wire(0x72030b);
+}
+
+
 EXPORT_SYMBOL(LCD_get_panel_funs_0);
 

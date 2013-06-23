@@ -30,10 +30,6 @@ static void axp_mfd_irq_work(struct work_struct *work)
 	struct axp_mfd_chip *chip =
 		container_of(work, struct axp_mfd_chip, irq_work);
 	uint64_t irqs = 0;
-
-    printk("-------------------------------------\n");
-    printk("axp_mfd_irq_work\n");
-    printk("-------------------------------------\n");
 	while (1) {
 		if (chip->ops->read_irqs(chip, &irqs)){
 			break;

@@ -205,7 +205,6 @@ static void standby(void)
     standby_clk_core2hosc();
 	change_runtime_env(1);
 	delay_us(1);
-    standby_clk_plldisable();
 
     if (pm_info.standby_para.axp_enable)
     {
@@ -221,15 +220,18 @@ static void standby(void)
     }
 
     /* set clock division cpu:axi:ahb:apb = 2:2:2:1 */
+    standby_clk_ahb_2pll();
     standby_clk_getdiv(&clk_div);
     tmp_clk_div.axi_div = 0;
     tmp_clk_div.ahb_div = 0;
     tmp_clk_div.apb_div = 0;
     standby_clk_setdiv(&tmp_clk_div);
+    
     /* swtich apb1 to losc */
     standby_clk_apb2losc();
 	change_runtime_env(1);
 	//delay_ms(1);
+    standby_clk_plldisable();
 	
     /* switch cpu to 32k */
     standby_clk_core2losc();
@@ -282,6 +284,7 @@ static void standby(void)
 	change_runtime_env(1);
 	delay_ms(10);
 
+    standby_clk_ahb_restore();
     /* switch cpu clock to core pll */
     standby_clk_core2pll();
 	change_runtime_env(1);

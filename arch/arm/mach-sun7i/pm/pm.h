@@ -31,6 +31,7 @@
 #define PM_STANDBY_PRINT_RESUME         (1U << 1)
 #define PM_STANDBY_PRINT_CACHE_TLB_MISS (1U << 2)
 #define PM_STANDBY_PRINT_REG            (1U << 3)
+#define PM_STANDBY_PRINT_CHECK_CRC            (1U << 4)
 
 #ifdef CONFIG_ARCH_SUN4I
 #define INT_REG_LENGTH	((0x90+0x4)>>2)

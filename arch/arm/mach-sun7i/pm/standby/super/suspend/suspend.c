@@ -167,7 +167,7 @@ int main(void)
 	mem_twi_init(AXP_IICBUS);
 
 	if(unlikely((mem_para_info.debug_mask)&PM_STANDBY_PRINT_STANDBY)){
-		printk("before power init. \n");
+		printk("before power init.\n");
 	}
 
     if (likely(mem_para_info.axp_enable))
@@ -185,6 +185,13 @@ int main(void)
 	
 	/* dram enter self-refresh */
 #ifdef DRAM_ENTER_SELFRESH
+	if(unlikely((mem_para_info.debug_mask)&PM_STANDBY_PRINT_CHECK_CRC))
+    {
+        unsigned int crc;
+        crc = standby_get_crc();
+        standby_enable_crc(1);
+        printk("crc before dram self refresh:%x \n", crc);
+    }
 	if(unlikely((mem_para_info.debug_mask)&PM_STANDBY_PRINT_STANDBY)){
 		printk("before dram enter selfresh. \n");
 	}
@@ -192,6 +199,7 @@ int main(void)
 	start = get_cyclecount();
 #endif
 #if 1
+
 	if(dram_power_save_process()){
 		goto suspend_dram_err;
 	}

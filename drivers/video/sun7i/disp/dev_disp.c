@@ -22,7 +22,10 @@ static int g_disp_mm_sel = 0;
 static struct cdev *my_cdev;
 static dev_t devid ;
 static struct class *disp_class;
+struct device	*display_dev;
 
+__u32 disp_print_cmd_level = 0;
+__u32 disp_cmd_print = 0xffff;   //print cmd which eq disp_cmd_print
 
 static struct resource disp_resource[DISP_IO_NUM] =
 {
@@ -67,6 +70,22 @@ static struct resource disp_resource[DISP_IO_NUM] =
 		.flags = IORESOURCE_MEM,
 	},
 };
+
+__s32 disp_dram_ctrl_init(void)
+{
+        (*((volatile __u32 *)(0xf1c6206c))=(0x00000003));
+        (*((volatile __u32 *)(0xf1c62014))=(0x00400302));
+        (*((volatile __u32 *)(0xf1c6201c))=(0x00400302));
+
+        (*((volatile __u32 *)(0xf1c62010))=(0x00800302));
+        (*((volatile __u32 *)(0xf1c62014))=(0x00400307));
+        (*((volatile __u32 *)(0xf1c62018))=(0x00800302));
+        (*((volatile __u32 *)(0xf1c6201c))=(0x00400307));
+        (*((volatile __u32 *)(0xf1c62074))=(0x00010310));
+        (*((volatile __u32 *)(0xf1c62078))=(0x00010310));
+        (*((volatile __u32 *)(0xf1c62080))=(0x00000310));
+        return 0;
+}
 
 __s32 disp_create_heap(__u32 pHeapHead, __u32 pHeapHeadPhy, __u32 nHeapSize)
 {
@@ -168,12 +187,12 @@ __s32 DRV_lcd_open(__u32 sel)
 	        BSP_disp_lcd_open_before(sel);
 
 	        flow = BSP_disp_lcd_get_open_flow(sel);
+
 	        for(i=0; i<flow->func_num; i++)
 	        {
 	                __u32 timeout = flow->func[i].delay*HZ/1000;
 
 	                flow->func[i].func(sel);
-
 	    	        set_current_state(TASK_INTERRUPTIBLE);
 	    	        schedule_timeout(timeout);
 
@@ -220,7 +239,7 @@ __s32 disp_lcd_open_late(__u32 sel)
 {
         __lcd_flow_t *flow;
 
-	if(g_disp_drv.b_lcd_open[sel] == 0)
+	//if(g_disp_drv.b_lcd_open[sel] == 0)
 	{
                 flow = BSP_disp_lcd_get_open_flow(sel);
                 flow->func[flow->func_num-1].func(sel);
@@ -280,8 +299,9 @@ void disp_lcd_open_timer(unsigned long sel)
         __u32 timeout;
 
         flow = BSP_disp_lcd_get_open_flow(sel);
+    	flow->cur_step = (flow->cur_step == flow->func_num)? 0:flow->cur_step;
     
-	if((g_disp_drv.b_lcd_open[sel] == 0) && (flow->cur_step < (flow->func_num-1)))
+	if((g_disp_drv.b_lcd_open[sel] == 0) && (flow->cur_step != flow->func_num-1))
 	{
                 if(flow->cur_step == 0)
 	        {
@@ -295,11 +315,10 @@ void disp_lcd_open_timer(unsigned long sel)
                 g_disp_drv.disp_timer[sel].data = sel;//(unsigned int)&g_fbi;
                 g_disp_drv.disp_timer[sel].expires = jiffies + timeout;
                 add_timer(&g_disp_drv.disp_timer[sel]);
-
-                flow->cur_step ++;
 	}
-	
-        return;
+        flow->cur_step ++;
+
+    return;
 }
 
 
@@ -384,6 +403,7 @@ __s32 DRV_DISP_Init(void)
         para.base_sdram     = (__u32)g_fbi.base_sdram;
         para.base_pioc      = (__u32)g_fbi.base_pioc;
         para.base_pwm       = (__u32)g_fbi.base_pwm;
+        para.base_hdmi       = (__u32)g_fbi.base_hdmi;
     	para.disp_int_process       = DRV_disp_int_process;
 
         //add by heyihang.Jan 28, 2013
@@ -542,7 +562,8 @@ static int __init disp_probe(struct platform_device *pdev)//called when platform
 	info->base_sdram = 0xf1c01000;
 	info->base_pioc = 0xf1c20800;
 	info->base_pwm = 0xf1c20c00;
-
+        info->base_hdmi = 0xf1c16000;
+        
 	__inf("SCALER0 base 0x%08x\n", info->base_scaler0);
 	__inf("SCALER1 base 0x%08x\n", info->base_scaler1);
 	__inf("IMAGE0 base 0x%08x\n", info->base_image0+ 0x800);
@@ -555,6 +576,7 @@ static int __init disp_probe(struct platform_device *pdev)//called when platform
 	__inf("SDRAM base 0x%08x\n", info->base_sdram);
 	__inf("PIO base 0x%08x\n", info->base_pioc);
 	__inf("PWM base 0x%08x\n", info->base_pwm);
+        __inf("HDMI base 0x%08x\n", info->base_hdmi);
 
 	return 0;
 }
@@ -576,7 +598,7 @@ void backlight_early_suspend(struct early_suspend *h)
 
         printk("==display early suspend enter\n");
 
-        for(i=0; i<2; i++)
+    	for(i=1; i>=0; i--)
         {
                 suspend_output_type[i] = BSP_disp_get_output_type(i);
                 if(suspend_output_type[i] == DISP_OUTPUT_TYPE_LCD)
@@ -625,7 +647,7 @@ void backlight_late_resume(struct early_suspend *h)
 #if 0
                                 __lcd_flow_t *flow;
                                 flow =BSP_disp_lcd_get_open_flow(i);
-                                while(flow->cur_step != (flow->func_num-1))//open flow is finished  accept the last one
+                                while(flow->cur_step < (flow->func_num))//open flow is finished  accept the last one
                                 {
                                         __u32 timeout = 10*HZ/1000;
                                     	set_current_state(TASK_INTERRUPTIBLE);
@@ -678,7 +700,7 @@ int disp_suspend(struct platform_device *pdev, pm_message_t state)
 {
         int i = 0;
 #ifndef CONFIG_HAS_EARLYSUSPEND
-        for(i=0; i<2; i++)
+        for(i=1; i>=0; i--)
         {
                 suspend_output_type[i] = BSP_disp_get_output_type(i);
                 if(suspend_output_type[i] == DISP_OUTPUT_TYPE_LCD)
@@ -777,14 +799,16 @@ int disp_resume(struct platform_device *pdev)
                 kfree((void*)scaler1_reg_bak);
                 kfree((void*)image1_reg_bak);
         }
-//      disp_dram_ctrl_init();
+        //disp_dram_ctrl_init();
 
         BSP_disp_hdmi_resume();
+        Disp_TVEC_Init(0);
+        Disp_TVEC_Init(1);
 #ifndef CONFIG_HAS_EARLYSUSPEND
 
         pr_info("[DISP]==disp_resume call==\n");
 
-        for(i=0; i<2; i++)
+    	for(i=1; i>=0; i--)
         {
                 if(suspend_output_type[i] == DISP_OUTPUT_TYPE_LCD)
                 {
@@ -800,20 +824,22 @@ int disp_resume(struct platform_device *pdev)
                 }
                 else if(suspend_output_type[i] == DISP_OUTPUT_TYPE_HDMI)
                 {
+                        BSP_disp_hdmi_set_mode(i,BSP_disp_hdmi_get_mode(i));
                         BSP_disp_hdmi_open(i);
                 }
         }
 #else
-
-        BSP_disp_hdmi_resume();
-
-
-        for(i=0; i<2; i++)
+        pr_info("[DISP]>>disp_resume call<<\n");
+        for(i=1; i>=0; i--)
         {
                 if(suspend_output_type[i] == DISP_OUTPUT_TYPE_LCD)
                 {
+#if 0
                         disp_lcd_open_flow_init_status(i);
                         disp_lcd_open_timer(i);//start lcd open flow
+#else
+                        schedule_work(&g_fbi.resume_work[i]);
+#endif
                 }
         }
 
@@ -871,14 +897,23 @@ long disp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
                 return -1;
         }
     
-#if 0
-        if(cmd!=DISP_CMD_TV_GET_INTERFACE && cmd!=DISP_CMD_HDMI_GET_HPD_STATUS && cmd!=DISP_CMD_GET_OUTPUT_TYPE 
-    	        && cmd!=DISP_CMD_SCN_GET_WIDTH && cmd!=DISP_CMD_SCN_GET_HEIGHT
-    	        && cmd!=DISP_CMD_VIDEO_SET_FB && cmd!=DISP_CMD_VIDEO_GET_FRAME_ID)
+        if(disp_print_cmd_level == 1)
+        {
+                if(cmd!=DISP_CMD_TV_GET_INTERFACE && cmd!=DISP_CMD_HDMI_GET_HPD_STATUS && cmd!=DISP_CMD_GET_OUTPUT_TYPE 
+                	&& cmd!=DISP_CMD_SCN_GET_WIDTH && cmd!=DISP_CMD_SCN_GET_HEIGHT
+                	&& cmd!=DISP_CMD_VIDEO_SET_FB && cmd!=DISP_CMD_VIDEO_GET_FRAME_ID
+                	&& cmd!=DISP_CMD_VSYNC_EVENT_EN)
+                {
+                        if(cmd != disp_cmd_print)
+                        {
+                                OSAL_PRINTF("cmd:0x%x,%ld,%ld\n",cmd, ubuffer[0], ubuffer[1]);
+                        }
+                }
+        }
+        if(cmd == disp_cmd_print)
         {
                 OSAL_PRINTF("cmd:0x%x,%ld,%ld\n",cmd, ubuffer[0], ubuffer[1]);
         }
-#endif
 
         switch(cmd)
         {
@@ -1982,6 +2017,8 @@ struct platform_device disp_device =
 	.dev            = {}
 };
 
+extern int disp_attr_node_init(void);
+
 int __init disp_module_init(void)
 {
         int ret, err;
@@ -2006,7 +2043,7 @@ int __init disp_module_init(void)
                 return -1;
         }
 
-        device_create(disp_class, NULL, devid, NULL, "disp");
+        display_dev = device_create(disp_class, NULL, devid, NULL, "disp");
 
         ret = platform_device_register(&disp_device);
 
@@ -2019,7 +2056,7 @@ int __init disp_module_init(void)
         register_early_suspend(&backlight_early_suspend_handler);
 #endif
 #endif
-
+        disp_attr_node_init();
         return ret;
 }
 

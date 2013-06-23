@@ -2940,6 +2940,11 @@ static void _PHY_SwChnl8192C(PADAPTER Adapter, u8 channel)
 	u32 param1, param2;
 	HAL_DATA_TYPE	*pHalData = GET_HAL_DATA(Adapter);
 
+	if ( Adapter->bNotifyChannelChange )
+	{
+		DBG_871X( "[%s] ch = %d\n", __FUNCTION__, channel );
+	}
+
 	//s1. pre common command - CmdID_SetTxPowerLevel
 	PHY_SetTxPowerLevel8188E(Adapter, channel);
 

@@ -1121,7 +1121,7 @@ typedef enum _HT_CAP_AMPDU_FACTOR {
 #define	P2P_TX_PRESCAN_TIMEOUT				100		//	100ms
 #define	P2P_INVITE_TIMEOUT					5000	//	5 seconds timeout for sending the invitation request
 #define	P2P_CONCURRENT_INVITE_TIMEOUT		3000	//	3 seconds timeout for sending the invitation request under concurrent mode
-
+#define	P2P_RESET_SCAN_CH						25000	//	25 seconds timeout to reset the scan channel ( based on channel plan )
 #define	P2P_MAX_INTENT						15
 
 #define	P2P_MAX_NOA_NUM						2
@@ -1164,10 +1164,13 @@ enum P2P_STATE {
 	P2P_STATE_PROVISIONING_ING = 13,				//	Doing the P2P WPS
 	P2P_STATE_PROVISIONING_DONE = 14,			//	Finish the P2P WPS
 	P2P_STATE_TX_INVITE_REQ = 15,					//	Transmit the P2P Invitation request
-	P2P_STATE_RX_INVITE_RESP = 16,				//	Receiving the P2P Invitation response
+	P2P_STATE_RX_INVITE_RESP_OK = 16,				//	Receiving the P2P Invitation response
 	P2P_STATE_RECV_INVITE_REQ_DISMATCH = 17,	//	receiving the P2P Inviation request and dismatch with the profile.
 	P2P_STATE_RECV_INVITE_REQ_GO = 18,			//	receiving the P2P Inviation request and this wifi is GO.
 	P2P_STATE_RECV_INVITE_REQ_JOIN = 19,			//	receiving the P2P Inviation request to join an existing P2P Group.
+	P2P_STATE_RX_INVITE_RESP_FAIL = 20,			//	recveing the P2P Inviation response with failure
+	P2P_STATE_RX_INFOR_NOREADY = 21, 			// receiving p2p negoitation response with information is not available
+	P2P_STATE_TX_INFOR_NOREADY = 22, 			// sending p2p negoitation response with information is not available
 };
 
 enum P2P_WPSINFO {
@@ -1222,11 +1225,12 @@ enum P2P_PS_MODE
 #define	WFD_DEVINFO_SOURCE					0x0000
 #define	WFD_DEVINFO_PSINK					0x0001
 #define	WFD_DEVINFO_SSINK					0x0002
+#define	WFD_DEVINFO_DUAL 					0x0003
 
 #define	WFD_DEVINFO_SESSION_AVAIL			0x0010
 #define	WFD_DEVINFO_WSD						0x0040
 #define	WFD_DEVINFO_PC_TDLS					0x0080
-
+#define	WFD_DEVINFO_HDCP_SUPPORT			0x0100
 
 #ifdef  CONFIG_TX_MCAST2UNI
 #define IP_MCAST_MAC(mac)		((mac[0]==0x01)&&(mac[1]==0x00)&&(mac[2]==0x5e))

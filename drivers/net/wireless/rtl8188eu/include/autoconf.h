@@ -39,7 +39,7 @@
 
 #define PLATFORM_LINUX	
 
-//#define CONFIG_IOCTL_CFG80211 1
+//#define CONFIG_IOCTL_CFG80211 
 
 #if defined( CONFIG_PLATFORM_ARM_SUNxI) || defined(CONFIG_PLATFORM_ACTIONS_ATM702X)
 	#ifndef CONFIG_IOCTL_CFG80211 
@@ -47,16 +47,10 @@
 	#endif
 #endif
 
-#ifdef CONFIG_PLATFORM_ARM_SUN6I
-	#ifndef CONFIG_IOCTL_CFG80211 
-		#define CONFIG_IOCTL_CFG80211 1
-	#endif
-#endif
-
 #ifdef CONFIG_IOCTL_CFG80211
 	#define RTW_USE_CFG80211_STA_EVENT /* Opne this for Android 4.1's wpa_supplicant */
 	#define CONFIG_CFG80211_FORCE_COMPATIBLE_2_6_37_UNDER
-	//#define CONFIG_DEBUG_CFG80211 1
+	//#define CONFIG_DEBUG_CFG80211 
 	//#define CONFIG_DRV_ISSUE_PROV_REQ // IOT FOR S2
 	#define CONFIG_SET_SCAN_DENY_TIMER
 
@@ -65,7 +59,7 @@
 /*
  * Internal  General Config
  */
-//#define CONFIG_PWRCTRL
+
 //#define CONFIG_H2CLBK
 
 #define CONFIG_EMBEDDED_FWIMG	
@@ -79,13 +73,13 @@
 
 #define CONFIG_RECV_REORDERING_CTRL	
 
-//#define CONFIG_TCP_CSUM_OFFLOAD_RX	1
+//#define CONFIG_TCP_CSUM_OFFLOAD_RX	
 
-//#define CONFIG_DRVEXT_MODULE	1
+//#define CONFIG_DRVEXT_MODULE	
 
  #define CONFIG_SUPPORT_USB_INT
  #ifdef	CONFIG_SUPPORT_USB_INT
-//#define CONFIG_USB_INTERRUPT_IN_PIPE	1
+//#define CONFIG_USB_INTERRUPT_IN_PIPE	
 #endif
 
 //#ifndef CONFIG_MP_INCLUDED
@@ -99,7 +93,7 @@
 	#if defined(CONFIG_LPS) && defined(CONFIG_SUPPORT_USB_INT)
 
 
-	//#define CONFIG_LPS_LCLK	1
+	//#define CONFIG_LPS_LCLK	
 	#endif
 
 	#ifdef CONFIG_LPS_LCLK
@@ -142,7 +136,7 @@
 		#define CONFIG_HOSTAPD_MLME	
 	#endif			
 	#define CONFIG_FIND_BEST_CHANNEL	
-	//#define CONFIG_NO_WIRELESS_HANDLERS	1
+	//#define CONFIG_NO_WIRELESS_HANDLERS	
 #endif
 
 #define CONFIG_P2P	
@@ -160,13 +154,13 @@
 #endif
 
 //	Added by Kurt 20110511
-//#define CONFIG_TDLS	1
+//#define CONFIG_TDLS	
 #ifdef CONFIG_TDLS
 //	#ifndef CONFIG_WFD
-//		#define CONFIG_WFD	1
+//		#define CONFIG_WFD	
 //	#endif
-//	#define CONFIG_TDLS_AUTOSETUP			1
-//	#define CONFIG_TDLS_AUTOCHECKALIVE		1
+//	#define CONFIG_TDLS_AUTOSETUP			
+//	#define CONFIG_TDLS_AUTOCHECKALIVE		
 #endif
 
 
@@ -210,7 +204,7 @@
 #endif	// CONFIG_BR_EXT
 
 #define CONFIG_TX_MCAST2UNI		// Support IP multicast->unicast
-//#define CONFIG_CHECK_AC_LIFETIME 1	// Check packet lifetime of 4 ACs.
+//#define CONFIG_CHECK_AC_LIFETIME 	// Check packet lifetime of 4 ACs.
 
 
 /* 
@@ -223,22 +217,16 @@
 #endif
 
 #define CONFIG_PREALLOC_RECV_SKB	
-//#define CONFIG_REDUCE_USB_TX_INT	1	// Trade-off: Improve performance, but may cause TX URBs blocked by USB Host/Bus driver on few platforms.
-//#define CONFIG_EASY_REPLACEMENT	1
+//#define CONFIG_REDUCE_USB_TX_INT		// Trade-off: Improve performance, but may cause TX URBs blocked by USB Host/Bus driver on few platforms.
+//#define CONFIG_EASY_REPLACEMENT	
 
 /* 
  * CONFIG_USE_USB_BUFFER_ALLOC_XX uses Linux USB Buffer alloc API and is for Linux platform only now!
  */
-//#define CONFIG_USE_USB_BUFFER_ALLOC_TX 1	// Trade-off: For TX path, improve stability on some platforms, but may cause performance degrade on other platforms.
-//#define CONFIG_USE_USB_BUFFER_ALLOC_RX 1	// For RX path
+//#define CONFIG_USE_USB_BUFFER_ALLOC_TX 	// Trade-off: For TX path, improve stability on some platforms, but may cause performance degrade on other platforms.
+//#define CONFIG_USE_USB_BUFFER_ALLOC_RX 	// For RX path
 
 #ifdef CONFIG_PLATFORM_ARM_SUNxI
-	#ifndef 	CONFIG_USE_USB_BUFFER_ALLOC_TX 
-		#define CONFIG_USE_USB_BUFFER_ALLOC_TX
-	#endif
-#endif
-
-#ifdef CONFIG_PLATFORM_ARM_SUN6I
 	#ifndef 	CONFIG_USE_USB_BUFFER_ALLOC_TX 
 		#define CONFIG_USE_USB_BUFFER_ALLOC_TX
 	#endif
@@ -254,7 +242,7 @@
 #define CONFIG_USB_VENDOR_REQ_MUTEX
 #define CONFIG_VENDOR_REQ_RETRY
 
-//#define CONFIG_USB_SUPPORT_ASYNC_VDN_REQ 1
+//#define CONFIG_USB_SUPPORT_ASYNC_VDN_REQ 
 
 
 /*
@@ -273,7 +261,7 @@
 #define ENABLE_USB_DROP_INCORRECT_OUT	0
 
 
-//#define RTL8192CU_ADHOC_WORKAROUND_SETTING	1
+//#define RTL8192CU_ADHOC_WORKAROUND_SETTING	
 
 #define DISABLE_BB_RF	0
 
@@ -365,15 +353,17 @@
 #define	RTL8188E_EARLY_MODE_PKT_NUM_10	0
 #endif
 
+#define CONFIG_80211D
+
 /*
  * Debug Related Config
  */
 #define DBG	1
 
-//#define CONFIG_DEBUG /* DBG_871X, etc... */
+#define CONFIG_DEBUG /* DBG_871X, etc... */
 //#define CONFIG_DEBUG_RTL871X /* RT_TRACE, RT_PRINT_DATA, _func_enter_, _func_exit_ */
 
-//#define CONFIG_PROC_DEBUG
+#define CONFIG_PROC_DEBUG
 
 #define DBG_CONFIG_ERROR_DETECT
 //#define DBG_CONFIG_ERROR_DETECT_INT
@@ -401,7 +391,7 @@
 
 //#define DBG_HAL_INIT_PROFILING
 
-//#define DBG_MEMORY_LEAK	1
+//#define DBG_MEMORY_LEAK	
 
 //TX use 1 urb
 //#define CONFIG_SINGLE_XMIT_BUF

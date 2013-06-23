@@ -28,8 +28,14 @@ int platform_cpu_kill(unsigned int cpu)
 {
     int k;
     u32 pwr_reg;
+    int tmp_cpu;
 
-    int tmp_cpu = get_cpu();
+    if (cpu == 0)
+    {
+        pr_err("[hotplug]: try to kill cpu:%d failed!\n", cpu);
+        return 0;
+    }
+    tmp_cpu = get_cpu();
     put_cpu();
     pr_info("[hotplug]: cpu(%d) try to kill cpu(%d)\n", tmp_cpu, cpu);
 

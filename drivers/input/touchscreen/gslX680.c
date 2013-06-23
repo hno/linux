@@ -213,7 +213,6 @@ struct i2c_client *glsX680_i2c;
 struct gsl_ts *ts_init;
 /*------------------------------------------------------------------------------------------*/ 
 
-
 static int ctp_detect(struct i2c_client *client, struct i2c_board_info *info)
 {
 	struct i2c_adapter *adapter = client->adapter;
@@ -260,7 +259,7 @@ static ssize_t gslX680_debug_enable_store(struct device *dev,
 	return count;
 }
 
-static DEVICE_ATTR(debug_enable, 0666, gslX680_debug_enable_show, gslX680_debug_enable_store);
+static DEVICE_ATTR(debug_enable, 0644, gslX680_debug_enable_show, gslX680_debug_enable_store);
 
 static int gslX680_chip_init(void)
 {	
@@ -478,8 +477,8 @@ static void reset_chip(struct i2c_client *client)
 
 static void init_chip(struct i2c_client *client)
 {
-	//test_i2c(client);
 	reset_chip(client);
+
 	if(!strncmp(fwname,"gsl1680",strlen(fwname))){
 	        gsl_load_fw1680(client);
         }
@@ -491,17 +490,17 @@ static void init_chip(struct i2c_client *client)
         if(!strncmp(fwname,"gsl3680",strlen(fwname))){
 	        gsl_load_fw3680(client);
         }
-        			
+			
 	startup_chip(client);
 	reset_chip(client);
 	gslX680_shutdown_low();	
-	msleep(50); 	
+	msleep(30); 	
 	gslX680_shutdown_high();	
-	msleep(30); 		
+	msleep(20); 		
 	gslX680_shutdown_low();	
-	msleep(5); 	
+	msleep(1); 	
 	gslX680_shutdown_high();	
-	msleep(20); 	
+	msleep(5); 	
 	reset_chip(client);
 	startup_chip(client);	
 }
@@ -850,10 +849,7 @@ error_alloc_dev:
 }
 static void glsX680_resume_events (struct work_struct *work)
 {
-	ctp_wakeup(1,5);
 	ctp_wakeup(1,0);
-	msleep(10); 
-        reset_chip(glsX680_i2c);
         startup_chip(glsX680_i2c);
         check_mem_data(glsX680_i2c);
         sw_gpio_eint_set_enable(CTP_IRQ_NUMBER,1);

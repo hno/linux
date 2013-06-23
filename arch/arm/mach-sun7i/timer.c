@@ -264,5 +264,9 @@ void __init aw_clkevt_init(void)
 		(int)sun7i_timer0_clockevent.min_delta_ns, (int)sun7i_timer0_clockevent.cpumask,
 		(int)sun7i_timer0_clockevent.irq);
 	clockevents_register_device(&sun7i_timer0_clockevent);
+
+#ifdef CONFIG_AW_TIME_DELAY
+	use_time_delay();
+#endif
 }
 

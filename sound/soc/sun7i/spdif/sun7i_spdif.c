@@ -20,6 +20,7 @@
 #include <linux/clk.h>
 #include <linux/jiffies.h>
 #include <linux/io.h>
+#include <linux/gpio.h>
 
 #include <sound/core.h>
 #include <sound/pcm.h>
@@ -532,13 +533,18 @@ static int __devinit sun7i_spdif_dev_probe(struct platform_device *pdev)
 		printk("try to get CLK_SYS_PLL2X8 failed!\n");
 			}
 		
-
+		if(-1 == clk_enable(spdif_pllx8)){
+			printk("spdif_pllx8 failed! line = %d\n", __LINE__);
+		}
 		//spdif pll2clk
 		spdif_pll2clk = clk_get(NULL, CLK_SYS_PLL2);
 		if(!spdif_pll2clk || IS_ERR(spdif_pll2clk)){
 		/* ªÒ»° ±÷”æ‰±˙ ß∞‹ */
 		printk("try to get CLK_SYS_PLL2 failed!\n");
 			}
+		if (clk_enable(spdif_pll2clk)) {
+		printk("enable spdif_pll2clk failed; \n");
+		}
 
 		//spdif module clk
 		spdif_moduleclk = clk_get(NULL, CLK_MOD_SPDIF);
@@ -609,16 +615,38 @@ static struct platform_driver sun7i_spdif_driver = {
 static int __init sun7i_spdif_init(void)
 {
 	int err = 0;
-	static script_item_u   val;
+	int req_status;
+	script_item_u val;
+	script_item_u item;
 	script_item_value_type_e  type;
-	type=script_get_item("spdif_para", "spdif_used", &val);
-	if(SCIRPT_ITEM_VALUE_TYPE_INT != type){
-		pr_info("spdif user type err\n");
-	}
-     spdif_used=val.val;
- 	if (spdif_used) {	
-		/*spdif_handle = gpio_request_ex("spdif_para", NULL);*/
-		
+
+	type = script_get_item("spdif_para", "spdif_used", &val);
+	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
+        printk("[SPDIF] type err!\n");
+    }
+
+	spdif_used = val.val;
+ 	if (spdif_used) {
+		type = script_get_item("spdif_para", "spdif_dout", &item);
+		if (SCIRPT_ITEM_VALUE_TYPE_PIO != type) {
+			printk("script_get_item return type err\n");
+			return -EFAULT;
+		}
+
+		/*request gpio*/
+		req_status = gpio_request(item.gpio.gpio, NULL);
+		if (0!=req_status) {
+			printk("request gpio failed!\n");
+		}
+		/*config gpio info of spdif_dout*/
+		if (0 != sw_gpio_setall_range(&item.gpio, 1)) {
+			printk("sw_gpio_setall_range failed\n");
+		}
+		/*while set the pgio value, release gpio handle*/
+		if (0 == req_status) {
+			gpio_free(item.gpio.gpio);
+		}
+
 		if((platform_device_register(&sun7i_spdif_device))<0)
 			return err;
 
@@ -632,6 +660,7 @@ static int __init sun7i_spdif_init(void)
  
 	return 0;
 }
+
 module_init(sun7i_spdif_init);
 
 static void __exit sun7i_spdif_exit(void)

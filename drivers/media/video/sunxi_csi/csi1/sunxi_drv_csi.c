@@ -2435,11 +2435,6 @@ static int csi_probe(struct platform_device *pdev)
   	        csi_err("sw_gpio_setall_range failed\n");
   	        //goto err_gpio;
   	    }
-      	for(i = 0; i < cnt; i++)
-      	{
-            //printk("request gpio cnt=%d, i=%d\n", cnt, i);
-      	    gpio_free(gpio_list[i].gpio.gpio);
-      	}
 	}    
     
     

@@ -44,13 +44,13 @@ __s32 BSP_disp_hdmi_open(__u32 sel)
 
     	tcon1_set_hdmi_mode(sel,tv_mod);		 	 
     	tcon1_open(sel);
-    	if(gdisp.init_para.Hdmi_open)
+    	if(gdisp.init_para.hdmi_open)
     	{
-    	    gdisp.init_para.Hdmi_open();
+    	    gdisp.init_para.hdmi_open();
     	}
     	else
     	{
-    	    DE_WRN("Hdmi_open is NULL\n");
+    	    DE_WRN("hdmi_open is NULL\n");
     	    return -1;
     	}
     	
@@ -74,13 +74,13 @@ __s32 BSP_disp_hdmi_close(__u32 sel)
 {
     if(gdisp.screen[sel].status & HDMI_ON)
     {            
-    	if(gdisp.init_para.Hdmi_close)
+    	if(gdisp.init_para.hdmi_close)
     	{
-    	    gdisp.init_para.Hdmi_close();
+    	    gdisp.init_para.hdmi_close();
     	}
     	else
     	{
-    	    DE_WRN("Hdmi_close is NULL\n");
+    	    DE_WRN("hdmi_close is NULL\n");
     	    return -1;
     	}
         Image_close(sel);
@@ -88,7 +88,7 @@ __s32 BSP_disp_hdmi_close(__u32 sel)
 
     	image_clk_off(sel);
     	lcdc_clk_off(sel);
-    	hdmi_clk_off();
+    	//hdmi_clk_off();
 
         gdisp.screen[sel].b_out_interlace = 0;
         gdisp.screen[sel].lcdc_status &= LCDC_TCON1_USED_MASK;
@@ -177,7 +177,7 @@ __s32 BSP_disp_hdmi_set_src(__u32 sel, __disp_lcdc_src_t src)
             tcon1_src_select(sel, LCDC_SRC_BE1);
             break;
             
-        case DISP_LCDC_SRC_BLUT:
+        case DISP_LCDC_SRC_BLUE:
             tcon1_src_select(sel, LCDC_SRC_BLUE);
             break;
 
@@ -190,8 +190,8 @@ __s32 BSP_disp_hdmi_set_src(__u32 sel, __disp_lcdc_src_t src)
 
 __s32 BSP_disp_set_hdmi_func(__disp_hdmi_func * func)
 {
-    gdisp.init_para.Hdmi_open = func->Hdmi_open;
-    gdisp.init_para.Hdmi_close = func->Hdmi_close;
+    gdisp.init_para.hdmi_open = func->hdmi_open;
+    gdisp.init_para.hdmi_close = func->hdmi_close;
     gdisp.init_para.hdmi_set_mode = func->hdmi_set_mode;
     gdisp.init_para.hdmi_mode_support = func->hdmi_mode_support;
     gdisp.init_para.hdmi_get_HPD_status = func->hdmi_get_HPD_status;

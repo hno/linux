@@ -29,16 +29,16 @@
 #include<linux/string.h>
 #include<asm/uaccess.h>
 
-#define NOTE_INFO1 ";Behind the equals sign said detected equipment corresponding to the name of the driver\n"
-#define NOTE_INFO2 ";Note: don't change the file format!\n"
-#define GSENSOR_DEVICE_KEY_NAME  "gsensor_module_name"
-#define CTP_DEVICE_KEY_NAME      "ctp_module_name"
-#define FILE_DIR  "data/device.info"
+#define NOTE_INFO1              ";Behind the equals sign said detected equipment corresponding to the name of the driver\n"
+#define NOTE_INFO2              ";Note: don't change the file format!\n"
+#define GSENSOR_DEVICE_KEY_NAME "gsensor_module_name"
+#define CTP_DEVICE_KEY_NAME     "ctp_module_name"
+#define FILE_DIR                "system/usr/device.info"
 
 #define STRING_LENGTH           (128)
 #define FILE_LENGTH             (1024)
 #define NAME_LENGTH             (32)
-#define ADDRESS_NUMBER          (3)
+#define ADDRESS_NUMBER          (5)
 #define REG_VALUE_NUMBER        (5)
 #define DEFAULT_TOTAL_ROW       (4)
 
@@ -80,35 +80,35 @@ struct base_info{
         unsigned short chip_id_reg_value[REG_VALUE_NUMBER];
 };
 static struct base_info sensors[] = {
-        {"bma250", {0x00,0x08,0x38}, 0x00, {0x02,0x03}},
-        {"mma8452", {0x1c,0x1d}, 0x0d, {0x2A}},
-        {"mma7660",{ 0x4c}, 0x00, {0x00}},
-        {"mma865x", {0x1d}, 0x0d, {0x4A,0x5A}},
-        {"afa750", {0x3d}, 0x37, {0x3d,0x3c}},
-        {"lis3de_acc", {0x28,0x29}, 0x0f, {0x33}},
-        {"lis3dh_acc", {0x18,0x19}, 0x0f, {0x33}},
-        {"kxtik", {0x0f}, 0x0f, {0x05,0x08}},
-        {"dmard10", {0x00}, 0x00, {0x00}},
-        {"dmard06", {0x1c}, 0x0f, {0x06}},
-        {"mxc622x", {0x15}, 0x00, {0x00}},    
-        {"fxos8700", {0x1c,0x1d}, 0x0d, {0xc7}},
-        {"lsm303d", {0x1e}, 0x0f, {0x49}},    
-/*        {"lis35de", {0x00,0x00}, 0x00, {0x00}},*/
+        {    "bma250", {0x18, 0x19, 0x08, 0x38}, 0x00, {0x02,0x03,0xf9}},
+        {   "mma8452", {0x1c, 0x1d            }, 0x0d, {0x2A          }},
+        {   "mma7660", {0x4c                  }, 0xff, {0xff          }},
+        {   "mma865x", {0x1d                  }, 0x0d, {0x4A,0x5A     }},
+        {    "afa750", {0x3d                  }, 0x37, {0x3d,0x3c     }},
+        {"lis3de_acc", {0x28, 0x29            }, 0x0f, {0x33          }},
+        {"lis3dh_acc", {0x18, 0x19            }, 0x0f, {0x33          }},
+        {     "kxtik", {0x0f                  }, 0x0f, {0x05,0x08     }},
+        {   "dmard10", {0x18                  }, 0xff, {0xff          }},
+        {   "dmard06", {0x1c                  }, 0x0f, {0x06          }},
+        {   "mxc622x", {0x15                  }, 0xff, {0xff          }},    
+        {  "fxos8700", {0x1c, 0x1d, 0x1e, 0x1f}, 0x0d, {0xc7          }},
+        {   "lsm303d", {0x1e, 0x1d            }, 0x0f, {0x49          }},    
 };
 
 static struct base_info ctps[] = {
-        {"l3gd20_gyr", {0x6a}, 0x0f, {0xd4}}, 
-        //{"ft5x_ts", {0x38}, 0xa3, {0x55,0x08,0x02,0x06,0xa3}},
-        //{"gt82x", {0x5d}, 0xf7d, {0x13,0x27,0x28}},
-        //{"gslX680", {0x40}, 0x00, {0x00}},
+        {"ft5x_ts", {0x38},  0xa3, {0x55,0x08,0x02,0x06,0xa3}},
+        {  "gt82x", {0x5d}, 0xf7d, {0x13,0x27,0x28          }},
+        {"gslX680", {0x40},  0x00, {0x00                    }},
 };
 
 enum {
-	DEBUG_I2C_DETECT = 1U << 0,
-	DEBUG_INIT = 1U << 1,
-	DEBUG_RW_FILE = 1U << 2,
-	DEBUG_OTHER = 1U << 3,
+	DEBUG_I2C_DETECT        = 1U << 0,
+	DEBUG_INIT              = 1U << 1,
+	DEBUG_RW_FILE           = 1U << 2,
+	DEBUG_OTHER             = 1U << 3,
 };
+
+static char check_addr[15] = {0};
 
 static u32 debug_mask = 0x0;
 #define dprintk(level_mask, fmt, arg...)	if (unlikely(debug_mask & level_mask)) \
@@ -119,6 +119,7 @@ static void i2c_devices_events(struct work_struct *work);
 struct workqueue_struct *i2c_wq;
 static DECLARE_WORK(i2c_work, i2c_devices_events);
 extern int  ctp_wakeup(int status,int ms);
+
 long long get_us_time(void) 
 {
 
@@ -182,12 +183,12 @@ static bool i2c_test(struct i2c_client * client)
         int ret,retry;
         uint8_t test_data[1] = { 0 };	//only write a data address.
         
-        for(retry=0; retry < 2; retry++)
+        for(retry=0; retry < 1; retry++)
         {
                 ret =i2c_write_bytes(client, test_data, 1);	//Test i2c.
         	if (ret == 1)
         	        break;
-        	msleep(50);
+        	msleep(1);
         }
         
         return ret==1 ? true : false;
@@ -210,6 +211,7 @@ static bool i2c_test(struct i2c_client * client)
 static int i2c_get_device_number(struct base_info *info, int support_number, char *name)
 {
         int ret = -1;
+        
         if(strlen(name)){
                 while(support_number--){
                         if (!strncmp(name, info[support_number].name, strlen(info[support_number].name))){
@@ -255,9 +257,34 @@ static void get_use_list(struct base_info *info, int support_number, char * main
 
 /*
 *********************************************************************************************************
-*                                   sensor_fetch_sysconfig_para
+*                                   sysconfing_get_para
 *
 *Description: Read sys_config1. Fex the configuration information
+*Return     : sys_config para!
+*               
+*********************************************************************************************************
+*/
+
+static int sysconfing_get_para(char * mname, char * subname)
+{
+        script_item_u	val;
+        
+        if(SCIRPT_ITEM_VALUE_TYPE_INT != script_get_item(mname, subname, &val)){
+	        printk("%s: type err device_used val.val:%d \n", __func__, val.val);
+	        goto script_get_item_err;
+	}
+        return val.val;
+        
+script_get_item_err:
+        dprintk(DEBUG_INIT, "line:%d:=========script_get_item_err============\n", __LINE__);
+	return 0;
+}
+
+/*
+*********************************************************************************************************
+*                                   sensor_fetch_sysconfig_para
+*
+*Description: Read sys_config.fex the configuration information
 *Return     : result;
 *               = 0,  Read correct
 *               = -1, Read error!
@@ -267,51 +294,33 @@ static int sensor_fetch_sysconfig_para(void)
 {
 	int ret = -1;
 	int gsensor_used = 0;
-	script_item_u	val;
 		
 	dprintk(DEBUG_INIT, "========%s===================\n", __func__);
 	 
-	if(SCIRPT_ITEM_VALUE_TYPE_INT != script_get_item("gsensor_para", "gsensor_used", &val)){
-	        printk("%s: type err device_used val.val:%d \n", __func__, val.val);
-	        goto script_get_item_err;
-	}
-        gsensor_used = val.val;
+        gsensor_used = sysconfing_get_para("gsensor_para", "gsensor_used");
         
 	if(1 == gsensor_used ){               
-        	if(SCIRPT_ITEM_VALUE_TYPE_INT != script_get_item("gsensor_para", "gsensor_twi_id", &val)){
-        	        printk("%s: gsensor_twi_id script_get_item err.val.val:%d \n", __func__, val.val);
-        		goto script_get_item_err;
-        	}
-        	gsensor_twi_id = val.val;
+        	gsensor_twi_id = sysconfing_get_para("gsensor_para", "gsensor_twi_id");;
         	dprintk(DEBUG_INIT, "%s: gsensor_twi_id is %d. \n", __func__, gsensor_twi_id);
-        	
-        	if(SCIRPT_ITEM_VALUE_TYPE_INT != script_get_item("gsensor_list_para", "gsensor_det_used", &val)){
-	                printk("%s: gsensor_det_used script_get_item err.val.val = %d. \n", __func__, val.val);
-	                goto script_get_item_err;
-	        } 
-	        g_device_used = val.val;
-	        
+        
+	        g_device_used = sysconfing_get_para("gsensor_list_para", "gsensor_det_used");
+	        g_device_used = 1;
 	        if(g_device_used)
                         get_use_list(sensors,g_support_number, "gsensor_list_para");
                 ret = 0;
-		
+	
 	}else{
 	        dprintk(DEBUG_INIT, "%s: gsensor_unused. \n",  __func__);
 		ret = -1;
 	}
 
 	return ret;
-
-script_get_item_err:
-        dprintk(DEBUG_INIT, "line:%d:=========script_get_item_err============\n", __LINE__);
-	return ret;
-
 }
 /*
 *********************************************************************************************************
 *                                   ctp_fetch_sysconfig_para
 *
-*Description: Read sys_config1. Fex the configuration information
+*Description: Read sys_config.Fex the configuration information
 *Return     : result;
 *               = 0,  Read correct
 *               = -1, Read error!
@@ -321,29 +330,16 @@ static int ctp_fetch_sysconfig_para(void)
 {
         int ret = -1;
         int ctp_used = 0;
-        script_item_u	val;
 	        
         dprintk(DEBUG_INIT, "========%s===================\n", __func__);
-         
-        if(SCIRPT_ITEM_VALUE_TYPE_INT != script_get_item("ctp_para", "ctp_used", &val)){
-                printk("%s: ctp_used script_get_item err.val.val = %d. \n", __func__, val.val);
-                goto script_get_item_err;
-        }
-        ctp_used = val.val;
+    
+        ctp_used = sysconfing_get_para("ctp_para", "ctp_used");
         
         if(1 == ctp_used){
-                if(SCIRPT_ITEM_VALUE_TYPE_INT != script_get_item("ctp_para", "ctp_twi_id", &val)){
-                	printk("%s: script_parser_fetch err. \n", __func__);
-                	goto script_get_item_err;
-                }
-                ctp_twi_id = val.val;
+                ctp_twi_id = sysconfing_get_para("ctp_para", "ctp_twi_id");
                 dprintk(DEBUG_INIT,"%s: ctp_twi_id is %d. \n", __func__, ctp_twi_id);
                 
-                if(SCIRPT_ITEM_VALUE_TYPE_INT != script_get_item("ctp_list_para", "ctp_det_used", &val)){
-	                printk("%s: ctp_det_used script_get_item err.val.val = %d. \n", __func__, val.val);
-	                goto script_get_item_err;
-	        }
-	        c_device_used = val.val;
+	        c_device_used = sysconfing_get_para("ctp_list_para", "ctp_det_used");;
 	        
 	        if(c_device_used)
 	                get_use_list(ctps,c_support_number, "ctp_list_para");
@@ -355,12 +351,8 @@ static int ctp_fetch_sysconfig_para(void)
         }
         
         return ret;
-        
-script_get_item_err:
-        dprintk(DEBUG_INIT, "line:%d:=========script_get_item_err============\n", __LINE__);
-        return ret;
-
 }
+
 static int is_alpha(char chr)
 {
         int ret = -1;
@@ -467,6 +459,7 @@ static void match_device_name(void)
          int row_number = 0;
          
          row_number = total_raw;
+         
 	 while(row_number--){
 	       dprintk(DEBUG_INIT, "config_info[%d].str_info:%s\n", row_number, config_info[row_number].str_info);
 	    
@@ -502,13 +495,15 @@ static int analytic_device_info(char * src_string, struct device_config_info inf
         int i = 0, j = 0, k = 0;
         total_raw = 0;
         
-        if(!strlen(src_string) ){
+        if(!strlen(src_string) ) {
                 dprintk(DEBUG_INIT, "%s: the src string is null !\n", __func__);
                 ret = 0;
                 return ret;
-        }         
+        }  
+               
         while(src_string[i++]){  
                 info[k].str_info[j++] = src_string[i-1];
+                
                 if(src_string[i-1] == '\n'){
                         total_raw++; 
                         info[k].str_info[j] = '\0';
@@ -518,7 +513,9 @@ static int analytic_device_info(char * src_string, struct device_config_info inf
                     
                 }   
         } 
+        
         ret = 1;
+        
         return ret;
 
 }
@@ -538,9 +535,9 @@ static int get_device_info(char * tmp)
         mm_segment_t old_fs;
         int ret;
         
-        filp = filp_open(FILE_DIR, O_RDONLY | O_CREAT, 0666);
-        if(IS_ERR(filp)){
-                printk("open error ....IS(filp):%ld\n", IS_ERR(filp));
+        filp = filp_open(FILE_DIR,O_RDWR | O_CREAT, 0666);
+        if(!filp || IS_ERR(filp)){
+                printk("%s:open error ....IS(filp):%ld\n", __func__, IS_ERR(filp));
                 return -1;
         } 
         
@@ -559,6 +556,7 @@ static int get_device_info(char * tmp)
         return ret;
 
 }
+
 /*
 *********************************************************************************************************
 *                                   i2c_update_device_info
@@ -597,9 +595,9 @@ static int write_device_info(void)
         mm_segment_t old_fs;
         int ret = 0, i =0;
         
-        filp = filp_open(FILE_DIR, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-        if(IS_ERR(filp)){
-                 printk("open error ....IS(filp):%ld\n", IS_ERR(filp));
+        filp = filp_open(FILE_DIR, O_WRONLY | O_CREAT , 0666);
+        if(!filp || IS_ERR(filp)){
+                 printk("%s:open error ....IS(filp):%ld\n", __func__,IS_ERR(filp));
                 return -1;
         } 
         
@@ -628,15 +626,14 @@ static int write_device_info(void)
 static int set_device_info(void)
 {
         int ret = 0;
-        
+
         dprintk(DEBUG_INIT, "%s:write device info !\n", __func__);
         if(write) {       
                 memset(&config_info[0].str_info, 0, sizeof(config_info[0].str_info));
                 memset(&config_info[1].str_info, 0, sizeof(config_info[1].str_info));
                 strcpy(config_info[0].str_info, NOTE_INFO1);
                 strcpy(config_info[1].str_info, NOTE_INFO2);
-        }
-           
+        }  
         write_device_info();
         
         return ret;
@@ -667,6 +664,20 @@ static bool chip_id_match_value(struct base_info *info, int number, int value)
         }
         dprintk(DEBUG_I2C_DETECT,"Chip id value does not match!--value:%d--\n",value);
         return false;
+}
+static int i2c_check_addr(unsigned short address)
+{
+        int ret = 0;
+        
+        while((check_addr[ret]) && (ret < 15)) {
+                if(check_addr[ret] == address){
+                        printk("address:0x%x\n", check_addr[ret]);
+                        return 1;
+                }
+                 ret++;              
+        }
+        
+        return 0;
 }
 /*
 *********************************************************************************************************
@@ -705,13 +716,22 @@ static int i2c_device_i2c_test(struct base_info *info, int i2c_address_number, e
                 return -ENODEV;
           
         if(twi_id == temp_client->adapter->nr){
-                while((info[i2c_address_number].i2c_address[addr_scan++]) && (addr_scan < 3)){
+                while((info[i2c_address_number].i2c_address[addr_scan++]) && (addr_scan < (ADDRESS_NUMBER+1))){
                         
                         temp_client->addr = info[i2c_address_number].i2c_address[addr_scan - 1];
                         dprintk(DEBUG_I2C_DETECT,"%s: name = %s, addr = 0x%x\n", __func__,
                                 info[i2c_address_number].name, temp_client->addr); 
+                                
+                        
+                        if(i2c_check_addr(temp_client->addr)) {
+                                ret = 0;
+                                continue;
+                        }
+   
                         ret = i2c_test(temp_client);
                         if(!ret){
+                                check_addr[strlen(check_addr)] = temp_client->addr;
+                                ret = 0;
                         	continue;
                         }else{         	    
                                 dprintk(DEBUG_I2C_DETECT, "I2C connection sucess!\n");
@@ -1004,8 +1024,28 @@ static int i2c_device_used_ctp(void)
 static void i2c_devices_events(struct work_struct *work)
 {
         int flag = 0;
+        char tmp[FILE_LENGTH];
+        int ret = -1;
+        
+        memset(&tmp, 0, sizeof(tmp));
         
         dprintk(DEBUG_INIT, "g_device_used:%d,c_device_used:%d\n", g_device_used, c_device_used);
+        if(c_device_used | g_device_used) {
+        	ret = get_device_info(tmp);
+        	if(ret <= 0){
+        	          printk("get twi config erro!\n");
+        	          write = 1;
+        	}else{
+        	        ret = analytic_device_info(tmp, config_info);
+        	        if(!ret){
+        	                printk("analytic_device_info erro!\n");
+        	                write = 1;
+        	        }else{
+                                match_device_name();
+                        }
+                }
+        }
+        
         if(c_device_used){
                 ctp_wakeup(0, 20);
                 msleep(100);
@@ -1039,73 +1079,53 @@ static void i2c_devices_events(struct work_struct *work)
 static int i2c_hardware_detect(void)
 {
         struct i2c_client *client;
-    
+        
         client = kzalloc(sizeof(struct i2c_client), GFP_KERNEL);
 	if (!client)
                 return -ENOMEM;
 
 	temp_client = client;
 	
-	i2c_wq = create_singlethread_workqueue("i2c_detect_init");
+	i2c_wq = create_singlethread_workqueue("i2c_wq");
 	if (i2c_wq == NULL) {
 		printk("create i2c_wq fail!\n");
 		return 0;
 	}
+
 	queue_work(i2c_wq, &i2c_work);
-	//devices_events();
+
 	return 1;
     
 }
 
 static int __init i2c_hardware_init(void)
 {
-	int ret = -1, i = 0;
-        static char tmp[FILE_LENGTH];
-         long long time1 = 0;
-        long long time2 = 0;
-        time1 = get_us_time();
+	int i = 0;
 	dprintk(DEBUG_INIT,"======%s=========. \n", __func__);
 	
 	write = 0;
 	g_support_number = (sizeof(sensors)) / (sizeof(sensors[0]));
 	c_support_number = (sizeof(ctps)) / (sizeof(ctps[0]));
-	memset(&tmp, 0, sizeof(tmp));
+
         memset(&gsensor_name, 0, sizeof(gsensor_name));
         memset(&ctp_name, 0, sizeof(ctp_name));
         
         
         while(i++ < STRING_LENGTH){
                 memset(&config_info[i-1].str_info, 0, sizeof(config_info[i-1].str_info));
-       }
+        }
 
 	if(sensor_fetch_sysconfig_para()){
 		printk("%s: sensor_fetch_sysconfig_para err.\n", __func__);
 	}
-	
+
 	if(ctp_fetch_sysconfig_para()){
 		printk("%s: ctp_fetch_sysconfig_para err.\n", __func__);
 	} 
 
-	if(c_device_used | g_device_used) {
-        	ret = get_device_info(tmp);
-        	if(ret <= 0){
-        	          printk("get twi config erro!\n");
-        	          write = 1;
-        	}else{
-        	        ret = analytic_device_info(tmp, config_info);
-        	        if(!ret){
-        	                printk("analytic_device_info erro!\n");
-        	                write = 1;
-        	        }else{
-                                match_device_name();
-                        }
-                }
-                if(!i2c_hardware_detect())
-                        printk("the client is null!\n");
-        }
-        
-        time2 = get_us_time();
-        printk("**ctp***func:%s,line:%d,(time2-time1):%llu\n", __func__, __LINE__, time2-time1);
+        if(!i2c_hardware_detect())
+                printk("the client is null!\n");
+
 	return 0;
 }
 

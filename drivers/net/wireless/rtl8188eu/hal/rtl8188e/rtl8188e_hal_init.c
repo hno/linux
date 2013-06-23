@@ -27,7 +27,6 @@
 
 #include <rtw_iol.h>
 
-
 #if defined(CONFIG_IOL)
 #ifdef CONFIG_USB_HCI
 #include <usb_ops.h>
@@ -3735,6 +3734,26 @@ void Hal_DetectWoWMode(PADAPTER pAdapter)
 	DBG_871X("%s\n", __func__);
 }
 #endif
+
+#ifdef CONFIG_RF_GAIN_OFFSET
+void Hal_ReadRFGainOffset(
+	IN		PADAPTER		Adapter,
+	IN		u8*				PROMContent,
+	IN		BOOLEAN			AutoloadFail)
+{
+	u8 buff[EFUSE_MAX_SIZE];
+	u32 res;
+	//
+	// BB_RF Gain Offset from EEPROM
+	//
+	res = rtw_efuse_access(Adapter, _FALSE, 0, EFUSE_MAX_SIZE, buff);
+	if(!AutoloadFail && res != _FAIL)
+		Adapter->eeprompriv.EEPROMRFGainOffset = buff[EEPROM_RF_GAIN_OFFSET_88E];
+	else
+		Adapter->eeprompriv.EEPROMRFGainOffset = EEPROM_Default_RFGainOffset;
+	DBG_871X("EEPRORFGainOffset = 0x%02x\n", Adapter->eeprompriv.EEPROMRFGainOffset);
+}
+#endif //CONFIG_RF_GAIN_OFFSET
 
 //====================================================================================
 //

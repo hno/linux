@@ -58,6 +58,14 @@ config CPU_FREQ_DEFAULT_GOV_PERFORMANCE
 	  the frequency statically to the highest frequency supported by
 	  the CPU.
 
+config CPU_FREQ_DEFAULT_GOV_BENCHMARK
+	bool "benchmark"
+	select CPU_FREQ_GOV_BENCHMARK
+	help
+	  Use the CPUFreq governor 'benchmark' as default. This sets
+	  the frequency statically to the extremity frequency supported by
+	  the CPU.
+
 config CPU_FREQ_DEFAULT_GOV_POWERSAVE
 	bool "powersave"
 	depends on EXPERT
@@ -125,6 +133,17 @@ config CPU_FREQ_GOV_PERFORMANCE
 	help
 	  This cpufreq governor sets the frequency statically to the
 	  highest available CPU frequency.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called cpufreq_performance.
+
+	  If in doubt, say Y.
+
+config CPU_FREQ_GOV_BENCHMARK
+	tristate "'benchmark' governor"
+	help
+	  This cpufreq governor sets the frequency statically to the
+	  extremity available CPU frequency.
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called cpufreq_performance.

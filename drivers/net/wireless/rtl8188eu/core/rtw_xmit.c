@@ -283,6 +283,11 @@ _func_enter_;
 	rtw_alloc_hwxmits(padapter);
 	rtw_init_hwxmits(pxmitpriv->hwxmits, pxmitpriv->hwxmit_entry);
 
+	for (i = 0; i < 4; i ++)
+	{
+		pxmitpriv->wmm_para_seq[i] = i;
+	}
+
 #ifdef CONFIG_USB_HCI
 	pxmitpriv->txirp_cnt=1;
 
@@ -692,12 +697,10 @@ static s32 update_attrib(_adapter *padapter, _pkt *pkt, struct pkt_attrib *pattr
 		DBG_871X_LEVEL(_drv_always_, "send eapol packet\n");
 	}
 
-	#ifdef CONFIG_SET_SCAN_DENY_TIMER
 	if ( (pattrib->ether_type == 0x888e) || (pattrib->dhcp_pkt == 1) )
 	{
-		rtw_set_scan_deny(pmlmepriv, 3000);
+		rtw_set_scan_deny(padapter, 3000);
 	}
-	#endif
 
 #ifdef CONFIG_LPS
 	// If EAPOL , ARP , OR DHCP packet, driver must be in active mode.
@@ -3795,6 +3798,9 @@ bool rtw_sctx_chk_waring_status(int status)
 	case RTW_SCTX_DONE_UNKNOWN:
 	case RTW_SCTX_DONE_BUF_ALLOC:
 	case RTW_SCTX_DONE_BUF_FREE:
+
+	case RTW_SCTX_DONE_DRV_STOP:
+	case RTW_SCTX_DONE_DEV_REMOVE:
 		return _TRUE;
 	default:
 		return _FALSE;
@@ -3847,6 +3853,16 @@ int rtw_ack_tx_polling(struct xmit_priv *pxmitpriv, u32 timeout_ms)
 		c2h_evt_hdl(adapter, NULL, rtw_hal_c2h_id_filter_ccx(adapter));
 		if (pack_tx_ops->status != RTW_SCTX_SUBMITTED)
 			break;
+
+		if (adapter->bDriverStopped) {
+			pack_tx_ops->status = RTW_SCTX_DONE_DRV_STOP;
+			break;
+		}
+		if (adapter->bSurpriseRemoved) {
+			pack_tx_ops->status = RTW_SCTX_DONE_DEV_REMOVE;
+			break;
+		}
+		
 		rtw_msleep_os(10);
 	} while (rtw_get_passing_time_ms(pack_tx_ops->submit_time) < timeout_ms);
 

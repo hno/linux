@@ -1526,8 +1526,8 @@ static int sensor_power(struct v4l2_subdev *sd, int on)
 		case CSI_SUBDEV_STBY_ON:
 			csi_dev_dbg("CSI_SUBDEV_STBY_ON\n");
 			//reset off io
-			csi_gpio_write(sd,&dev->reset_io,CSI_RST_OFF);
-			mdelay(10);
+			//csi_gpio_write(sd,&dev->reset_io,CSI_RST_OFF);
+			//mdelay(10);
 			//standby on io
 			csi_gpio_write(sd,&dev->standby_io,CSI_STBY_ON);
 			mdelay(10);
@@ -1538,8 +1538,8 @@ static int sensor_power(struct v4l2_subdev *sd, int on)
 			//inactive mclk after stadby in
 			clk_disable(dev->csi_module_clk);
 			//reset on io
-			csi_gpio_write(sd,&dev->reset_io,CSI_RST_ON);
-			mdelay(10);
+			//csi_gpio_write(sd,&dev->reset_io,CSI_RST_ON);
+			//mdelay(10);
 			break;
 		case CSI_SUBDEV_STBY_OFF:
 			csi_dev_dbg("CSI_SUBDEV_STBY_OFF\n");
@@ -1550,12 +1550,12 @@ static int sensor_power(struct v4l2_subdev *sd, int on)
 			csi_gpio_write(sd,&dev->standby_io,CSI_STBY_OFF);
 			mdelay(10);
 			//reset off io
-			csi_gpio_write(sd,&dev->reset_io,CSI_RST_OFF);
-			mdelay(10);
-			csi_gpio_write(sd,&dev->reset_io,CSI_RST_ON);
-			mdelay(10);
-			csi_gpio_write(sd,&dev->reset_io,CSI_RST_OFF);
-			mdelay(10);
+			//csi_gpio_write(sd,&dev->reset_io,CSI_RST_OFF);
+			//mdelay(10);
+			//csi_gpio_write(sd,&dev->reset_io,CSI_RST_ON);
+			//mdelay(10);
+			//csi_gpio_write(sd,&dev->reset_io,CSI_RST_OFF);
+			//mdelay(10);
 			break;
 		case CSI_SUBDEV_PWR_ON:
 			csi_dev_dbg("CSI_SUBDEV_PWR_ON\n");
@@ -2193,7 +2193,8 @@ static int sensor_s_parm(struct v4l2_subdev *sd, struct v4l2_streamparm *parms)
 //	tpf->denominator = sensor_FRAME_RATE/div;
 //	
 //	sensor_write(sd, REG_CLKRC, info->clkrc);
-	return -EINVAL;
+	//return -EINVAL;
+	return 0;
 }
 
 

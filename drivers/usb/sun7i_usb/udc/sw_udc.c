@@ -71,6 +71,7 @@ static u32 is_controller_alive = 0;
 static u8 is_udc_enable = 0;   /* is udc enable by gadget? */
 
 #ifdef CONFIG_USB_SW_SUN7I_USB0_OTG
+extern __u32 thread_suspend_flag;
 static struct platform_device *g_udc_pdev = NULL;
 #endif
 
@@ -758,18 +759,19 @@ static int dma_read_fifo(struct sw_udc_ep *ep, struct sw_udc_request *req)
 */
 static int sw_udc_read_fifo(struct sw_udc_ep *ep, struct sw_udc_request *req)
 {
-	u32			idx 		= 0;
+	/*u32			idx 		= 0;
 	u8		old_ep_index 	= 0;
 	int 		fifo_count	= 0;
 	idx = ep->bEndpointAddress & 0x7F;
 
-    /* select ep */
 	old_ep_index = USBC_GetActiveEp(g_sw_udc_io.usb_bsp_hdle);
 	USBC_SelectActiveEp(g_sw_udc_io.usb_bsp_hdle, idx);
 
 	fifo_count = sw_udc_fifo_count_out(g_sw_udc_io.usb_bsp_hdle, idx);
-	USBC_SelectActiveEp(g_sw_udc_io.usb_bsp_hdle, old_ep_index);    
-	if(is_sw_udc_dma_capable(req, ep) && (fifo_count >= ep->ep.maxpacket)){
+	USBC_SelectActiveEp(g_sw_udc_io.usb_bsp_hdle, old_ep_index);  
+	printk("req = %d , act = %d, fifo_count = %d\n", req->req.length, req->req.actual, fifo_count);*/
+	if(is_sw_udc_dma_capable(req, ep)){
+	    /*if(fifo_count < ep->ep.maxpacket)*/	        
 		return dma_read_fifo(ep, req);
 	}else{
 		return pio_read_fifo(ep, req);
@@ -1675,9 +1677,9 @@ static irqreturn_t sw_udc_irq(int dummy, void *_dev)
 
 		if(dev->gadget.speed != USB_SPEED_UNKNOWN){
 			usb_connect = 0;
-			if (dev->driver && dev->driver->disconnect) {
+			/*if (dev->driver && dev->driver->disconnect) {
                 dev->driver->disconnect(&dev->gadget);
-            }
+            }*/
 		}else{
 			DMSG_INFO_UDC("ERR: usb speed is unkown\n");
 		}
@@ -3542,7 +3544,7 @@ static int sw_udc_suspend(struct platform_device *pdev, pm_message_t message)
 	struct sw_udc *udc = platform_get_drvdata(pdev);
 
     DMSG_INFO_UDC("sw_udc_suspend start\n");
-
+    thread_suspend_flag = 1;
 	if(!is_peripheral_active()){
 		DMSG_INFO_UDC("udc is disable, need not enter to suspend\n");
 		return 0;
@@ -3597,7 +3599,7 @@ static int sw_udc_resume(struct platform_device *pdev)
 	struct sw_udc *udc = platform_get_drvdata(pdev);
 
     DMSG_INFO_UDC("sw_udc_resume start\n");
-
+    thread_suspend_flag = 0;
 	if(!is_peripheral_active()){
 		DMSG_INFO_UDC("udc is disable, need not enter to resume\n");
 		return 0;

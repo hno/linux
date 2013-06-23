@@ -30,7 +30,7 @@
 
 #define SW_VE_MEM_SIZE                 (SZ_64M + SZ_16M)
 #define SW_G2D_MEM_SIZE                0x01000000 /* SZ_16M */
-#define SW_FB_MEM_SIZE                 0x01000000 /* SZ_16M */
+#define SW_FB_MEM_SIZE                 0x02000000 /* SZ_32M */
 #define SW_GPU_MEM_SIZE                0x04000000 /* SZ_64M */
 
 #define SUPER_STANDBY_SIZE             0x00010000 /* SZ_64K */

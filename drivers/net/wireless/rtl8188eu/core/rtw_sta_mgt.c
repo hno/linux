@@ -436,7 +436,7 @@ _func_enter_;
 	
 exit:
 
-_func_exit_;	
+_func_exit_;
 
 	return psta;
 
@@ -566,7 +566,7 @@ _func_enter_;
 		_exit_critical_bh(&ppending_recvframe_queue->lock, &irqL);
 		
 	}
-	DBG_871X("%s\n",__FUNCTION__);
+
 	if (!(psta->state & WIFI_AP_STATE))
 		rtw_hal_set_odm_var(padapter, HAL_ODM_STA_INFO, psta, _FALSE);
 			
@@ -622,7 +622,7 @@ _func_enter_;
 	rtw_list_insert_tail(&psta->list, get_list_head(pfree_sta_queue));
 	_exit_critical_bh(&(pfree_sta_queue->lock), &irqL0);
 
-exit:	
+exit:
 	
 _func_exit_;	
 

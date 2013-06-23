@@ -691,6 +691,11 @@ BOOLEAN HalDetectPwrDownMode88E(PADAPTER Adapter);
 #ifdef CONFIG_WOWLAN
 void Hal_DetectWoWMode(PADAPTER pAdapter);
 #endif //CONFIG_WOWLAN
+
+#ifdef CONFIG_RF_GAIN_OFFSET
+void Hal_ReadRFGainOffset(PADAPTER pAdapter,u8* hwinfo,BOOLEAN AutoLoadFail);
+#endif //CONFIG_RF_GAIN_OFFSET
+
 //RT_CHANNEL_DOMAIN rtl8723a_HalMapChannelPlan(PADAPTER padapter, u8 HalChannelPlan);
 //VERSION_8192C rtl8723a_ReadChipVersion(PADAPTER padapter);
 //void rtl8723a_ReadBluetoothCoexistInfo(PADAPTER padapter, u8 *PROMContent, BOOLEAN AutoloadFail);

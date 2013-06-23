@@ -121,7 +121,7 @@ u32 __waitdone_normal(void)
 
 u32 __dtc_normal(void)
 {
-	u32 	uret = 0, tmp = 0;
+	u32 	uret = 0/* , tmp = 0 */;
 	void 	*src_vaddr = NULL, *dst_vaddr = NULL;
 	u32 	src_paddr = 0, dst_paddr = 0;
 	dma_hdl_t dma_hdl = (dma_hdl_t)NULL;

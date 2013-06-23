@@ -106,11 +106,11 @@
 #define PD_INT_REG         	(0xa0)
 
 //CCM register
-#define CCM_BASE           	0x01c20000
+#define CCM_BASE            SW_PA_CCM_IO_BASE
 #define CCM_AHB_GATING_REG0	(0x60)
 
 //SRAMC register
-#define SRAMC_BASE		0x01c00000
+#define SRAMC_BASE          SW_PA_SRAM_IO_BASE
 #define SRAMC_CFG_REG		(0x04)
 
 /*****************registers define******************/

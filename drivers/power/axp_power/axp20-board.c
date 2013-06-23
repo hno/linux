@@ -341,56 +341,6 @@ static int axp_script_parser_fetch(char *main, char *sub, u32 *val, u32 size)
 static int __init axp_board_init(void)
 {
 		int ret;
-#if 0
-//Kyle added for fpga debug
-		 pmu_used = 1;
-		 pmu_twi_addr = 0x34;
-		 pmu_twi_id = 1;
-		 pmu_irq_id = 32;
-		 pmu_battery_rdc          = 100;
-		 pmu_battery_cap          = 2600;
-		 pmu_init_chgcur          = 300;
-		// pmu_earlysuspend_chgcur  = 600;
-		 pmu_suspend_chgcur       = 1000;
-		 pmu_resume_chgcur        = 300;
-		 pmu_shutdown_chgcur      = 1000;
-		 pmu_init_chgvol          = 4200;
-		 pmu_init_chgend_rate     = 15;
-		 pmu_init_chg_enabled     = 1;
-		 pmu_init_adc_freq        = 100;
-		 pmu_init_adc_freqc       = 100;
-		 pmu_init_chg_pretime     = 50;
-		 pmu_init_chg_csttime     = 720;
-
-		 pmu_bat_para1            = 0;
-		 pmu_bat_para2            = 0;
-		 pmu_bat_para3            = 0;
-		 pmu_bat_para4            = 0;
-		 pmu_bat_para5            = 5;
-		 pmu_bat_para6            = 13;
-		 pmu_bat_para7            = 16;
-		 pmu_bat_para8            = 26;
-		 pmu_bat_para9            = 36;
-		 pmu_bat_para10           = 46;
-		 pmu_bat_para11           = 53;
-		 pmu_bat_para12           = 61;
-		 pmu_bat_para13           = 73;
-		 pmu_bat_para14           = 84;
-		 pmu_bat_para15           = 92;
-		 pmu_bat_para16           = 100;
-
-		 pmu_usbvol_limit         = 1;
-		 pmu_usbcur_limit         = 0;
-		 pmu_usbvol               = 4000;
-		 pmu_usbcur               = 0;
-
-	  //   pmu_usbvol_pc            = 4000;
-	//	 pmu_usbcur_pc            = 0;
-
-		 pmu_pwroff_vol           = 3300;
-		 pmu_pwron_vol            = 2900;
-#else
-
 ret = axp_script_parser_fetch("pmu_para", "pmu_used", &pmu_used, sizeof(int));
 if (ret)
 {
@@ -710,8 +660,6 @@ if (pmu_used)
         pmu_pekon_time = 1000;
     }     
 }
-#endif
-
     if (pmu_used)
     {   
        

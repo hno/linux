@@ -66,6 +66,9 @@
 #define CONFIG_SW_SYSMEM_RESERVED_BASE 0x43000000
 #define CONFIG_SW_SYSMEM_RESERVED_SIZE 75776
 
+#define VE_CLK_HIGH_WATER  (500)//400MHz
+#define VE_CLK_LOW_WATER   (100) //160MHz
+
 int g_dev_major = CEDARDEV_MAJOR;
 int g_dev_minor = CEDARDEV_MINOR;
 module_param(g_dev_major, int, S_IRUGO);//S_IRUGO represent that g_dev_major can be read,but canot be write
@@ -80,7 +83,7 @@ struct clk *dram_veclk = NULL;
 struct clk *avs_moduleclk = NULL;
 struct clk *hosc_clk = NULL;
 
-static unsigned long pll4clk_rate = 720000000;
+static unsigned long pll4clk_rate = 300000000;
 
 extern unsigned long ve_start;
 extern unsigned long ve_size;
@@ -569,6 +572,7 @@ long cedardev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	case IOCTL_SET_VE_FREQ:
 	{
 		int arg_rate = (int)arg;
+#if 0
 		if(arg_rate >= 320)
 			clk_set_rate(ve_moduleclk, pll4clk_rate/3); //ve_moduleclk rate is 320khz
 		else if((arg_rate >= 240) && (arg_rate < 320))
@@ -577,6 +581,23 @@ long cedardev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			clk_set_rate(ve_moduleclk, pll4clk_rate/6); //ve_moduleclk rate is 160khz
 		else
 			printk("IOCTL_SET_VE_FREQ set ve freq error,%s,%d\n", __func__, __LINE__);
+#else
+		if(arg_rate >= VE_CLK_LOW_WATER &&
+				arg_rate <= VE_CLK_HIGH_WATER &&
+				clk_get_rate(ve_moduleclk)/1000000 != arg_rate) {
+			if(!clk_set_rate(ve_pll4clk, arg_rate*1000000)) {
+				pll4clk_rate = clk_get_rate(ve_pll4clk);
+				if(clk_set_rate(ve_moduleclk, pll4clk_rate)) {
+					printk("set ve clock failed\n");
+				}
+
+			} else {
+				printk("set pll4 clock failed\n");
+			}
+		}
+		ret = clk_get_rate(ve_moduleclk);
+		//printk("pll4 clk %lu, ve clk %ld\n", clk_get_rate(ve_pll4clk), ret);
+#endif
 		break;
 	}
 
@@ -928,7 +949,7 @@ static int __init cedardev_init(void)
 		return -EFAULT;
 	}
 	/* default the ve freq to 160M by lys 2011-12-23 15:25:34 */
-	clk_set_rate(ve_moduleclk, pll4clk_rate/6);
+	clk_set_rate(ve_moduleclk, pll4clk_rate);
 	/* geting dram clk for ve! */
 	dram_veclk = clk_get(NULL, CLK_DRAM_VE);
 	if(!dram_veclk || IS_ERR(dram_veclk)){

@@ -1399,12 +1399,13 @@ _func_enter_;
 			#ifdef DBG_RX_DROP_FRAME
 			DBG_871X("DBG_RX_DROP_FRAME %s BSSID="MAC_FMT", mybssid="MAC_FMT"\n",
 				__FUNCTION__, MAC_ARG(pattrib->bssid), MAC_ARG(mybssid));
+			DBG_871X( "this adapter = %d, buddy adapter = %d\n", adapter->adapter_type, adapter->pbuddy_adapter->adapter_type );
 			#endif
 
 			if(!bmcast)
 			{
 				DBG_871X("issue_deauth to the nonassociated ap=" MAC_FMT " for the reason(7)\n", MAC_ARG(pattrib->bssid));
-				issue_deauth(adapter, pattrib->bssid, WLAN_REASON_CLASS3_FRAME_FROM_NONASSOC_STA, _FALSE);	
+				issue_deauth(adapter, pattrib->bssid, WLAN_REASON_CLASS3_FRAME_FROM_NONASSOC_STA);
 			}
 
 			ret= _FAIL;
@@ -1476,7 +1477,7 @@ _func_enter_;
 			{
 				DBG_871X("issue_deauth to the ap=" MAC_FMT " for the reason(7)\n", MAC_ARG(pattrib->bssid));
 	
-				issue_deauth(adapter, pattrib->bssid, WLAN_REASON_CLASS3_FRAME_FROM_NONASSOC_STA, _FALSE);				
+				issue_deauth(adapter, pattrib->bssid, WLAN_REASON_CLASS3_FRAME_FROM_NONASSOC_STA);
 			}
 		}	
 	
@@ -1525,11 +1526,11 @@ _func_enter_;
 		if (*psta == NULL)
 		{
 			RT_TRACE(_module_rtl871x_recv_c_,_drv_err_,("can't get psta under AP_MODE; drop pkt\n"));
-			DBG_871X("issue_deauth to sta=" MAC_FMT "for the reason(7)\n", MAC_ARG(pattrib->src));
+			DBG_871X("issue_deauth to sta=" MAC_FMT " for the reason(7)\n", MAC_ARG(pattrib->src));
 
-			issue_deauth(adapter, pattrib->src, WLAN_REASON_CLASS3_FRAME_FROM_NONASSOC_STA, _FALSE);
+			issue_deauth(adapter, pattrib->src, WLAN_REASON_CLASS3_FRAME_FROM_NONASSOC_STA);
 
-			ret= _FAIL;
+			ret = RTW_RX_HANDLED;
 			goto exit;
 		}
 
@@ -1545,6 +1546,17 @@ _func_enter_;
 			ret = RTW_RX_HANDLED;
 			goto exit;
 		}
+	}
+	else {
+		u8 *myhwaddr = myid(&adapter->eeprompriv);
+		if (!_rtw_memcmp(pattrib->ra, myhwaddr, ETH_ALEN)) {
+			ret = RTW_RX_HANDLED;
+			goto exit;
+		}
+		DBG_871X("issue_deauth to sta=" MAC_FMT " for the reason(7)\n", MAC_ARG(pattrib->src));
+		issue_deauth(adapter, pattrib->src, WLAN_REASON_CLASS3_FRAME_FROM_NONASSOC_STA);
+		ret = RTW_RX_HANDLED;
+		goto exit;
 	}
 
 exit:
@@ -1737,18 +1749,33 @@ sint validate_recv_mgnt_frame(PADAPTER padapter, union recv_frame *precv_frame)
 	}
 #endif
 
-	{
-		//for rx pkt statistics
-		struct sta_info *psta = rtw_get_stainfo(&padapter->stapriv, GetAddr2Ptr(precv_frame->u.hdr.rx_data));
-		if(psta)
-			psta->sta_stats.rx_mgnt_pkts++;
-	}
-
 	precv_frame = recvframe_chk_defrag(padapter, precv_frame);
 	if (precv_frame == NULL) {
 		RT_TRACE(_module_rtl871x_recv_c_, _drv_notice_,("%s: fragment packet\n",__FUNCTION__));
 		return _SUCCESS;
 	}
+
+	{
+		//for rx pkt statistics
+		struct sta_info *psta = rtw_get_stainfo(&padapter->stapriv, GetAddr2Ptr(precv_frame->u.hdr.rx_data));
+		if (psta) {
+			psta->sta_stats.rx_mgnt_pkts++;
+			if (GetFrameSubType(precv_frame->u.hdr.rx_data) == WIFI_BEACON)
+				psta->sta_stats.rx_beacon_pkts++;
+			else if (GetFrameSubType(precv_frame->u.hdr.rx_data) == WIFI_PROBEREQ)
+				psta->sta_stats.rx_probereq_pkts++;
+			else if (GetFrameSubType(precv_frame->u.hdr.rx_data) == WIFI_PROBERSP) {
+				if (_rtw_memcmp(padapter->eeprompriv.mac_addr, GetAddr1Ptr(precv_frame->u.hdr.rx_data), ETH_ALEN) == _TRUE)
+					psta->sta_stats.rx_probersp_pkts++;
+				else if (is_broadcast_mac_addr(GetAddr1Ptr(precv_frame->u.hdr.rx_data))
+					|| is_multicast_mac_addr(GetAddr1Ptr(precv_frame->u.hdr.rx_data)))
+					psta->sta_stats.rx_probersp_bm_pkts++;
+				else 
+					psta->sta_stats.rx_probersp_uo_pkts++;
+			}
+		}
+	}
+
 #ifdef CONFIG_INTEL_PROXIM
 	if(padapter->proximity.proxim_on==_TRUE)
 	{
@@ -2011,7 +2038,7 @@ _func_enter_;
 
 #ifdef CONFIG_FIND_BEST_CHANNEL
 	if (pmlmeext->sitesurvey_res.state == SCAN_PROCESS) {
-		int ch_set_idx = rtw_ch_set_search_ch(pmlmeext->channel_set, pmlmeext->oper_channel);
+		int ch_set_idx = rtw_ch_set_search_ch(pmlmeext->channel_set, rtw_get_oper_ch(adapter));
 		if (ch_set_idx >= 0)
 			pmlmeext->channel_set[ch_set_idx].rx_count++;
 	}
@@ -2023,17 +2050,20 @@ _func_enter_;
 	}
 #endif //CONFIG_TDLS
 
-#if 0
-DBG_871X("\n");
-{
-	int i;
-	for(i=0; i<64;i=i+8)
-		DBG_871X("%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:", *(ptr+i),
-		*(ptr+i+1), *(ptr+i+2) ,*(ptr+i+3) ,*(ptr+i+4),*(ptr+i+5), *(ptr+i+6), *(ptr+i+7));
+#ifdef RTK_DMP_PLATFORM
+	if ( 0 )
+	{
+		DBG_871X("++\n");
+		{
+			int i;
+			for(i=0; i<64;i=i+8)
+				DBG_871X("%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:", *(ptr+i),
+				*(ptr+i+1), *(ptr+i+2) ,*(ptr+i+3) ,*(ptr+i+4),*(ptr+i+5), *(ptr+i+6), *(ptr+i+7));
 
-}
-DBG_871X("\n");
-#endif
+		}
+		DBG_871X("--\n");
+	}
+#endif //RTK_DMP_PLATFORM
 
 	//add version chk
 	if(ver!=0){
@@ -3886,6 +3916,22 @@ int recv_func_posthandle(_adapter *padapter, union recv_frame *prframe)
 		ret = _FAIL;
 		goto _recv_data_drop;
 	}
+
+#if 0
+	if ( padapter->adapter_type == PRIMARY_ADAPTER )
+	{
+		DBG_871X("+++\n");
+		{
+			int i;
+			u8	*ptr = get_recvframe_data(prframe);
+			for(i=0; i<140;i=i+8)
+				DBG_871X("%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:", *(ptr+i),
+				*(ptr+i+1), *(ptr+i+2) ,*(ptr+i+3) ,*(ptr+i+4),*(ptr+i+5), *(ptr+i+6), *(ptr+i+7));
+
+		}
+		DBG_871X("---\n");
+	}
+#endif
 
 #ifdef CONFIG_TDLS
 	//check TDLS frame

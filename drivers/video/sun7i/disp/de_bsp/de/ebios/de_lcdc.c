@@ -248,6 +248,7 @@ __u32 tcon0_cfg(__u32 sel, __panel_para_t * info)
 	switch(info->lcd_if)
 	{
 		case LCDC_LCDIF_HV:
+                case LCDC_LCDIF_HV2DSI:
 			lcd_if_reg = 0;
 			break;
 		case LCDC_LCDIF_CPU:
@@ -287,7 +288,7 @@ __u32 tcon0_cfg(__u32 sel, __panel_para_t * info)
 
 	LCDC_WUINT32(sel, LCDC_BASIC2_OFF,(info->lcd_vt <<16) | (info->lcd_vbp-1));
 
-	if(info->lcd_if == LCDC_LCDIF_HV)
+	if(info->lcd_if == LCDC_LCDIF_HV || info->lcd_if == LCDC_LCDIF_HV2DSI)
 	{
 	        __u32 hspw_tmp = info->lcd_hspw;
 		__u32 vspw_tmp = info->lcd_vspw;

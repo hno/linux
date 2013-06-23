@@ -51,6 +51,8 @@ typedef struct usb_scan_info{
 
     u32                     device_insmod_delay;    /* debounce time            */
     u32                     host_insmod_delay;    	/* debounce time            */
+
+    u32                     ac_enable;
 }usb_scan_info_t;
 
 void usb_hw_scan(struct usb_cfg *cfg);

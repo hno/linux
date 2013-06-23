@@ -371,27 +371,6 @@ typedef struct _MPT_CONTEXT
 #endif
 //#endif
 
-/* E-Fuse */
-#ifdef CONFIG_RTL8192D
-#define EFUSE_MAP_SIZE		256
-#endif
-#ifdef CONFIG_RTL8192C
-#define EFUSE_MAP_SIZE		128
-#endif
-#ifdef CONFIG_RTL8723A
-#define EFUSE_MAP_SIZE		256
-#endif
-#ifdef CONFIG_RTL8188E
-#define EFUSE_MAP_SIZE		512
-#endif
-
-#ifdef CONFIG_RTL8188E
-#define EFUSE_MAX_SIZE		256
-#else
-#define EFUSE_MAX_SIZE		512
-#endif
-/* end of E-Fuse */
-
 //#define RTPRIV_IOCTL_MP 					( SIOCIWFIRSTPRIV + 0x17)
 enum {	  
 	WRITE_REG = 1,

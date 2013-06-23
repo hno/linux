@@ -33,6 +33,7 @@
 #include <linux/mutex.h>
 #include <mach/clock.h>
 #include <mach/sys_config.h>
+#include <linux/dma-mapping.h>
 #include <mach/dma.h>
 #include <linux/wait.h>
 #include <linux/sched.h>
@@ -44,6 +45,14 @@
 static struct clk *ahb_nand_clk = NULL;
 static struct clk *mod_nand_clk = NULL;
 
+static __u32 NAND_DMASingleMap(__u32 rw, __u32 buff_addr, __u32 len);
+static __u32 NAND_DMASingleUnmap(__u32 rw, __u32 buff_addr, __u32 len);
+
+static __u32 dma_phy_address = 0;
+static __u32 dma_len_temp = 0;
+static __u32 rw_flag = 0x1234;
+#define NAND_READ 0x5555
+#define NAND_WRITE 0xAAAA
 
 static DECLARE_WAIT_QUEUE_HEAD(DMA_wait);
 dma_hdl_t dma_hdle = (dma_hdl_t)NULL;
@@ -153,7 +162,21 @@ void nanddma_buffdone(dma_hdl_t dma_hdle, void *parg)
 
 __s32 NAND_WaitDmaFinish(void)
 {
-	 wait_event(DMA_wait, nanddma_completed_flag);
+	__u32 rw;
+	__u32 buff_addr;
+	__u32 len;
+	
+	wait_event(DMA_wait, nanddma_completed_flag);
+
+	if(rw_flag==(__u32)NAND_READ)
+		rw = 0;
+	else
+		rw = 1;
+	buff_addr = dma_phy_address;
+	len = dma_len_temp;
+	NAND_DMASingleUnmap(rw, buff_addr, len);
+
+	rw_flag = 0x1234;
 	
     return 0;
 }
@@ -230,7 +253,10 @@ __s32  NAND_ReleaseDMA(void)
 
 void eLIBs_CleanFlushDCacheRegion_nand(void *adr, size_t bytes)
 {
-	__cpuc_flush_dcache_area(adr, bytes + (1 << 5) * 2 - 2);
+    /* Removes cache line align operation, which have been done
+     * in __cpuc_flush_dcache_area function.
+     */
+	__cpuc_flush_dcache_area(adr, bytes/*  + (1 << 5) * 2 - 2 */);
 }
 
 
@@ -238,6 +264,40 @@ int NAND_QueryDmaStat(void)
 {
 	return 0;
 }
+
+__u32 NAND_DMASingleMap(__u32 rw, __u32 buff_addr, __u32 len)
+{
+    __u32 mem_addr;
+    
+    if (rw == 1) 
+    {
+	    mem_addr = (__u32)dma_map_single(NULL, (void *)buff_addr, len, DMA_TO_DEVICE);
+	} 
+	else 
+    {
+	    mem_addr = (__u32)dma_map_single(NULL, (void *)buff_addr, len, DMA_FROM_DEVICE);
+	}
+
+	return mem_addr;
+}
+
+
+__u32 NAND_DMASingleUnmap(__u32 rw, __u32 buff_addr, __u32 len)
+{
+	__u32 mem_addr = buff_addr;
+
+	if (rw == 1) 
+	{
+	    dma_unmap_single(NULL, (dma_addr_t)mem_addr, len, DMA_TO_DEVICE);
+	} 
+	else 
+	{
+	    dma_unmap_single(NULL, (dma_addr_t)mem_addr, len, DMA_FROM_DEVICE);
+	}
+	
+}
+
+
 
 void NAND_DMAConfigStart(int rw, unsigned int buff_addr, int len)
 {
@@ -301,10 +361,15 @@ void NAND_DMAConfigStart(int rw, unsigned int buff_addr, int len)
 //enqueue buf
 	if(rw == 0)//read
 	{
-		eLIBs_CleanFlushDCacheRegion_nand((void *)buff_addr, (size_t)len);
+		//eLIBs_CleanFlushDCacheRegion_nand((void *)buff_addr, (size_t)len);
 	
-		buff_phy_addr = virt_to_phys(buff_addr);
-
+		//buff_phy_addr = virt_to_phys(buff_addr);
+		buff_phy_addr = NAND_DMASingleMap( rw,  buff_addr, len);
+		if(rw_flag != 0x1234)
+			printk("[NAND DMA ERR] rw_flag != 0x1234\n");
+		rw_flag =(__u32)NAND_READ;
+		dma_phy_address = buff_phy_addr;
+		dma_len_temp = len;
 		/* enqueue  buf */
   //      printk("%s:%d: buff_addr=%x,len= %d\n",__FUNCTION__,__LINE__,buff_addr,len);
 //		printk("%s:%d: buff_phy_addr=%x,len= %d\n",__FUNCTION__,__LINE__,buff_phy_addr,len);
@@ -316,10 +381,15 @@ void NAND_DMAConfigStart(int rw, unsigned int buff_addr, int len)
 	}
 	else//write
 	{
-		eLIBs_CleanFlushDCacheRegion_nand((void *)buff_addr, (size_t)len);
+		//eLIBs_CleanFlushDCacheRegion_nand((void *)buff_addr, (size_t)len);
 
-		buff_phy_addr = virt_to_phys(buff_addr);
-
+		//buff_phy_addr = virt_to_phys(buff_addr);
+		buff_phy_addr = NAND_DMASingleMap( rw,  buff_addr, len);
+		if(rw_flag != 0x1234)
+			printk("[NAND DMA ERR] rw_flag != 0x1234\n");
+		rw_flag = (__u32)NAND_WRITE;
+		dma_phy_address = buff_phy_addr;
+		dma_len_temp = len;
 		/* enqueue  buf */
 		if(0 != sw_dma_enqueue(dma_hdle, buff_phy_addr, 0x01c03030, len))
 		{
@@ -466,8 +536,11 @@ void NAND_PIORequest(void)
 			goto end;
 	/* ÅäÖÃgpio list */
 	if(0 != sw_gpio_setall_range(&list[0].gpio, cnt))
+	{
 		printk("sw_gpio_setall_range failed\n");
-     return;
+		goto end;
+	}
+	return;
 end:
     printk("nand:gpio_request failed\n");
 	/* ÊÍ·Ågpio */

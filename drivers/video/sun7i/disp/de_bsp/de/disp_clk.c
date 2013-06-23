@@ -674,7 +674,7 @@ static __s32 LCD_PLL_Calc(__u32 sel, __panel_para_t * info, __u32 *divider)
 	__s32 pll_freq = -1;
 	
 	lcd_dclk_freq = info->lcd_dclk_freq * 1000000;
-	if (info->lcd_if == 0 || info->lcd_if == 1 ||info->lcd_if == 2)// hv panel , CPU panel and	ttl panel
+	if (info->lcd_if == LCD_IF_HV || info->lcd_if == LCD_IF_CPU || info->lcd_if == LCD_IF_HV2DSI)// hv panel , CPU panel 
 	{
 		if (lcd_dclk_freq > 2000000 && lcd_dclk_freq <= 297000000) //MHz 
 		{
@@ -687,7 +687,7 @@ static __s32 LCD_PLL_Calc(__u32 sel, __panel_para_t * info, __u32 *divider)
 		}
 		
 	}
-	else if(info->lcd_if == 3) // lvds panel
+	else if(info->lcd_if == LCD_IF_LVDS) // lvds panel
 	{
 	    __u32 clk_max;
 
@@ -1196,10 +1196,6 @@ __s32 BSP_disp_clk_off(__u32 type)
     	{
     		OSAL_CCMU_MclkOnOff(h_lcd1ch1mclk1, CLK_OFF);
     		OSAL_CCMU_MclkOnOff(h_lcd1ch1mclk2, CLK_OFF);
-    	}
-    	if((g_clk_status & CLK_HDMI_MOD_ON) == CLK_HDMI_MOD_ON)
-    	{
-    		OSAL_CCMU_MclkOnOff(h_hdmimclk, CLK_OFF);
     	}
     }
 
