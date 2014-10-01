@@ -64,9 +64,7 @@ struct pinctrl_gpio_range {
 /**
  * struct pinctrl_ops - global pin control operations, to be implemented by
  * pin controller drivers.
- * @list_groups: list the number of selectable named groups available
- *	in this pinmux driver, the core will begin on 0 and call this
- *	repeatedly as long as it returns >= 0 to enumerate the groups
+ * @get_groups_count: Returns the count of total number of groups registered.
  * @get_group_name: return the group name of the pin group
  * @get_group_pins: return an array of pins corresponding to a certain
  *	group selector @pins, and the size of the array in @num_pins
@@ -74,7 +72,7 @@ struct pinctrl_gpio_range {
  *	info for a certain pin in debugfs
  */
 struct pinctrl_ops {
-	int (*list_groups) (struct pinctrl_dev *pctldev, unsigned selector);
+	int (*get_groups_count) (struct pinctrl_dev *pctldev);
 	const char *(*get_group_name) (struct pinctrl_dev *pctldev,
 				       unsigned selector);
 	int (*get_group_pins) (struct pinctrl_dev *pctldev,
@@ -119,7 +117,10 @@ extern void pinctrl_add_gpio_range(struct pinctrl_dev *pctldev,
 				struct pinctrl_gpio_range *range);
 extern void pinctrl_remove_gpio_range(struct pinctrl_dev *pctldev,
 				struct pinctrl_gpio_range *range);
+extern struct pinctrl_dev *pinctrl_find_and_add_gpio_range(const char *devname,
+		struct pinctrl_gpio_range *range);
 extern const char *pinctrl_dev_get_name(struct pinctrl_dev *pctldev);
+extern const char *pinctrl_dev_get_devname(struct pinctrl_dev *pctldev);
 extern void *pinctrl_dev_get_drvdata(struct pinctrl_dev *pctldev);
 #else
 

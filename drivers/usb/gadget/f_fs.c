@@ -1276,7 +1276,7 @@ static struct ffs_data *ffs_data_new(void)
 {
 	struct ffs_data *ffs = kzalloc(sizeof *ffs, GFP_KERNEL);
 	if (unlikely(!ffs))
-		return 0;
+		return NULL;
 
 	ENTER();
 
@@ -1473,7 +1473,21 @@ static int functionfs_bind_config(struct usb_composite_dev *cdev,
 
 static void ffs_func_free(struct ffs_function *func)
 {
+	struct ffs_ep *ep         = func->eps;
+	unsigned count            = func->ffs->eps_count;
+	unsigned long flags;
+
 	ENTER();
+
+	/* cleanup after autoconfig */
+	spin_lock_irqsave(&func->ffs->eps_lock, flags);
+	do {
+		if (ep->ep && ep->req)
+			usb_ep_free_request(ep->ep, ep->req);
+		ep->req = NULL;
+		++ep;
+	} while (--count);
+	spin_unlock_irqrestore(&func->ffs->eps_lock, flags);
 
 	ffs_data_put(func->ffs);
 

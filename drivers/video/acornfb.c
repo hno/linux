@@ -150,7 +150,7 @@ acornfb_valid_pixrate(struct fb_var_screeninfo *var)
 
 	for (i = 0; i < ARRAY_SIZE(arc_clocks); i++)
 		if (pixclock > arc_clocks[i].min_clock &&
-		    pixclock < arc_clocks[i].max_clock)
+			pixclock < arc_clocks[i].max_clock)
 			return arc_clocks + i;
 
 	return NULL;

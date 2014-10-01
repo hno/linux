@@ -452,7 +452,7 @@ static int rts51x_check_status(struct us_data *us, u8 lun)
 {
 	struct rts51x_chip *chip = (struct rts51x_chip *)(us->extra);
 	int retval;
-	u8 buf[16];
+	u8 buf[16]={0};  //kill warning 2014/1/20
 
 	retval = rts51x_read_status(us, lun, buf, 16, &(chip->status_len));
 	if (retval < 0)
@@ -629,6 +629,7 @@ static int config_autodelink_after_power_on(struct us_data *us)
 	return 0;
 }
 
+#ifdef CONFIG_PM
 static int config_autodelink_before_power_down(struct us_data *us)
 {
 	struct rts51x_chip *chip = (struct rts51x_chip *)(us->extra);
@@ -727,6 +728,7 @@ static void fw5895_init(struct us_data *us)
 
 	US_DEBUGP("%s: --->\n", __func__);
 }
+#endif
 
 #ifdef CONFIG_REALTEK_AUTOPM
 static void fw5895_set_mmc_wp(struct us_data *us)

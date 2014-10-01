@@ -50,6 +50,11 @@
 #define gadget_is_s3c2410(g)		(!strcmp("s3c2410_udc", (g)->name))
 #define gadget_is_s3c_hsotg(g)		(!strcmp("s3c-hsotg", (g)->name))
 #define gadget_is_s3c_hsudc(g)		(!strcmp("s3c-hsudc", (g)->name))
+#ifdef CONFIG_ARCH_SUN9IW1
+#define gadget_is_sunxi(g)		(!strcmp("sunxi-gadget", (g)->name))
+#else
+#define gadget_is_softwinner_otg(g)    (!strcmp("sunxi_usb_udc", (g)->name))
+#endif
 
 /**
  * usb_gadget_controller_number - support bcdDevice id convention
@@ -118,7 +123,13 @@ static inline int usb_gadget_controller_number(struct usb_gadget *gadget)
 		return 0x31;
 	else if (gadget_is_dwc3(gadget))
 		return 0x32;
-
+#ifdef CONFIG_ARCH_SUN9IW1
+	else if (gadget_is_sunxi(gadget))
+		return 0x33;
+#else
+	else if(gadget_is_softwinner_otg(gadget))
+		return 0x33;
+#endif
 	return -ENOENT;
 }
 

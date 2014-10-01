@@ -1,27 +1,9 @@
 /*
  * DHD Bus Module for SDIO
  *
- * Copyright (C) 1999-2013, Broadcom Corporation
- * 
- *      Unless you and Broadcom execute a separate written software license
- * agreement governing use of this software, this software is licensed to you
- * under the terms of the GNU General Public License version 2 (the "GPL"),
- * available at http://www.broadcom.com/licenses/GPLv2.php, with the
- * following added to such license:
- * 
- *      As a special exception, the copyright holders of this software give you
- * permission to link this software with independent modules, and to copy and
- * distribute the resulting executable under terms of your choice, provided that
- * you also meet, for each linked independent module, the terms and conditions of
- * the license of that module.  An independent module is a module which is not
- * derived from this software.  The special exception does not apply to any
- * modifications of the software.
- * 
- *      Notwithstanding the above, under no circumstances may you combine this
- * software in any way with any other Broadcom software provided under a license
- * other than the GPL, without Broadcom's express prior written consent.
+ * $Copyright Open Broadcom Corporation$
  *
- * $Id: dhd_sdio.c 392661 2013-03-22 23:17:02Z $
+ * $Id: dhd_sdio.c 419981 2013-08-23 19:49:45Z $
  */
 
 #include <typedefs.h>
@@ -65,6 +47,7 @@
 #include <dhd_dbg.h>
 #include <dhdioctl.h>
 #include <sdiovar.h>
+#include <dhd_config.h>
 
 bool dhd_mp_halting(dhd_pub_t *dhdp);
 extern void bcmsdh_waitfor_iodrain(void *sdh);
@@ -102,8 +85,14 @@ extern bool  bcmsdh_fatal_error(void *sdh);
 #error DHD_FIRSTREAD is not a power of 2!
 #endif
 
+#ifdef BCMSDIOH_TXGLOM
+/* Total length of TX frame header for dongle protocol */
+#define SDPCM_HDRLEN	(SDPCM_FRAMETAG_LEN + SDPCM_HWEXT_LEN + SDPCM_SWHEADER_LEN)
+/* Total length of RX frame for dongle protocol */
+#else
 /* Total length of TX frame header for dongle protocol */
 #define SDPCM_HDRLEN	(SDPCM_FRAMETAG_LEN + SDPCM_SWHEADER_LEN)
+#endif
 
 #define SDPCM_HDRLEN_RX	(SDPCM_FRAMETAG_LEN + SDPCM_SWHEADER_LEN)
 
@@ -157,6 +146,11 @@ extern void dhd_wlfc_txcomplete(dhd_pub_t *dhd, void *txp, bool success);
 extern void dhd_wlfc_trigger_pktcommit(dhd_pub_t *dhd);
 #endif
 
+#if defined(MULTIPLE_SUPPLICANT)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25))
+DEFINE_MUTEX(_dhd_sdio_mutex_lock_);
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25)) */
+#endif 
 
 #ifdef DHD_DEBUG
 /* Device console log buffer state */
@@ -356,6 +350,14 @@ typedef struct dhd_bus {
 	bool        reqbussleep;
 	uint32		resetinstr;
 	uint32		dongle_ram_base;
+#ifdef BCMSDIOH_TXGLOM
+	void		*glom_pkt_arr[SDPCM_MAXGLOM_SIZE];	/* Array of pkts for glomming */
+	uint16		glom_cnt;	/* Number of pkts in the glom array */
+	uint16		glom_total_len;	/* Total length of pkts in glom array */
+	bool		glom_enable;	/* Flag to indicate whether tx glom is enabled/disabled */
+	uint8		glom_mode;	/* Glom mode - 0-copy mode, 1 - Multi-descriptor mode */
+	uint32		glomsize;	/* Glom size limitation */
+#endif
 } dhd_bus_t;
 
 /* clkstate */
@@ -406,7 +408,7 @@ static uint mesbusyctrl = 80;
 #else
 static const uint watermark = 8;
 static const uint mesbusyctrl = 0;
-#endif 
+#endif
 static const uint firstread = DHD_FIRSTREAD;
 
 #define HDATLEN (firstread - (SDPCM_HDRLEN))
@@ -561,6 +563,10 @@ static int dhd_bcmsdh_recv_buf(dhd_bus_t *bus, uint32 addr, uint fn, uint flags,
 static int dhd_bcmsdh_send_buf(dhd_bus_t *bus, uint32 addr, uint fn, uint flags,
 	uint8 *buf, uint nbytes,
 	void *pkt, bcmsdh_cmplt_fn_t complete, void *handle);
+#ifdef BCMSDIOH_TXGLOM
+static void dhd_bcmsdh_glom_post(dhd_bus_t *bus, uint8 *frame, void *pkt, uint len);
+static void dhd_bcmsdh_glom_clear(dhd_bus_t *bus);
+#endif
 
 static bool dhdsdio_download_firmware(dhd_bus_t *bus, osl_t *osh, void *sdh);
 static int _dhdsdio_download_firmware(dhd_bus_t *bus);
@@ -676,9 +682,11 @@ dhdsdio_sr_cap(dhd_bus_t *bus)
 			data = SI_ENUM_BASE + OFFSETOF(chipcregs_t, chipcontrol_data);
 			bcmsdh_reg_write(bus->sdh, addr, 4, 3);
 			core_capext = bcmsdh_reg_read(bus->sdh, data, 4);
-	} else if (bus->sih->chip == BCM4330_CHIP_ID) {
+	} else if ((bus->sih->chip == BCM4330_CHIP_ID) ||
+		(bus->sih->chip == BCM43362_CHIP_ID)) {
 			core_capext = FALSE;
 	} else if ((bus->sih->chip == BCM4335_CHIP_ID) ||
+		(bus->sih->chip == BCM4339_CHIP_ID) ||
 		(bus->sih->chip == BCM4350_CHIP_ID)) {
 		core_capext = TRUE;
 	} else {
@@ -691,7 +699,8 @@ dhdsdio_sr_cap(dhd_bus_t *bus)
 	if (bus->sih->chip == BCM4324_CHIP_ID) {
 		/* FIX: Should change to query SR control register instead */
 		cap = TRUE;
-	} else if (bus->sih->chip == BCM4335_CHIP_ID) {
+	} else if ((bus->sih->chip == BCM4335_CHIP_ID) ||
+		(bus->sih->chip == BCM4339_CHIP_ID)) {
 		uint32 enabval = 0;
 		addr = SI_ENUM_BASE + OFFSETOF(chipcregs_t, chipcontrol_addr);
 		data = SI_ENUM_BASE + OFFSETOF(chipcregs_t, chipcontrol_data);
@@ -701,7 +710,6 @@ dhdsdio_sr_cap(dhd_bus_t *bus)
 		if ((bus->sih->chip == BCM4350_CHIP_ID) ||
 			0)
 				enabval &= CC_CHIPCTRL3_SR_ENG_ENABLE;
-
 
 		if (enabval)
 			cap = TRUE;
@@ -805,7 +813,7 @@ dhdsdio_clk_kso_enab(dhd_bus_t *bus, bool on)
 		cmp_val = SBSDIO_FUNC1_SLEEPCSR_KSO_MASK |  SBSDIO_FUNC1_SLEEPCSR_DEVON_MASK;
 		bmask = cmp_val;
 
-		msleep(3);
+		OSL_SLEEP(3);
 	} else {
 		/* Put device to sleep, turn off  KSO  */
 		cmp_val = 0;
@@ -953,7 +961,8 @@ dhdsdio_clk_devsleep_iovar(dhd_bus_t *bus, bool on)
 		}
 
 		if ((bus->sih->chip == BCM4334_CHIP_ID) && (bus->sih->chiprev == 2)) {
-			SPINWAIT((bcmsdh_gpioin(bus->sdh, GPIO_DEV_SRSTATE) != TRUE),
+			SPINWAIT_SLEEP(sdioh_spinwait_sleep,
+				(bcmsdh_gpioin(bus->sdh, GPIO_DEV_SRSTATE) != TRUE),
 				GPIO_DEV_SRSTATE_TIMEOUT);
 
 			if (bcmsdh_gpioin(bus->sdh, GPIO_DEV_SRSTATE) == FALSE) {
@@ -995,7 +1004,7 @@ dhdsdio_clk_devsleep_iovar(dhd_bus_t *bus, bool on)
 		do {
 			err = dhdsdio_clk_kso_enab(bus, TRUE);
 			if (err)
-				OSL_DELAY(10000);
+				OSL_SLEEP(10);
 		} while ((err != 0) && (++retry < 3));
 
 		if (err != 0) {
@@ -1008,7 +1017,8 @@ dhdsdio_clk_devsleep_iovar(dhd_bus_t *bus, bool on)
 			uint8 csr;
 
 			/* Wait for device ready during transition to wake-up */
-			SPINWAIT((((csr = dhdsdio_sleepcsr_get(bus)) &
+			SPINWAIT_SLEEP(sdioh_spinwait_sleep,
+				(((csr = dhdsdio_sleepcsr_get(bus)) &
 				SBSDIO_FUNC1_SLEEPCSR_DEVON_MASK) !=
 				(SBSDIO_FUNC1_SLEEPCSR_DEVON_MASK)), (20000));
 
@@ -1020,7 +1030,8 @@ dhdsdio_clk_devsleep_iovar(dhd_bus_t *bus, bool on)
 				err = BCME_NODEVICE;
 			}
 
-			SPINWAIT((((csr = bcmsdh_cfg_read(bus->sdh, SDIO_FUNC_1,
+			SPINWAIT_SLEEP(sdioh_spinwait_sleep,
+				(((csr = bcmsdh_cfg_read(bus->sdh, SDIO_FUNC_1,
 				SBSDIO_FUNC1_CHIPCLKCSR, &err)) & SBSDIO_HT_AVAIL) !=
 				(SBSDIO_HT_AVAIL)), (10000));
 
@@ -1162,7 +1173,6 @@ dhdsdio_htclk(dhd_bus_t *bus, bool on, bool pendok)
 #endif /* DHD_USE_IDLECOUNT */
 	} else {
 		clkreq = 0;
-
 		if (bus->clkstate == CLK_PENDING) {
 			/* Cancel CA-only interrupt filter */
 			devctl = bcmsdh_cfg_read(sdh, SDIO_FUNC_1, SBSDIO_DEVICE_CTL, &err);
@@ -1442,7 +1452,6 @@ dhdsdio_bussleep(dhd_bus_t *bus, bool sleep)
 	return err;
 }
 
-
 #if defined(OOB_INTR_ONLY)
 void
 dhd_enable_oob_intr(struct dhd_bus *bus, bool enable)
@@ -1474,6 +1483,233 @@ dhd_enable_oob_intr(struct dhd_bus *bus, bool enable)
 }
 #endif 
 
+#ifdef DHDTCPACK_SUPPRESS
+extern bool dhd_use_tcpack_suppress;
+
+/* Please be sure this function is called under dhd_os_tcpacklock() */
+void dhd_onoff_tcpack_sup(void *pub, bool on)
+{
+	dhd_pub_t *dhdp = (dhd_pub_t *)pub;
+
+	if (dhd_use_tcpack_suppress != on) {
+
+		DHD_ERROR(("dhd_onoff_tcpack_sup: %d -> %d\n", dhd_use_tcpack_suppress, on));
+		dhd_use_tcpack_suppress = on;
+		dhdp->tcp_ack_info_cnt = 0;
+		bzero(dhdp->tcp_ack_info_tbl, sizeof(struct tcp_ack_info)*MAXTCPSTREAMS);
+
+	} else
+		DHD_ERROR(("dhd_onoff_tcpack_sup: alread %d\n", on));
+
+	return;
+}
+
+inline void dhd_tcpack_check_xmit(dhd_pub_t *dhdp, void *pkt)
+{
+	uint8 i;
+	tcp_ack_info_t *tcp_ack_info = NULL;
+	int tbl_cnt;
+
+	dhd_os_tcpacklock(dhdp);
+	tbl_cnt = dhdp->tcp_ack_info_cnt;
+	for (i = 0; i < tbl_cnt; i++) {
+		tcp_ack_info = &dhdp->tcp_ack_info_tbl[i];
+		if (tcp_ack_info->p_tcpackinqueue == pkt) {
+			/* This pkt is being transmitted so remove the tcp_ack_info of it.
+			* compact the array unless the last element,
+			* then the pkt's array is removed.
+			*/
+			if (i < tbl_cnt-1) {
+				memmove(&dhdp->tcp_ack_info_tbl[i],
+					&dhdp->tcp_ack_info_tbl[i+1],
+					sizeof(struct tcp_ack_info)*(tbl_cnt - (i+1)));
+			}
+			bzero(&dhdp->tcp_ack_info_tbl[tbl_cnt-1], sizeof(struct tcp_ack_info));
+			if (--dhdp->tcp_ack_info_cnt < 0) {
+				DHD_ERROR(("dhdsdio_sendfromq:(ERROR) tcp_ack_info_cnt %d"
+				" Stop using tcpack_suppress\n", dhdp->tcp_ack_info_cnt));
+				dhd_onoff_tcpack_sup(dhdp, FALSE);
+			}
+			break;
+		}
+	}
+	dhd_os_tcpackunlock(dhdp);
+}
+
+bool
+dhd_tcpack_suppress(dhd_pub_t *dhdp, void *pkt)
+{
+	uint8 *eh_header;
+	uint16 eh_type;
+	uint8 *ip_header;
+	uint8 *tcp_header;
+	uint32 ip_hdr_len;
+	uint32 cur_framelen;
+	uint8 bdc_hdr_len = BDC_HEADER_LEN;
+	uint8 wlfc_hdr_len = 0;
+	uint8 *data = PKTDATA(dhdp->osh, pkt);
+	cur_framelen = PKTLEN(dhdp->osh, pkt);
+
+#ifdef PROP_TXSTATUS
+	/* In this case, BDC header is not pushed in dhd_sendpkt() */
+	if (dhdp->wlfc_state) {
+		bdc_hdr_len = 0;
+		wlfc_hdr_len = 8;
+	}
+#endif
+	if (cur_framelen < bdc_hdr_len + ETHER_HDR_LEN) {
+		DHD_TRACE(("dhd_tcpack_suppress: Too short packet length %d\n", cur_framelen));
+		return FALSE;
+	}
+
+	/* Get rid of BDC header */
+	eh_header = data + bdc_hdr_len;
+	cur_framelen -= bdc_hdr_len;
+	eh_type = eh_header[12] << 8 | eh_header[13];
+
+	if (eh_type != ETHER_TYPE_IP) {
+		DHD_TRACE(("dhd_tcpack_suppress: Not a IP packet 0x%x\n", eh_type));
+		return FALSE;
+	}
+
+	DHD_TRACE(("dhd_tcpack_suppress: IP pkt! 0x%x\n", eh_type));
+
+	ip_header = eh_header + ETHER_HDR_LEN;
+	cur_framelen -= ETHER_HDR_LEN;
+	ip_hdr_len = 4 * (ip_header[0] & 0x0f);
+
+	if ((ip_header[0] & 0xf0) != 0x40) {
+		DHD_TRACE(("dhd_tcpack_suppress: Not IPv4!\n"));
+		return FALSE;
+	}
+
+	if (cur_framelen < ip_hdr_len) {
+		DHD_ERROR(("dhd_tcpack_suppress: IP packet length %d wrong!\n", cur_framelen));
+		return FALSE;
+	}
+
+	/* not tcp */
+	if (ip_header[9] != 0x06) {
+		DHD_TRACE(("dhd_tcpack_suppress: Not a TCP packet 0x%x\n", ip_header[9]));
+		return FALSE;
+	}
+
+	DHD_TRACE(("dhd_tcpack_suppress: TCP pkt!\n"));
+
+	tcp_header = ip_header + ip_hdr_len;
+
+	/* is it an ack ? */
+	if (tcp_header[13] == 0x10) {
+#if defined(DHD_DEBUG)
+		uint32 tcp_seq_num = tcp_header[4] << 24 | tcp_header[5] << 16 |
+			tcp_header[6] << 8 | tcp_header[7];
+#endif 
+		uint32 tcp_ack_num = tcp_header[8] << 24 | tcp_header[9] << 16 |
+			tcp_header[10] << 8 | tcp_header[11];
+		uint16 ip_tcp_ttllen =  (ip_header[3] & 0xff) + (ip_header[2] << 8);
+		uint32 tcp_hdr_len = 4*((tcp_header[12] & 0xf0) >> 4);
+		DHD_TRACE(("dhd_tcpack_suppress: TCP ACK seq %ud ack %ud\n",
+			tcp_seq_num, tcp_ack_num));
+
+
+		/* zero length ? */
+		if (ip_tcp_ttllen ==  ip_hdr_len + tcp_hdr_len) {
+			int i;
+			tcp_ack_info_t *tcp_ack_info = NULL;
+			DHD_TRACE(("dhd_tcpack_suppress: TCP ACK zero length\n"));
+			/* Look for tcp_ack_info that has the same
+			* ip src/dst addrs and tcp src/dst ports
+			*/
+			dhd_os_tcpacklock(dhdp);
+			for (i = 0; i < dhdp->tcp_ack_info_cnt; i++) {
+				if (dhdp->tcp_ack_info_tbl[i].p_tcpackinqueue &&
+				!memcmp(&ip_header[12], dhdp->tcp_ack_info_tbl[i].ipaddrs, 8) &&
+				!memcmp(tcp_header, dhdp->tcp_ack_info_tbl[i].tcpports, 4)) {
+					tcp_ack_info = &dhdp->tcp_ack_info_tbl[i];
+					break;
+				}
+			}
+
+			if (i == dhdp->tcp_ack_info_cnt && i < MAXTCPSTREAMS)
+				tcp_ack_info = &dhdp->tcp_ack_info_tbl[dhdp->tcp_ack_info_cnt++];
+
+			if (!tcp_ack_info) {
+				DHD_TRACE(("dhd_tcpack_suppress: No empty tcp ack info"
+					"%d %d %d %d, %d %d %d %d\n",
+					tcp_header[0], tcp_header[1], tcp_header[2], tcp_header[3],
+					dhdp->tcp_ack_info_tbl[i].tcpports[0],
+					dhdp->tcp_ack_info_tbl[i].tcpports[1],
+					dhdp->tcp_ack_info_tbl[i].tcpports[2],
+					dhdp->tcp_ack_info_tbl[i].tcpports[3]));
+				dhd_os_tcpackunlock(dhdp);
+				return FALSE;
+			}
+
+			if (tcp_ack_info->p_tcpackinqueue) {
+				if (tcp_ack_num > tcp_ack_info->tcpack_number) {
+					void *prevpkt = tcp_ack_info->p_tcpackinqueue;
+					uint8 pushed_len = SDPCM_HDRLEN +
+						(BDC_HEADER_LEN - bdc_hdr_len) + wlfc_hdr_len;
+#ifdef PROP_TXSTATUS
+					/* In case the prev pkt is delayenqueued
+					* but not delayedequeued yet, it may not have
+					* any additional header yet.
+					*/
+					if (dhdp->wlfc_state &&	(PKTLEN(dhdp->osh, prevpkt) ==
+						tcp_ack_info->ip_tcp_ttllen + ETHER_HDR_LEN))
+						pushed_len = 0;
+#endif
+					if ((ip_tcp_ttllen == tcp_ack_info->ip_tcp_ttllen) &&
+						(PKTLEN(dhdp->osh, pkt) ==
+						PKTLEN(dhdp->osh, prevpkt) - pushed_len)) {
+						bcopy(PKTDATA(dhdp->osh, pkt),
+							PKTDATA(dhdp->osh, prevpkt) + pushed_len,
+							PKTLEN(dhdp->osh, pkt));
+						PKTFREE(dhdp->osh, pkt, FALSE);
+						DHD_TRACE(("dhd_tcpack_suppress: pkt 0x%p"
+							" TCP ACK replace %ud -> %ud\n", prevpkt,
+							tcp_ack_info->tcpack_number, tcp_ack_num));
+						tcp_ack_info->tcpack_number = tcp_ack_num;
+						dhd_os_tcpackunlock(dhdp);
+						return TRUE;
+					} else
+						DHD_TRACE(("dhd_tcpack_suppress: len mismatch"
+							" %d(%d) %d(%d)\n",
+							PKTLEN(dhdp->osh, pkt), ip_tcp_ttllen,
+							PKTLEN(dhdp->osh, prevpkt),
+							tcp_ack_info->ip_tcp_ttllen));
+				} else {
+#ifdef TCPACK_TEST
+					void *prevpkt = tcp_ack_info->p_tcpackinqueue;
+#endif
+					DHD_TRACE(("dhd_tcpack_suppress: TCP ACK number reverse"
+							" prev %ud (0x%p) new %ud (0x%p)\n",
+							tcp_ack_info->tcpack_number,
+							tcp_ack_info->p_tcpackinqueue,
+							tcp_ack_num, pkt));
+#ifdef TCPACK_TEST
+					if (PKTLEN(dhdp->osh, pkt) == PKTLEN(dhdp->osh, prevpkt)) {
+						PKTFREE(dhdp->osh, pkt, FALSE);
+						dhd_os_tcpackunlock(dhdp);
+						return TRUE;
+					}
+#endif
+				}
+			} else {
+				tcp_ack_info->p_tcpackinqueue = pkt;
+				tcp_ack_info->tcpack_number = tcp_ack_num;
+				tcp_ack_info->ip_tcp_ttllen = ip_tcp_ttllen;
+				bcopy(&ip_header[12], tcp_ack_info->ipaddrs, 8);
+				bcopy(tcp_header, tcp_ack_info->tcpports, 4);
+			}
+			dhd_os_tcpackunlock(dhdp);
+		} else
+			DHD_TRACE(("dhd_tcpack_suppress: TCP ACK with DATA len %d\n",
+				ip_tcp_ttllen - ip_hdr_len - tcp_hdr_len));
+	}
+	return FALSE;
+}
+#endif /* DHDTCPACK_SUPPRESS */
 /* Writes a HW/SW header into the packet and sends it. */
 /* Assumes: (a) header space already there, (b) caller holds lock */
 static int
@@ -1482,7 +1718,7 @@ dhdsdio_txpkt(dhd_bus_t *bus, void *pkt, uint chan, bool free_pkt, bool queue_on
 	int ret;
 	osl_t *osh;
 	uint8 *frame;
-	uint16 len, pad1 = 0;
+	uint16 len, pad1 = 0, act_len = 0;
 	uint32 swheader;
 	uint retries = 0;
 	uint32 real_pad = 0;
@@ -1490,17 +1726,24 @@ dhdsdio_txpkt(dhd_bus_t *bus, void *pkt, uint chan, bool free_pkt, bool queue_on
 	void *new;
 	int i;
 	int pkt_cnt;
+#ifdef BCMSDIOH_TXGLOM
+	uint8 *frame_tmp;
+#endif
 #ifdef WLMEDIA_HTSF
 	char *p;
 	htsfts_t *htsf_ts;
 #endif
-
 
 	DHD_TRACE(("%s: Enter\n", __FUNCTION__));
 
 	sdh = bus->sdh;
 	osh = bus->dhd->osh;
 
+#ifdef DHDTCPACK_SUPPRESS
+	if (dhd_use_tcpack_suppress) {
+		dhd_tcpack_check_xmit(bus->dhd, pkt);
+	}
+#endif /* DHDTCPACK_SUPPRESS */
 
 	if (bus->dhd->dongle_reset) {
 		ret = BCME_NOTREADY;
@@ -1521,7 +1764,7 @@ dhdsdio_txpkt(dhd_bus_t *bus, void *pkt, uint chan, bool free_pkt, bool queue_on
 #endif /* WLMEDIA_HTSF */
 
 	/* Add alignment padding, allocate new packet if needed */
-	if (!((uintptr)frame & 1) && (pad1 = ((uintptr)frame % DHD_SDALIGN))) {
+	if ((pad1 = ((uintptr)frame % DHD_SDALIGN))) {
 		if (PKTHEADROOM(osh, pkt) < pad1) {
 			DHD_INFO(("%s: insufficient headroom %d for %d pad1\n",
 			          __FUNCTION__, (int)PKTHEADROOM(osh, pkt), pad1));
@@ -1559,8 +1802,124 @@ dhdsdio_txpkt(dhd_bus_t *bus, void *pkt, uint chan, bool free_pkt, bool queue_on
 	*(uint16*)frame = htol16(len);
 	*(((uint16*)frame) + 1) = htol16(~len);
 
+#ifdef BCMSDIOH_TXGLOM
+	if (bus->glom_enable) {
+		uint32 hwheader1 = 0, hwheader2 = 0;
+		act_len = len;
+
+		/* Software tag: channel, sequence number, data offset */
+		swheader = ((chan << SDPCM_CHANNEL_SHIFT) & SDPCM_CHANNEL_MASK) |
+			((bus->tx_seq + bus->glom_cnt) % SDPCM_SEQUENCE_WRAP) |
+		        (((pad1 + SDPCM_HDRLEN) << SDPCM_DOFFSET_SHIFT) & SDPCM_DOFFSET_MASK);
+		htol32_ua_store(swheader, frame + SDPCM_FRAMETAG_LEN + SDPCM_HWEXT_LEN);
+		htol32_ua_store(0, frame + SDPCM_FRAMETAG_LEN + SDPCM_HWEXT_LEN + sizeof(swheader));
+
+		if (queue_only) {
+			uint8 alignment = ALIGNMENT;
+			if (forcealign && (len & (alignment - 1)))
+				len = ROUNDUP(len, alignment);
+			/* Hardware extention tag */
+			/* 2byte frame length, 1byte-, 1byte frame flag,
+			 * 2byte-hdrlength, 2byte padlenght
+			 */
+			hwheader1 = (act_len - SDPCM_FRAMETAG_LEN) | (0 << 24);
+			hwheader2 = (len - act_len) << 16;
+			htol32_ua_store(hwheader1, frame + SDPCM_FRAMETAG_LEN);
+			htol32_ua_store(hwheader2, frame + SDPCM_FRAMETAG_LEN + 4);
+			real_pad = len - act_len;
+			if (PKTTAILROOM(osh, pkt) < real_pad) {
+				DHD_INFO(("%s 1: insufficient tailroom %d for %d real_pad\n",
+				__FUNCTION__, (int)PKTTAILROOM(osh, pkt), real_pad));
+				if (PKTPADTAILROOM(osh, pkt, real_pad)) {
+					DHD_ERROR(("CHK1: padding error size %d\n", real_pad));
+					ret = BCME_NOMEM;
+					goto done;
+				}
+#ifndef BCMLXSDMMC
+				else
+					PKTSETLEN(osh, pkt, act_len);
+#endif
+			}
+#ifdef BCMLXSDMMC
+			PKTSETLEN(osh, pkt, len);
+#endif /* BCMLXSDMMC */
+			/* Post the frame pointer to sdio glom array */
+			dhd_bcmsdh_glom_post(bus, frame, pkt, len);
+			/* Save the pkt pointer in bus glom array */
+			bus->glom_pkt_arr[bus->glom_cnt] = pkt;
+			bus->glom_total_len += len;
+			bus->glom_cnt++;
+			return BCME_OK;
+		} else {
+				/* Raise len to next SDIO block to eliminate tail command */
+				if (bus->roundup && bus->blocksize &&
+					((bus->glom_total_len + len) > bus->blocksize)) {
+					uint16 pad2 = bus->blocksize -
+						((bus->glom_total_len + len) % bus->blocksize);
+					if ((pad2 <= bus->roundup) && (pad2 < bus->blocksize)) {
+							len += pad2;
+					} else {
+					}
+				} else if ((bus->glom_total_len + len) % DHD_SDALIGN) {
+					len += DHD_SDALIGN
+					    - ((bus->glom_total_len + len) % DHD_SDALIGN);
+				}
+				if (forcealign && (len & (ALIGNMENT - 1))) {
+					len = ROUNDUP(len, ALIGNMENT);
+				}
+
+				/* Hardware extention tag */
+				/* 2byte frame length, 1byte-, 1byte frame flag,
+				 * 2byte-hdrlength, 2byte padlenght
+				 */
+				hwheader1 = (act_len - SDPCM_FRAMETAG_LEN) | (1 << 24);
+				hwheader2 = (len - act_len) << 16;
+				htol32_ua_store(hwheader1, frame + SDPCM_FRAMETAG_LEN);
+				htol32_ua_store(hwheader2, frame + SDPCM_FRAMETAG_LEN + 4);
+				real_pad = len - act_len;
+				if (PKTTAILROOM(osh, pkt) < real_pad) {
+					DHD_INFO(("%s 2: insufficient tailroom %d"
+					" for %d real_pad\n",
+					__FUNCTION__, (int)PKTTAILROOM(osh, pkt), real_pad));
+					if (PKTPADTAILROOM(osh, pkt, real_pad)) {
+						DHD_ERROR(("CHK2: padding error size %d."
+							" %d more pkts are discarded together.\n",
+							real_pad, bus->glom_cnt));
+						/* Save the pkt pointer in bus glom array
+						* Otherwise, this last pkt will not be
+						* cleaned under "goto done"
+						*/
+						bus->glom_pkt_arr[bus->glom_cnt] = pkt;
+						bus->glom_cnt++;
+						bus->glom_total_len += len;
+						ret = BCME_NOMEM;
+						goto done;
+					}
+#ifndef BCMLXSDMMC
+					else
+						PKTSETLEN(osh, pkt, act_len);
+#endif
+				}
+#ifdef BCMLXSDMMC
+				PKTSETLEN(osh, pkt, len);
+#endif /* BCMLXSDMMC */
+
+				/* Post the frame pointer to sdio glom array */
+				dhd_bcmsdh_glom_post(bus, frame, pkt, len);
+				/* Save the pkt pointer in bus glom array */
+				bus->glom_pkt_arr[bus->glom_cnt] = pkt;
+				bus->glom_cnt++;
+				bus->glom_total_len += len;
+
+				/* Update the total length on the first pkt */
+				frame_tmp = (uint8*)PKTDATA(osh, bus->glom_pkt_arr[0]);
+				*(uint16*)frame_tmp = htol16(bus->glom_total_len);
+				*(((uint16*)frame_tmp) + 1) = htol16(~bus->glom_total_len);
+		}
+	} else
+#endif /* BCMSDIOH_TXGLOM */
 	{
-	uint32 act_len = len;
+	act_len = len;
 	/* Software tag: channel, sequence number, data offset */
 	swheader = ((chan << SDPCM_CHANNEL_SHIFT) & SDPCM_CHANNEL_MASK) | bus->tx_seq |
 	        (((pad1 + SDPCM_HDRLEN) << SDPCM_DOFFSET_SHIFT) & SDPCM_DOFFSET_MASK);
@@ -1608,9 +1967,18 @@ dhdsdio_txpkt(dhd_bus_t *bus, void *pkt, uint chan, bool free_pkt, bool queue_on
 		DHD_INFO(("%s 3: insufficient tailroom %d for %d real_pad\n",
 		__FUNCTION__, (int)PKTTAILROOM(osh, pkt), real_pad));
 		if (PKTPADTAILROOM(osh, pkt, real_pad)) {
-			DHD_ERROR(("padding error size %d\n", real_pad));
+			DHD_ERROR(("CHK3: padding error size %d\n", real_pad));
+			ret = BCME_NOMEM;
+			goto done;
 		}
+#ifndef BCMLXSDMMC
+		else
+			PKTSETLEN(osh, pkt, act_len);
+#endif
 	}
+#ifdef BCMLXSDMMC
+	PKTSETLEN(osh, pkt, len);
+#endif /* BCMLXSDMMC */
 	}
 	do {
 		ret = dhd_bcmsdh_send_buf(bus, bcmsdh_cur_sbwad(sdh), SDIO_FUNC_2, F2SYNC,
@@ -1643,6 +2011,11 @@ dhdsdio_txpkt(dhd_bus_t *bus, void *pkt, uint chan, bool free_pkt, bool queue_on
 			}
 		}
 		if (ret == 0) {
+#ifdef BCMSDIOH_TXGLOM
+			if (bus->glom_enable) {
+				bus->tx_seq = (bus->tx_seq + bus->glom_cnt) % SDPCM_SEQUENCE_WRAP;
+			} else
+#endif
 			{
 			bus->tx_seq = (bus->tx_seq + 1) % SDPCM_SEQUENCE_WRAP;
 		}
@@ -1651,13 +2024,42 @@ dhdsdio_txpkt(dhd_bus_t *bus, void *pkt, uint chan, bool free_pkt, bool queue_on
 
 done:
 
+#ifdef BCMSDIOH_TXGLOM
+	if (bus->glom_enable && !queue_only) {
+		dhd_bcmsdh_glom_clear(bus);
+		pkt_cnt = bus->glom_cnt;
+	} else
+#endif
 	{
 		pkt_cnt = 1;
 	}
 		/* restore pkt buffer pointer before calling tx complete routine */
 	while (pkt_cnt) {
+#ifdef BCMSDIOH_TXGLOM
+		uint32 doff;
+		if (bus->glom_enable) {
+#ifdef BCMLXSDMMC
+			uint32 pad2 = 0;
+#endif /* BCMLXSDMMC */
+			if (!queue_only)
+				pkt = bus->glom_pkt_arr[bus->glom_cnt - pkt_cnt];
+
+			frame = (uint8*)PKTDATA(osh, pkt);
+			doff = ltoh32_ua(frame + SDPCM_FRAMETAG_LEN + SDPCM_HWEXT_LEN);
+			doff = (doff & SDPCM_DOFFSET_MASK) >> SDPCM_DOFFSET_SHIFT;
+#ifdef BCMLXSDMMC
+			pad2 = ltoh32_ua(frame + SDPCM_FRAMETAG_LEN + 4) >> 16;
+			PKTSETLEN(osh, pkt, PKTLEN(osh, pkt) - pad2);
+#endif /* BCMLXSDMMC */
+			PKTPULL(osh, pkt, doff);
+		} else
+#endif /* BCMSDIOH_TXGLOM */
 		{
-	PKTPULL(osh, pkt, SDPCM_HDRLEN + pad1);
+#ifdef BCMLXSDMMC
+			if (act_len > 0)
+				PKTSETLEN(osh, pkt, act_len);
+#endif /* BCMLXSDMMC */
+			PKTPULL(osh, pkt, SDPCM_HDRLEN + pad1);
 		}
 #ifdef PROP_TXSTATUS
 	if (bus->dhd->wlfc_state) {
@@ -1682,6 +2084,13 @@ done:
 		pkt_cnt--;
 	}
 
+#ifdef BCMSDIOH_TXGLOM
+	/* Reset the glom array */
+	if (bus->glom_enable && !queue_only) {
+		bus->glom_cnt = 0;
+		bus->glom_total_len = 0;
+	}
+#endif
 	return ret;
 }
 
@@ -1851,7 +2260,11 @@ dhdsdio_sendfromq(dhd_bus_t *bus, uint maxframes)
 	uint cnt = 0;
 	uint datalen;
 	uint8 tx_prec_map;
-	uint8 txpktqlen = 0;
+	uint16 txpktqlen = 0;
+#ifdef BCMSDIOH_TXGLOM
+	uint i;
+	uint8 glom_cnt;
+#endif
 
 	dhd_pub_t *dhd = bus->dhd;
 	sdpcmd_regs_t *regs = bus->regs;
@@ -1867,6 +2280,57 @@ dhdsdio_sendfromq(dhd_bus_t *bus, uint maxframes)
 
 	/* Send frames until the limit or some other event */
 	for (cnt = 0; (cnt < maxframes) && DATAOK(bus); cnt++) {
+#ifdef BCMSDIOH_TXGLOM
+		if (bus->glom_enable) {
+			void *pkttable[SDPCM_MAXGLOM_SIZE];
+			dhd_os_sdlock_txq(bus->dhd);
+			glom_cnt = MIN(DATABUFCNT(bus), bus->glomsize);
+			glom_cnt = MIN(glom_cnt, pktq_mlen(&bus->txq, tx_prec_map));
+			glom_cnt = MIN(glom_cnt, maxframes-cnt);
+
+			/* Limiting the size to 2pkts in case of copy */
+			if (bus->glom_mode == SDPCM_TXGLOM_CPY)
+			    glom_cnt = MIN(glom_cnt, 10);
+
+			for (i = 0; i < glom_cnt; i++)
+				pkttable[i] = pktq_mdeq(&bus->txq, tx_prec_map, &prec_out);
+
+			txpktqlen = pktq_len(&bus->txq);
+			dhd_os_sdunlock_txq(bus->dhd);
+
+			if (glom_cnt == 0)
+				break;
+			datalen = 0;
+			for (i = 0; i < glom_cnt; i++) {
+				uint datalen_tmp = 0;
+
+				if ((pkt = pkttable[i]) == NULL) {
+					/* This case should not happen */
+					DHD_ERROR(("No pkts in the queue for glomming\n"));
+					break;
+				}
+
+				datalen_tmp = (PKTLEN(bus->dhd->osh, pkt) - SDPCM_HDRLEN);
+
+#ifndef SDTEST
+				ret = dhdsdio_txpkt(bus,
+					pkt,
+					SDPCM_DATA_CHANNEL,
+					TRUE,
+					(i == (glom_cnt-1))? FALSE: TRUE);
+#else
+				ret = dhdsdio_txpkt(bus,
+					pkt,
+					(bus->ext_loop ? SDPCM_TEST_CHANNEL : SDPCM_DATA_CHANNEL),
+					TRUE,
+					(i == (glom_cnt-1))? FALSE: TRUE);
+#endif
+				if (ret == BCME_OK)
+					datalen += datalen_tmp;
+			}
+			cnt += i-1;
+		} else
+#endif /* BCMSDIOH_TXGLOM */
 		{
 		dhd_os_sdlock_txq(bus->dhd);
 		if ((pkt = pktq_mdeq(&bus->txq, tx_prec_map, &prec_out)) == NULL) {
@@ -1922,6 +2386,10 @@ dhdsdio_sendpendctl(dhd_bus_t *bus)
 	int ret, i;
 	uint8* frame_seq = bus->ctrl_frame_buf + SDPCM_FRAMETAG_LEN;
 
+#ifdef BCMSDIOH_TXGLOM
+	if (bus->glom_enable)
+		frame_seq += SDPCM_HWEXT_LEN;
+#endif
 
 	if (*frame_seq != bus->tx_seq) {
 		DHD_INFO(("%s IOCTL frame seq lag detected!"
@@ -2028,6 +2496,26 @@ dhd_bus_txctl(struct dhd_bus *bus, uchar *msg, uint msglen)
 	*(uint16*)frame = htol16((uint16)msglen);
 	*(((uint16*)frame) + 1) = htol16(~msglen);
 
+#ifdef BCMSDIOH_TXGLOM
+	if (bus->glom_enable) {
+		uint32 hwheader1, hwheader2;
+		/* Software tag: channel, sequence number, data offset */
+		swheader = ((SDPCM_CONTROL_CHANNEL << SDPCM_CHANNEL_SHIFT) & SDPCM_CHANNEL_MASK)
+				| bus->tx_seq
+				| ((doff << SDPCM_DOFFSET_SHIFT) & SDPCM_DOFFSET_MASK);
+		htol32_ua_store(swheader, frame + SDPCM_FRAMETAG_LEN + SDPCM_HWEXT_LEN);
+		htol32_ua_store(0, frame + SDPCM_FRAMETAG_LEN
+			+ SDPCM_HWEXT_LEN + sizeof(swheader));
+
+		hwheader1 = (msglen - SDPCM_FRAMETAG_LEN) | (1 << 24);
+		hwheader2 = (len - (msglen)) << 16;
+		htol32_ua_store(hwheader1, frame + SDPCM_FRAMETAG_LEN);
+		htol32_ua_store(hwheader2, frame + SDPCM_FRAMETAG_LEN + 4);
+
+		*(uint16*)frame = htol16(len);
+		*(((uint16*)frame) + 1) = htol16(~(len));
+	} else
+#endif /* BCMSDIOH_TXGLOM */
 	{
 	/* Software tag: channel, sequence number, data offset */
 	swheader = ((SDPCM_CONTROL_CHANNEL << SDPCM_CHANNEL_SHIFT) & SDPCM_CHANNEL_MASK)
@@ -2166,15 +2654,14 @@ dhd_bus_rxctl(struct dhd_bus *bus, uchar *msg, uint msglen)
 		DHD_ERROR(("%s: resumed on timeout\n", __FUNCTION__));
 #endif /* DHD_DEBUG */
 #ifdef DHD_DEBUG
-			dhd_os_sdlock(bus->dhd);
-			dhdsdio_checkdied(bus, NULL, 0);
-			dhd_os_sdunlock(bus->dhd);
+		dhd_os_sdlock(bus->dhd);
+		dhdsdio_checkdied(bus, NULL, 0);
+		dhd_os_sdunlock(bus->dhd);
 #endif /* DHD_DEBUG */
 	} else if (pending == TRUE) {
 		/* signal pending */
 		DHD_ERROR(("%s: signal pending\n", __FUNCTION__));
 		return -EINTR;
-
 	} else {
 		DHD_CTL(("%s: resumed for unknown reason?\n", __FUNCTION__));
 #ifdef DHD_DEBUG
@@ -2942,7 +3429,9 @@ dhd_serialconsole(dhd_bus_t *bus, bool set, bool enable, int *bcmerror)
 		uart_enab = CC_PLL_CHIPCTRL_SERIAL_ENAB;
 	}
 	else if (bus->sih->chip == BCM4334_CHIP_ID ||
-		bus->sih->chip == BCM43341_CHIP_ID) {
+		bus->sih->chip == BCM43340_CHIP_ID ||
+		bus->sih->chip == BCM43341_CHIP_ID ||
+		0) {
 		if (enable) {
 			/* Moved to PMU chipcontrol 1 from 4330 */
 			int_val &= ~gpio_sel;
@@ -3454,7 +3943,6 @@ dhdsdio_doiovar(dhd_bus_t *bus, const bcm_iovar_t *vi, uint32 actionid, const ch
 		break;
 #endif /* SDIO_CRC_ERROR_FIX */
 
-
 	case IOV_GVAL(IOV_DONGLEISOLATION):
 		int_val = bus->dhd->dongle_isolation;
 		bcopy(&int_val, arg, val_size);
@@ -3537,6 +4025,33 @@ dhdsdio_doiovar(dhd_bus_t *bus, const bcm_iovar_t *vi, uint32 actionid, const ch
 		dhdsdio_devcap_set(bus, (uint8) int_val);
 		break;
 
+#ifdef BCMSDIOH_TXGLOM
+	case IOV_GVAL(IOV_TXGLOMSIZE):
+		int_val = (int32)bus->glomsize;
+		bcopy(&int_val, arg, val_size);
+		break;
+
+	case IOV_SVAL(IOV_TXGLOMSIZE):
+		if (int_val > SDPCM_MAXGLOM_SIZE) {
+			bcmerror = BCME_ERROR;
+		} else {
+			bus->glomsize = (uint)int_val;
+		}
+		break;
+	case IOV_GVAL(IOV_TXGLOMMODE):
+		int_val = (int32)bus->glom_mode;
+		bcopy(&int_val, arg, val_size);
+		break;
+
+	case IOV_SVAL(IOV_TXGLOMMODE):
+		if ((int_val != SDPCM_TXGLOM_CPY) && (int_val != SDPCM_TXGLOM_MDESC)) {
+			bcmerror = BCME_RANGE;
+		} else {
+			if ((bus->glom_mode = bcmsdh_set_mode(bus->sdh, (uint)int_val)) != int_val)
+				bcmerror = BCME_ERROR;
+		}
+		break;
+#endif /* BCMSDIOH_TXGLOM */
 	case IOV_SVAL(IOV_HANGREPORT):
 		bus->dhd->hang_report = bool_val;
 		DHD_ERROR(("%s: Set hang_report as %d\n", __FUNCTION__, bus->dhd->hang_report));
@@ -3888,7 +4403,8 @@ dhd_bus_iovar_op(dhd_pub_t *dhdp, const char *name,
 				DHD_INFO(("%s: noted %s update, value now %d\n",
 				          __FUNCTION__, "sd_blocksize", bus->blocksize));
 
-				if (bus->sih->chip == BCM4335_CHIP_ID)
+				if ((bus->sih->chip == BCM4335_CHIP_ID) ||
+					(bus->sih->chip == BCM4339_CHIP_ID))
 					dhd_overflow_war(bus);
 			}
 		}
@@ -3934,7 +4450,7 @@ dhd_bus_stop(struct dhd_bus *bus, bool enforce_mutex)
 {
 	osl_t *osh;
 	uint32 local_hostintmask;
-	uint8 saveclk, dat;
+	uint8 saveclk;
 	uint retries;
 	int err;
 	if (!bus->dhd)
@@ -3954,47 +4470,38 @@ dhd_bus_stop(struct dhd_bus *bus, bool enforce_mutex)
 		bus->hostintmask = 0;
 		bcmsdh_intr_disable(bus->sdh);
 	} else {
-
 		BUS_WAKE(bus);
-
-		if (KSO_ENAB(bus)) {
-			/* Mask the interrupt */
-			dat = bcmsdh_cfg_read(bus->sdh, SDIO_FUNC_0, SDIOD_CCCR_INTEN, NULL);
-			dat &= ~(INTR_CTL_FUNC1_EN | INTR_CTL_FUNC2_EN);
-			bcmsdh_cfg_write(bus->sdh, SDIO_FUNC_0, SDIOD_CCCR_INTEN, dat, NULL);
-		}
 
 		/* Change our idea of bus state */
 		bus->dhd->busstate = DHD_BUS_DOWN;
 
 		if (KSO_ENAB(bus)) {
 
-		/* Enable clock for device interrupts */
-		dhdsdio_clkctl(bus, CLK_AVAIL, FALSE);
+			/* Enable clock for device interrupts */
+			dhdsdio_clkctl(bus, CLK_AVAIL, FALSE);
 
-		/* Disable and clear interrupts at the chip level also */
-		W_SDREG(0, &bus->regs->hostintmask, retries);
-		local_hostintmask = bus->hostintmask;
-		bus->hostintmask = 0;
+			/* Disable and clear interrupts at the chip level also */
+			W_SDREG(0, &bus->regs->hostintmask, retries);
+			local_hostintmask = bus->hostintmask;
+			bus->hostintmask = 0;
 
-		/* Force clocks on backplane to be sure F2 interrupt propagates */
-		saveclk = bcmsdh_cfg_read(bus->sdh, SDIO_FUNC_1, SBSDIO_FUNC1_CHIPCLKCSR, &err);
-		if (!err) {
-			bcmsdh_cfg_write(bus->sdh, SDIO_FUNC_1, SBSDIO_FUNC1_CHIPCLKCSR,
-			                 (saveclk | SBSDIO_FORCE_HT), &err);
-		}
-		if (err) {
-			DHD_ERROR(("%s: Failed to force clock for F2: err %d\n",
-			            __FUNCTION__, err));
-		}
+			/* Force clocks on backplane to be sure F2 interrupt propagates */
+			saveclk = bcmsdh_cfg_read(bus->sdh, SDIO_FUNC_1, SBSDIO_FUNC1_CHIPCLKCSR, &err);
+			if (!err) {
+				bcmsdh_cfg_write(bus->sdh, SDIO_FUNC_1, SBSDIO_FUNC1_CHIPCLKCSR,
+						 (saveclk | SBSDIO_FORCE_HT), &err);
+			}
+			if (err) {
+				DHD_ERROR(("%s: Failed to force clock for F2: err %d\n", __FUNCTION__, err));
+			}
 
-		/* Turn off the bus (F2), free any pending packets */
-		DHD_INTR(("%s: disable SDIO interrupts\n", __FUNCTION__));
-		bcmsdh_intr_disable(bus->sdh);
-		bcmsdh_cfg_write(bus->sdh, SDIO_FUNC_0, SDIOD_CCCR_IOEN, SDIO_FUNC_ENABLE_1, NULL);
+			/* Turn off the bus (F2), free any pending packets */
+			DHD_INTR(("%s: disable SDIO interrupts\n", __FUNCTION__));
+			bcmsdh_intr_disable(bus->sdh);
+			bcmsdh_cfg_write(bus->sdh, SDIO_FUNC_0, SDIOD_CCCR_IOEN, SDIO_FUNC_ENABLE_1, NULL);
 
-		/* Clear any pending interrupts now that F2 is disabled */
-		W_SDREG(local_hostintmask, &bus->regs->intstatus, retries);
+			/* Clear any pending interrupts now that F2 is disabled */
+			W_SDREG(local_hostintmask, &bus->regs->intstatus, retries);
 		}
 
 		/* Turn off the backplane clock (only) */
@@ -4027,6 +4534,35 @@ dhd_bus_stop(struct dhd_bus *bus, bool enforce_mutex)
 		dhd_os_sdunlock(bus->dhd);
 }
 
+#ifdef BCMSDIOH_TXGLOM
+void
+dhd_txglom_enable(dhd_pub_t *dhdp, bool enable)
+{
+	dhd_bus_t *bus = dhdp->bus;
+
+	char buf[256];
+	uint32 rxglom;
+	int32 ret;
+
+	DHD_TRACE(("%s: Enter\n", __FUNCTION__));
+
+	if (enable) {
+		rxglom = 1;
+		memset(buf, 0, sizeof(buf));
+		bcm_mkiovar("bus:rxglom",
+			(void *)&rxglom,
+			4, buf, sizeof(buf));
+		ret = dhd_wl_ioctl_cmd(dhdp,
+			WLC_SET_VAR, buf,
+			sizeof(buf), TRUE, 0);
+		if (!(ret < 0)) {
+			bus->glom_enable = TRUE;
+		}
+	} else {
+		bus->glom_enable = FALSE;
+	}
+}
+#endif /* BCMSDIOH_TXGLOM */
 
 int
 dhd_bus_init(dhd_pub_t *dhdp, bool enforce_mutex)
@@ -4046,6 +4582,11 @@ dhd_bus_init(dhd_pub_t *dhdp, bool enforce_mutex)
 
 	if (enforce_mutex)
 		dhd_os_sdlock(bus->dhd);
+
+	if (bus->sih->chip == BCM43362_CHIP_ID) {
+		printf("%s: delay 100ms for BCM43362\n", __FUNCTION__);
+		OSL_DELAY(100000); // terence 20131209: delay for 43362
+	}
 
 	/* Make sure backplane clock is on, needed to generate F2 interrupt */
 	dhdsdio_clkctl(bus, CLK_AVAIL, FALSE);
@@ -4107,7 +4648,8 @@ dhd_bus_init(dhd_pub_t *dhdp, bool enforce_mutex)
 			mesbusyctrl = watermark = bus->blocksize / 4;
 		}
 #endif /* SDIO_CRC_ERROR_FIX */
-		if (bus->sih->chip != BCM4335_CHIP_ID) {
+		if (!((bus->sih->chip == BCM4335_CHIP_ID) ||
+			(bus->sih->chip == BCM4339_CHIP_ID))) {
 			bcmsdh_cfg_write(bus->sdh, SDIO_FUNC_1, SBSDIO_WATERMARK,
 				(uint8)watermark, &err);
 		}
@@ -4141,8 +4683,14 @@ dhd_bus_init(dhd_pub_t *dhdp, bool enforce_mutex)
 		bcmsdh_cfg_write(bus->sdh, SDIO_FUNC_0, SDIOD_CCCR_IOEN, enable, NULL);
 	}
 
-	if (dhdsdio_sr_cap(bus))
+	if (dhdsdio_sr_cap(bus)) {
 		dhdsdio_sr_init(bus);
+		/* Masking the chip active interrupt  permanantly */
+		bus->hostintmask &= ~I_CHIPACTIVE;
+		W_SDREG(bus->hostintmask, &bus->regs->hostintmask, retries);
+		DHD_INFO(("%s: disable I_CHIPACTIVE in hostintmask[0x%08x]\n",
+		__FUNCTION__, bus->hostintmask));
+	}
 	else
 		bcmsdh_cfg_write(bus->sdh, SDIO_FUNC_1,
 			SBSDIO_FUNC1_CHIPCLKCSR, saveclk, &err);
@@ -5490,7 +6038,6 @@ dhdsdio_dpc(dhd_bus_t *bus)
 	uint framecnt = 0;		  /* Temporary counter of tx/rx frames */
 	bool rxdone = TRUE;		  /* Flag for no more read data */
 	bool resched = FALSE;	  /* Flag indicating resched wanted */
-
 	DHD_TRACE(("%s: Enter\n", __FUNCTION__));
 
 	if (bus->dhd->busstate == DHD_BUS_DOWN) {
@@ -5503,6 +6050,14 @@ dhdsdio_dpc(dhd_bus_t *bus)
 	intstatus = bus->intstatus;
 
 	dhd_os_sdlock(bus->dhd);
+
+	// terence 20131025: fix kernel panic issue if user is enabling and disabling Wi-Fi
+	if (bus->dhd->busstate == DHD_BUS_DOWN) {
+		DHD_ERROR(("%s: Bus down 2, ret\n", __FUNCTION__));
+		bus->intstatus = 0;
+		dhd_os_sdunlock(bus->dhd);
+		return 0;
+	}
 
 	if (!SLPAUTO_ENAB(bus) && !KSO_ENAB(bus)) {
 		DHD_ERROR(("%s: Device asleep\n", __FUNCTION__));
@@ -5729,8 +6284,9 @@ clkwait:
 exit:
 
 	if (!resched && dhd_dpcpoll) {
-		if (dhdsdio_readframes(bus, dhd_rxbound, &rxdone) != 0)
+		if (dhdsdio_readframes(bus, dhd_rxbound, &rxdone) != 0) {
 			resched = TRUE;
+		}
 	}
 
 	dhd_os_sdunlock(bus->dhd);
@@ -5797,7 +6353,7 @@ dhdsdio_isr(void *arg)
 #if defined(SDIO_ISR_THREAD)
 	DHD_TRACE(("Calling dhdsdio_dpc() from %s\n", __FUNCTION__));
 	DHD_OS_WAKE_LOCK(bus->dhd);
-	while (dhdsdio_dpc(bus));
+	dhdsdio_dpc(bus);
 	DHD_OS_WAKE_UNLOCK(bus->dhd);
 #else
 
@@ -6209,7 +6765,7 @@ dhd_bus_watchdog(dhd_pub_t *dhdp)
 	else {
 		bus->idlecount++;
 
-		if (bus->idlecount >= bus->idletime) {
+		if ((bus->idletime > 0) && (bus->idlecount >= bus->idletime)) {
 			DHD_TIMER(("%s: DHD Idle state!!\n", __FUNCTION__));
 			if (SLPAUTO_ENAB(bus)) {
 				if (dhdsdio_bussleep(bus, TRUE) != BCME_BUSY)
@@ -6357,6 +6913,8 @@ dhdsdio_chipmatch(uint16 chipid)
 		return TRUE;
 	if (chipid == BCM43242_CHIP_ID)
 		return TRUE;
+	if (chipid == BCM43340_CHIP_ID)
+		return TRUE;
 	if (chipid == BCM43341_CHIP_ID)
 		return TRUE;
 	if (chipid == BCM43143_CHIP_ID)
@@ -6370,6 +6928,8 @@ dhdsdio_chipmatch(uint16 chipid)
 	if (chipid == BCM4324_CHIP_ID)
 		return TRUE;
 	if (chipid == BCM4335_CHIP_ID)
+		return TRUE;
+	if (chipid == BCM4339_CHIP_ID)
 		return TRUE;
 	if (chipid == BCM4350_CHIP_ID)
 		return TRUE;
@@ -6386,6 +6946,17 @@ dhdsdio_probe(uint16 venid, uint16 devid, uint16 bus_no, uint16 slot,
 	struct ether_addr ea_addr;
 #endif /* GET_CUSTOM_MAC_ENABLE */
 
+#if defined(MULTIPLE_SUPPLICANT)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25))
+	if (mutex_is_locked(&_dhd_sdio_mutex_lock_) == 0) {
+		DHD_ERROR(("%s : no mutex held. set lock\n", __FUNCTION__));
+	}
+	else {
+		DHD_ERROR(("%s : mutex is locked!. wait for unlocking\n", __FUNCTION__));
+	}
+	mutex_lock(&_dhd_sdio_mutex_lock_);
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25)) */
+#endif 
 
 	/* Init global variables at run-time, not as part of the declaration.
 	 * This is required to support init/de-init of the driver. Initialization
@@ -6399,7 +6970,11 @@ dhdsdio_probe(uint16 venid, uint16 devid, uint16 bus_no, uint16 slot,
 	sd1idle = TRUE;
 	dhd_readahead = TRUE;
 	retrydata = FALSE;
+#ifdef MIRACAST_APPLICATION
+	dhd_doflow = TRUE;
+#else
 	dhd_doflow = FALSE;
+#endif
 	dhd_dongle_ramsize = 0;
 	dhd_txminmax = DHD_TXMINMAX;
 
@@ -6488,6 +7063,17 @@ dhdsdio_probe(uint16 venid, uint16 devid, uint16 bus_no, uint16 slot,
 		DHD_ERROR(("%s: dhdsdio_probe_attach failed\n", __FUNCTION__));
 		goto fail;
 	}
+	
+#ifdef PROP_TXSTATUS
+	// terence 20131215: disable_proptx should be set before dhd_attach
+	if (bus->sih->chip == BCM4339_CHIP_ID) {
+		printf("%s: Enable prop_txstatus\n", __FUNCTION__);
+		disable_proptx = 0;
+	} else {
+		printf("%s: Disable prop_txstatus\n", __FUNCTION__);
+		disable_proptx = 1;
+	}
+#endif
 
 	/* Attach to the dhd/OS/network interface */
 	if (!(bus->dhd = dhd_attach(osh, bus, SDPCM_RESERVE))) {
@@ -6537,7 +7123,7 @@ dhdsdio_probe(uint16 venid, uint16 devid, uint16 bus_no, uint16 slot,
 	if (dhd_download_fw_on_driverload) {
 		if ((ret = dhd_bus_start(bus->dhd)) != 0) {
 			DHD_ERROR(("%s: dhd_bus_start failed\n", __FUNCTION__));
-				goto fail;
+			goto fail;
 		}
 	}
 	/* Ok, have the per-port tell the stack we're open for business */
@@ -6546,7 +7132,12 @@ dhdsdio_probe(uint16 venid, uint16 devid, uint16 bus_no, uint16 slot,
 		goto fail;
 	}
 
-
+#if defined(MULTIPLE_SUPPLICANT)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25))
+	mutex_unlock(&_dhd_sdio_mutex_lock_);
+	DHD_ERROR(("%s : the lock is released.\n", __FUNCTION__));
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)) */
+#endif 
 
 	return bus;
 
@@ -6554,9 +7145,294 @@ fail:
 	dhdsdio_release(bus, osh);
 
 forcereturn:
+#if defined(MULTIPLE_SUPPLICANT)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25))
+	mutex_unlock(&_dhd_sdio_mutex_lock_);
+	DHD_ERROR(("%s : the lock is released.\n", __FUNCTION__));
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)) */
+#endif 
 
 	return NULL;
 }
+
+#ifdef REGON_BP_HANG_FIX
+static int dhd_sdio_backplane_reset(struct dhd_bus *bus)
+{
+	uint32 temp = 0;
+	DHD_ERROR(("Resetting  the backplane to avoid failure in firmware download..\n"));
+
+	temp = bcmsdh_reg_read(bus->sdh, 0x180021e0, 4);
+	DHD_INFO(("SDIO Clk Control Reg = %x\n", temp));
+
+	/* Force HT req from PMU */
+	bcmsdh_reg_write(bus->sdh, 0x18000644, 4, 0x6000005);
+
+	/* Increase the clock stretch duration. */
+	bcmsdh_reg_write(bus->sdh, 0x18000630, 4, 0xC8FFC8);
+
+	/* Setting ALP clock request in SDIOD clock control status register */
+	bcmsdh_reg_write(bus->sdh, 0x180021e0, 4, 0x41);
+
+	/* Allowing clock from SR engine to SR memory */
+	bcmsdh_reg_write(bus->sdh, 0x18004400, 4, 0xf92f1);
+	/* Disabling SR Engine before SR binary download. */
+	bcmsdh_reg_write(bus->sdh, 0x18000650, 4, 0x3);
+	bcmsdh_reg_write(bus->sdh, 0x18000654, 4, 0x0);
+
+	/* Enabling clock from backplane to SR memory */
+	bcmsdh_reg_write(bus->sdh, 0x18004400, 4, 0xf9af1);
+
+	/* Initializing SR memory address register in SOCRAM */
+	bcmsdh_reg_write(bus->sdh, 0x18004408, 4, 0x0);
+
+	/* Downloading the SR binary */
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0xc0002000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x80008000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x1051f080);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x80008000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x1050f080);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x80008000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x1050f080);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x80008000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x1050f080);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000004);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x30a00000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000604);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x30a00000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00001604);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x30a00000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00001404);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x30a08c80);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00010001);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x14a00000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00011404);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x30a00000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00002000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x04a00000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00002000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0xf8000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00002000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x04a00000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00002000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0xf8000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00011604);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x30a00000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00010604);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x30a00000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00010004);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x30a00000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00010000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x14a00000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000004);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x30a00000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00010001);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x14a00000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00010004);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x30a00000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00010000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x30a00000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00010000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x14a00000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x30a00000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000008);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x04a00000);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0x00000008);
+	bcmsdh_reg_write(bus->sdh, 0x1800440c, 4, 0xfc000000);
+	/* SR Binary Download complete */
+
+	/* Allowing clock from SR engine to SR memory */
+	bcmsdh_reg_write(bus->sdh, 0x18004400, 4, 0xf92f1);
+
+	/* Turning ON SR Engine to initiate backplane reset  Repeated ?? Maharana */
+	bcmsdh_reg_write(bus->sdh, 0x18000650, 4, 0x3);
+	bcmsdh_reg_write(bus->sdh, 0x18000654, 4, 0x0);
+	bcmsdh_reg_write(bus->sdh, 0x18000650, 4, 0x3);
+	bcmsdh_reg_write(bus->sdh, 0x18000654, 4, 0x2);
+	bcmsdh_reg_write(bus->sdh, 0x18000650, 4, 0x3);
+	bcmsdh_reg_write(bus->sdh, 0x18000654, 4, 0x3);
+	bcmsdh_reg_write(bus->sdh, 0x18000650, 4, 0x3);
+	bcmsdh_reg_write(bus->sdh, 0x18000654, 4, 0x37);
+	bcmsdh_reg_write(bus->sdh, 0x18000650, 4, 0x3);
+	temp = bcmsdh_reg_read(bus->sdh, 0x18000654, 4);
+	DHD_INFO(("0x18000654 = %x\n", temp));
+	bcmsdh_reg_write(bus->sdh, 0x18000654, 4, 0x800037);
+	OSL_DELAY(100000);
+	/* Rolling back the original values for clock stretch and PMU timers */
+	bcmsdh_reg_write(bus->sdh, 0x18000644, 4, 0x0);
+	bcmsdh_reg_write(bus->sdh, 0x18000630, 4, 0xC800C8);
+	/* Removing ALP clock request in SDIOD clock control status register */
+	bcmsdh_reg_write(bus->sdh, 0x180021e0, 4, 0x40);
+	OSL_DELAY(10000);
+	return TRUE;
+}
+
+static int dhdsdio_sdio_hang_war(struct dhd_bus *bus)
+{
+	uint32 temp = 0, temp2 = 0, counter = 0, BT_pwr_up = 0, BT_ready = 0;
+	/* Removing reset of D11 Core */
+	bcmsdh_reg_write(bus->sdh, 0x18101408, 4, 0x3);
+	bcmsdh_reg_write(bus->sdh, 0x18101800, 4, 0x0);
+	bcmsdh_reg_write(bus->sdh, 0x18101408, 4, 0x1);
+	/* Reading CLB XTAL BT cntrl register */
+	bcmsdh_reg_write(bus->sdh, 0x180013D8, 2, 0xD1);
+	bcmsdh_reg_write(bus->sdh, 0x180013DA, 2, 0x12);
+	bcmsdh_reg_write(bus->sdh, 0x180013D8, 2, 0x2D0);
+	/* Read if BT is powered up */
+	temp = bcmsdh_reg_read(bus->sdh, 0x180013DA, 2);
+	/* Read BT_ready from WLAN wireless register */
+	temp2 = bcmsdh_reg_read(bus->sdh, 0x1800002C, 4);
+	/*
+	Check if the BT is powered up and ready. The duration between BT being powered up
+	and BT becoming ready is the problematic window for WLAN. If we move ahead at this
+	time then we may encounter a corrupted backplane later. So we wait for BT to be ready
+	and then proceed after checking the health of the backplane. If the backplane shows
+	indications of failure then we	have to do a full reset of the backplane using SR engine
+	and then proceed.
+	*/
+	(temp & 0xF0) ? (BT_pwr_up = 1):(BT_pwr_up = 0);
+	(temp2 & (1<<17)) ? (BT_ready = 1):(BT_ready = 0);
+	DHD_ERROR(("WARNING: Checking if BT is ready BT_pwr_up = %x"
+		"BT_ready = %x \n", BT_pwr_up, BT_ready));
+	while (BT_pwr_up && !BT_ready)
+	{
+		OSL_DELAY(1000);
+		bcmsdh_reg_write(bus->sdh, 0x180013D8, 2, 0x2D0);
+		temp = bcmsdh_reg_read(bus->sdh, 0x180013DA, 2);
+		temp2 = bcmsdh_reg_read(bus->sdh, 0x1800002C, 4);
+		(temp & 0xF0) ? (BT_pwr_up = 1):(BT_pwr_up = 0);
+		(temp2 & (1<<17)) ? (BT_ready = 1):(BT_ready = 0);
+		counter++;
+		if (counter == 5000)
+		{
+			DHD_ERROR(("WARNING: Going ahead after 5 secs with"
+					"risk of failure because BT ready is not yet set\n"));
+			break;
+		}
+	}
+	DHD_ERROR(("\nWARNING: WL Proceeding BT_pwr_up = %x BT_ready = %x"
+			"\n", BT_pwr_up, BT_ready));
+	counter = 0;
+	OSL_DELAY(10000);
+	/*
+	Get the information of who accessed the crucial backplane entities
+	by reading read and write access registers
+	*/
+	DHD_TRACE(("%d: Read Value @ 0x18104808 = %x."
+			"\n", __LINE__, bcmsdh_reg_read(bus->sdh, 0x18104808, 4)));
+	DHD_TRACE(("%d: Read Value @ 0x1810480C = %x."
+			"\n", __LINE__, bcmsdh_reg_read(bus->sdh, 0x1810480C, 4)));
+	DHD_TRACE(("%d: Read Value @ 0x18106808 = %x."
+			"\n", __LINE__, bcmsdh_reg_read(bus->sdh, 0x18106808, 4)));
+	DHD_TRACE(("%d: Read Value @ 0x1810680C = %x."
+			"\n", __LINE__, bcmsdh_reg_read(bus->sdh, 0x1810680C, 4)));
+	DHD_TRACE(("%d: Read Value @ 0x18107808 = %x."
+			"\n", __LINE__, bcmsdh_reg_read(bus->sdh, 0x18107808, 4)));
+	DHD_TRACE(("%d: Read Value @ 0x1810780C = %x."
+			"\n", __LINE__, bcmsdh_reg_read(bus->sdh, 0x1810780C, 4)));
+	DHD_TRACE(("%d: Read Value @ 0x18108808 = %x."
+			"\n", __LINE__, bcmsdh_reg_read(bus->sdh, 0x18108808, 4)));
+	DHD_TRACE(("%d: Read Value @ 0x1810880C = %x."
+			"\n", __LINE__, bcmsdh_reg_read(bus->sdh, 0x1810880C, 4)));
+	DHD_TRACE(("%d: Read Value @ 0x18109808 = %x."
+			"\n", __LINE__, bcmsdh_reg_read(bus->sdh, 0x18109808, 4)));
+	DHD_TRACE(("%d: Read Value @ 0x1810980C = %x."
+			"\n", __LINE__, bcmsdh_reg_read(bus->sdh, 0x1810980C, 4)));
+	DHD_TRACE(("%d: Read Value @ 0x1810C808 = %x."
+			"\n", __LINE__, bcmsdh_reg_read(bus->sdh, 0x1810c808, 4)));
+	DHD_TRACE(("%d: Read Value @ 0x1810C80C = %x."
+			"\n", __LINE__, bcmsdh_reg_read(bus->sdh, 0x1810c80C, 4)));
+	counter = 0;
+	while ((bcmsdh_reg_read(bus->sdh, 0x18104808, 4) == 5) ||
+		(bcmsdh_reg_read(bus->sdh, 0x1810480C, 4) == 5) ||
+		(bcmsdh_reg_read(bus->sdh, 0x18106808, 4) == 5) ||
+		(bcmsdh_reg_read(bus->sdh, 0x1810680C, 4) == 5) ||
+		(bcmsdh_reg_read(bus->sdh, 0x1810780C, 4) == 5) ||
+		(bcmsdh_reg_read(bus->sdh, 0x1810780C, 4) == 5) ||
+		(bcmsdh_reg_read(bus->sdh, 0x1810880C, 4) == 5) ||
+		(bcmsdh_reg_read(bus->sdh, 0x1810880C, 4) == 5) ||
+		(bcmsdh_reg_read(bus->sdh, 0x1810980C, 4) == 5) ||
+		(bcmsdh_reg_read(bus->sdh, 0x1810980C, 4) == 5) ||
+		(bcmsdh_reg_read(bus->sdh, 0x1810C80C, 4) == 5) ||
+		(bcmsdh_reg_read(bus->sdh, 0x1810C80C, 4) == 5))
+	{
+		if (++counter > 10)
+		{
+			DHD_ERROR(("Unable to recover the backkplane corruption"
+					"..Tried %d times.. Exiting\n", counter));
+			break;
+		}
+		OSL_DELAY(10000);
+		dhd_sdio_backplane_reset(bus);
+		/*
+		Get the information of who accessed the crucial backplane
+		entities by reading read and write access registers
+		*/
+		DHD_ERROR(("%d: Read Value @ 0x18104808 = %x."
+				"\n", __LINE__, bcmsdh_reg_read(bus->sdh, 0x18104808, 4)));
+		DHD_ERROR(("%d: Read Value @ 0x1810480C = %x."
+				"\n", __LINE__, bcmsdh_reg_read(bus->sdh, 0x1810480C, 4)));
+		DHD_ERROR(("%d: Read Value @ 0x18106808 = %x."
+				"\n", __LINE__, bcmsdh_reg_read(bus->sdh, 0x18106808, 4)));
+		DHD_ERROR(("%d: Read Value @ 0x1810680C = %x."
+				"\n", __LINE__, bcmsdh_reg_read(bus->sdh, 0x1810680C, 4)));
+		DHD_ERROR(("%d: Read Value @ 0x18107808 = %x."
+				"\n", __LINE__, bcmsdh_reg_read(bus->sdh, 0x18107808, 4)));
+		DHD_ERROR(("%d: Read Value @ 0x1810780C = %x."
+				"\n", __LINE__, bcmsdh_reg_read(bus->sdh, 0x1810780C, 4)));
+		DHD_ERROR(("%d: Read Value @ 0x18108808 = %x."
+				"\n", __LINE__, bcmsdh_reg_read(bus->sdh, 0x18108808, 4)));
+		DHD_ERROR(("%d: Read Value @ 0x1810880C = %x."
+				"\n", __LINE__, bcmsdh_reg_read(bus->sdh, 0x1810880C, 4)));
+		DHD_ERROR(("%d: Read Value @ 0x18109808 = %x."
+				"\n", __LINE__, bcmsdh_reg_read(bus->sdh, 0x18109808, 4)));
+		DHD_ERROR(("%d: Read Value @ 0x1810980C = %x."
+				"\n", __LINE__, bcmsdh_reg_read(bus->sdh, 0x1810980C, 4)));
+		DHD_ERROR(("%d: Read Value @ 0x1810C808 = %x."
+				"\n", __LINE__, bcmsdh_reg_read(bus->sdh, 0x1810c808, 4)));
+		DHD_ERROR(("%d: Read Value @ 0x1810C80C = %x."
+				"\n", __LINE__, bcmsdh_reg_read(bus->sdh, 0x1810c80C, 4)));
+	}
+	/* Set the WL ready to indicate BT that we are done with backplane reset */
+	DHD_ERROR(("Setting up AXI_OK\n"));
+	bcmsdh_reg_write(bus->sdh, 0x18000658, 4, 0x3);
+	temp = bcmsdh_reg_read(bus->sdh, 0x1800065c, 4);
+	temp |= 0x80000000;
+	bcmsdh_reg_write(bus->sdh, 0x1800065c, 4, temp);
+	return TRUE;
+}
+#endif /* REGON_BP_HANG_FIX */
 
 static bool
 dhdsdio_probe_attach(struct dhd_bus *bus, osl_t *osh, void *sdh, void *regsva,
@@ -6572,12 +7448,6 @@ dhdsdio_probe_attach(struct dhd_bus *bus, osl_t *osh, void *sdh, void *regsva,
 	if (dhdsdio_set_siaddr_window(bus, SI_ENUM_BASE)) {
 		DHD_ERROR(("%s: FAILED to return to SI_ENUM_BASE\n", __FUNCTION__));
 	}
-
-#ifdef DHD_DEBUG
-	DHD_ERROR(("F1 signature read @0x18000000=0x%4x\n",
-	       bcmsdh_reg_read(bus->sdh, SI_ENUM_BASE, 4)));
-
-#endif /* DHD_DEBUG */
 
 
 	/* Force PLL off until si_attach() programs PLL control regs */
@@ -6648,6 +7518,18 @@ dhdsdio_probe_attach(struct dhd_bus *bus, osl_t *osh, void *sdh, void *regsva,
 	}
 
 
+#ifdef DHD_DEBUG
+	DHD_ERROR(("F1 signature OK, socitype:0x%x chip:0x%4x rev:0x%x pkg:0x%x\n",
+		bus->sih->socitype, bus->sih->chip, bus->sih->chiprev,
+		bus->sih->chippkg));
+#endif /* DHD_DEBUG */
+
+#ifdef REGON_BP_HANG_FIX
+	/* WAR - for 43241 B0-B1-B2. B3 onwards do not need this */
+	if (((uint16)bus->sih->chip == BCM4324_CHIP_ID) && (bus->sih->chiprev < 3))
+			dhdsdio_sdio_hang_war(bus);
+#endif /* REGON_BP_HANG_FIX */
+
 	bcmsdh_chipinfo(sdh, bus->sih->chip, bus->sih->chiprev);
 
 	if (!dhdsdio_chipmatch((uint16)bus->sih->chip)) {
@@ -6692,6 +7574,7 @@ dhdsdio_probe_attach(struct dhd_bus *bus, osl_t *osh, void *sdh, void *regsva,
 			/* also populate base address */
 			switch ((uint16)bus->sih->chip) {
 			case BCM4335_CHIP_ID:
+			case BCM4339_CHIP_ID:
 				bus->dongle_ram_base = CR4_4335_RAM_BASE;
 				break;
 			case BCM4350_CHIP_ID:
@@ -6750,6 +7633,12 @@ dhdsdio_probe_attach(struct dhd_bus *bus, osl_t *osh, void *sdh, void *regsva,
 	if ((bus->poll = (bool)dhd_poll))
 		bus->pollrate = 1;
 
+#ifdef BCMSDIOH_TXGLOM
+	/* Setting default Glom mode */
+	bus->glom_mode = bcmsdh_set_mode(bus->sdh, SDPCM_DEFGLOM_MODE);
+	/* Setting default Glom size */
+	bus->glomsize = SDPCM_DEFGLOM_SIZE;
+#endif
 
 	return TRUE;
 
@@ -6853,7 +7742,8 @@ dhdsdio_probe_init(dhd_bus_t *bus, osl_t *osh, void *sdh)
 		DHD_INFO(("%s: Initial value for %s is %d\n",
 		          __FUNCTION__, "sd_blocksize", bus->blocksize));
 
-		if (bus->sih->chip == BCM4335_CHIP_ID)
+		if ((bus->sih->chip == BCM4335_CHIP_ID) ||
+			(bus->sih->chip == BCM4339_CHIP_ID))
 			dhd_overflow_war(bus);
 	}
 	bus->roundup = MIN(max_roundup, bus->blocksize);
@@ -6873,11 +7763,12 @@ dhdsdio_probe_init(dhd_bus_t *bus, osl_t *osh, void *sdh)
 
 bool
 dhd_bus_download_firmware(struct dhd_bus *bus, osl_t *osh,
-                          char *pfw_path, char *pnv_path)
+                          char *pfw_path, char *pnv_path, char *pconf_path)
 {
 	bool ret;
 	bus->fw_path = pfw_path;
 	bus->nv_path = pnv_path;
+	bus->dhd->conf_path = pconf_path;
 
 	ret = dhdsdio_download_firmware(bus, osh, bus->sdh);
 
@@ -6894,6 +7785,16 @@ dhdsdio_download_firmware(struct dhd_bus *bus, osl_t *osh, void *sdh)
 
 	/* Download the firmware */
 	dhdsdio_clkctl(bus, CLK_AVAIL, FALSE);
+
+	/* External conf takes precedence if specified */
+	dhd_conf_preinit(bus->dhd);
+	dhd_conf_download_config(bus->dhd);
+	dhd_conf_set_fw_path(bus->dhd, bus->fw_path);
+	dhd_conf_set_nv_path(bus->dhd, bus->nv_path);
+
+	printk("Final fw_path=%s\n", bus->fw_path);
+	printk("Final nv_path=%s\n", bus->nv_path);
+	printk("Final conf_path=%s\n", bus->dhd->conf_path);
 
 	ret = _dhdsdio_download_firmware(bus) == 0;
 
@@ -7012,6 +7913,17 @@ dhdsdio_disconnect(void *ptr)
 
 	DHD_TRACE(("%s: Enter\n", __FUNCTION__));
 
+#if defined(MULTIPLE_SUPPLICANT)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25))
+	if (mutex_is_locked(&_dhd_sdio_mutex_lock_) == 0) {
+		DHD_ERROR(("%s : no mutex held. set lock\n", __FUNCTION__));
+	}
+	else {
+		DHD_ERROR(("%s : mutex is locked!. wait for unlocking\n", __FUNCTION__));
+	}
+	mutex_lock(&_dhd_sdio_mutex_lock_);
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25)) */
+#endif 
 
 
 	if (bus) {
@@ -7019,7 +7931,12 @@ dhdsdio_disconnect(void *ptr)
 		dhdsdio_release(bus, bus->dhd->osh);
 	}
 
-
+#if defined(MULTIPLE_SUPPLICANT)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25))
+	mutex_unlock(&_dhd_sdio_mutex_lock_);
+	DHD_ERROR(("%s : the lock is released.\n", __FUNCTION__));
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25)) */
+#endif /* LINUX */
 
 	DHD_TRACE(("%s: Disconnected\n", __FUNCTION__));
 }
@@ -7162,17 +8079,27 @@ dhdsdio_download_code_file(struct dhd_bus *bus, char *pfw_path)
 	int len;
 	void *image = NULL;
 	uint8 *memblock = NULL, *memptr;
+	uint8 *memptr_tmp = NULL; // terence: check downloaded firmware is correct
 
 	DHD_INFO(("%s: download firmware %s\n", __FUNCTION__, pfw_path));
 
 	image = dhd_os_open_image(pfw_path);
-	if (image == NULL)
+	if (image == NULL) {
+		printk("%s: Open firmware file failed %s\n", __FUNCTION__, pfw_path);
 		goto err;
+	}
 
 	memptr = memblock = MALLOC(bus->dhd->osh, MEMBLOCK + DHD_SDALIGN);
 	if (memblock == NULL) {
 		DHD_ERROR(("%s: Failed to allocate memory %d bytes\n", __FUNCTION__, MEMBLOCK));
 		goto err;
+	}
+	if (dhd_msg_level & DHD_TRACE_VAL) {
+		memptr_tmp = MALLOC(bus->dhd->osh, MEMBLOCK + DHD_SDALIGN);
+		if (memptr_tmp == NULL) {
+			DHD_ERROR(("%s: Failed to allocate memory %d bytes\n", __FUNCTION__, MEMBLOCK));
+			goto err;
+		}
 	}
 	if ((uint32)(uintptr)memblock % DHD_SDALIGN)
 		memptr += (DHD_SDALIGN - ((uint32)(uintptr)memblock % DHD_SDALIGN));
@@ -7202,12 +8129,29 @@ dhdsdio_download_code_file(struct dhd_bus *bus, char *pfw_path)
 			goto err;
 		}
 
+		if (dhd_msg_level & DHD_TRACE_VAL) {
+			bcmerror = dhdsdio_membytes(bus, FALSE, offset, memptr_tmp, len);
+			if (bcmerror) {
+				DHD_ERROR(("%s: error %d on reading %d membytes at 0x%08x\n",
+				        __FUNCTION__, bcmerror, MEMBLOCK, offset));
+				goto err;
+			}
+			if (memcmp(memptr_tmp, memptr, len)) {
+				DHD_ERROR(("%s: Downloaded image is corrupted.\n", __FUNCTION__));
+				goto err;
+			} else
+				DHD_INFO(("%s: Download, Upload and compare succeeded.\n", __FUNCTION__));
+		}
 		offset += MEMBLOCK;
 	}
 
 err:
 	if (memblock)
 		MFREE(bus->dhd->osh, memblock, MEMBLOCK + DHD_SDALIGN);
+	if (dhd_msg_level & DHD_TRACE_VAL) {
+		if (memptr_tmp)
+			MFREE(bus->dhd->osh, memptr_tmp, MEMBLOCK + DHD_SDALIGN);
+	}
 
 	if (image)
 		dhd_os_close_image(image);
@@ -7254,8 +8198,10 @@ dhdsdio_download_nvram(struct dhd_bus *bus)
 
 	if (nvram_file_exists) {
 		image = dhd_os_open_image(pnv_path);
-		if (image == NULL)
+		if (image == NULL) {
+			printk("%s: Open nvram file failed %s\n", __FUNCTION__, pnv_path);
 			goto err;
+		}
 	}
 
 	memblock = MALLOC(bus->dhd->osh, MAX_NVRAMBUF_SIZE);
@@ -7413,6 +8359,19 @@ dhd_bcmsdh_send_buf(dhd_bus_t *bus, uint32 addr, uint fn, uint flags, uint8 *buf
 	return (bcmsdh_send_buf(bus->sdh, addr, fn, flags, buf, nbytes, pkt, complete, handle));
 }
 
+#ifdef BCMSDIOH_TXGLOM
+static void
+dhd_bcmsdh_glom_post(dhd_bus_t *bus, uint8 *frame, void *pkt, uint len)
+{
+	bcmsdh_glom_post(bus->sdh, frame, pkt, len);
+}
+
+static void
+dhd_bcmsdh_glom_clear(dhd_bus_t *bus)
+{
+	bcmsdh_glom_clear(bus->sdh);
+}
+#endif
 
 uint
 dhd_bus_chip(struct dhd_bus *bus)
@@ -7469,16 +8428,19 @@ dhd_bus_devreset(dhd_pub_t *dhdp, uint8 flag)
 
 			bus->dhd->dongle_reset = TRUE;
 			bus->dhd->up = FALSE;
+#ifdef BCMSDIOH_TXGLOM
+			dhd_txglom_enable(dhdp, FALSE);
+#endif
 			dhd_os_sdunlock(dhdp);
 
-			DHD_TRACE(("%s:  WLAN OFF DONE\n", __FUNCTION__));
+			DHD_ERROR(("%s:  WLAN OFF DONE\n", __FUNCTION__));
 			/* App can now remove power from device */
 		} else
 			bcmerror = BCME_SDIO_ERROR;
 	} else {
 		/* App must have restored power to device before calling */
 
-		DHD_TRACE(("\n\n%s: == WLAN ON ==\n", __FUNCTION__));
+		DHD_ERROR(("\n\n%s: == WLAN ON ==\n", __FUNCTION__));
 
 		if (bus->dhd->dongle_reset) {
 			/* Turn on WLAN */
@@ -7493,13 +8455,22 @@ dhd_bus_devreset(dhd_pub_t *dhdp, uint8 flag)
 			                        (uint32 *)SI_ENUM_BASE,
 			                        bus->cl_devid)) {
 				/* Attempt to download binary to the dongle */
+				dhd_conf_set_fw_name_by_chip(dhdp, fw_path, firmware_path); // terence
 				if (dhdsdio_probe_init(bus, bus->dhd->osh, bus->sdh) &&
 					dhdsdio_download_firmware(bus, bus->dhd->osh, bus->sdh)) {
 
 					/* Re-init bus, enable F2 transfer */
 					bcmerror = dhd_bus_init((dhd_pub_t *) bus->dhd, FALSE);
 					if (bcmerror == BCME_OK) {
+						bcmsdh_set_drvdata(dhdp); // terence 20131214: fix for null pointer issue
 #if defined(OOB_INTR_ONLY)
+						/* make sure oob intr get registered */
+						if (!bcmsdh_is_oob_intr_registered()) {
+							sdioh_start(NULL, 1);
+							bcmsdh_register_oob_intr(dhdp);
+							dhdp->iswl = TRUE;
+						}
+
 						bcmsdh_set_irq(TRUE);
 						dhd_enable_oob_intr(bus, TRUE);
 #endif 
@@ -7512,6 +8483,7 @@ dhd_bus_devreset(dhd_pub_t *dhdp, uint8 flag)
 						dhd_txflowcontrol(bus->dhd, ALL_INTERFACES, OFF);
 #endif 
 						dhd_os_wd_timer(dhdp, dhd_watchdog_ms);
+
 						DHD_TRACE(("%s: WLAN ON DONE\n", __FUNCTION__));
 					} else {
 						dhd_bus_stop(bus, FALSE);
@@ -7524,14 +8496,18 @@ dhd_bus_devreset(dhd_pub_t *dhdp, uint8 flag)
 				bcmerror = BCME_SDIO_ERROR;
 
 #ifdef DHDTHREAD
-				dhd_os_sdunlock(dhdp);
+			dhd_os_sdunlock(dhdp);
 #endif /* DHDTHREAD */
 		} else {
 			bcmerror = BCME_SDIO_ERROR;
-			DHD_INFO(("%s called when dongle is not in reset\n",
+			DHD_ERROR(("%s called when dongle is not in reset\n",
 				__FUNCTION__));
-			DHD_INFO(("Will call dhd_bus_start instead\n"));
+			DHD_ERROR(("Will call dhd_bus_start instead\n"));
 			sdioh_start(NULL, 1);
+#if defined(HW_OOB)
+			dhd_conf_set_hw_oob_intr(bus->sdh, bus->sih->chip); // terence 20120615: fix for OOB initial issue
+#endif
+			dhd_conf_set_fw_name_by_chip(dhdp, fw_path, firmware_path);
 			if ((bcmerror = dhd_bus_start(dhdp)) != 0)
 				DHD_ERROR(("%s: dhd_bus_start fail with %d\n",
 					__FUNCTION__, bcmerror));

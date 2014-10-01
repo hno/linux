@@ -151,7 +151,7 @@ static __maybe_unused void ehci_adjust_port_wakeup_flags(struct ehci_hcd *ehci,
 		while (port--) {
 			u32 __iomem	*hostpc_reg;
 
-			hostpc_reg = (u32 __iomem *)((u8 *) ehci->regs
+			hostpc_reg = (u32 __iomem *)((u8 * __force) ehci->regs
 					+ HOSTPC0 + 4 * port);
 			temp = ehci_readl(ehci, hostpc_reg);
 			ehci_writel(ehci, temp & ~HOSTPC_PHCD, hostpc_reg);
@@ -187,7 +187,7 @@ static __maybe_unused void ehci_adjust_port_wakeup_flags(struct ehci_hcd *ehci,
 		while (port--) {
 			u32 __iomem	*hostpc_reg;
 
-			hostpc_reg = (u32 __iomem *)((u8 *) ehci->regs
+			hostpc_reg = (u32 __iomem *)((u8 * __force) ehci->regs
 					+ HOSTPC0 + 4 * port);
 			temp = ehci_readl(ehci, hostpc_reg);
 			ehci_writel(ehci, temp | HOSTPC_PHCD, hostpc_reg);
@@ -289,7 +289,7 @@ static int ehci_bus_suspend (struct usb_hcd *hcd)
 			u32 __iomem	*hostpc_reg;
 			u32		t3;
 
-			hostpc_reg = (u32 __iomem *)((u8 *) ehci->regs
+			hostpc_reg = (u32 __iomem *)((u8 * __force) ehci->regs
 					+ HOSTPC0 + 4 * port);
 			t3 = ehci_readl(ehci, hostpc_reg);
 			ehci_writel(ehci, t3 | HOSTPC_PHCD, hostpc_reg);
@@ -390,7 +390,7 @@ static int ehci_bus_resume (struct usb_hcd *hcd)
 			if (test_bit(i, &ehci->bus_suspended)) {
 				u32 __iomem	*hostpc_reg;
 
-				hostpc_reg = (u32 __iomem *)((u8 *) ehci->regs
+				hostpc_reg = (u32 __iomem *)((u8 * __force) ehci->regs
 						+ HOSTPC0 + 4 * i);
 				temp = ehci_readl(ehci, hostpc_reg);
 				ehci_writel(ehci, temp & ~HOSTPC_PHCD,
@@ -684,7 +684,7 @@ static int ehci_hub_control (
 	 */
 
 	if (ehci->has_hostpc)
-		hostpc_reg = (u32 __iomem *)((u8 *)ehci->regs
+		hostpc_reg = (u32 __iomem *)((u8 * __force)ehci->regs
 				+ HOSTPC0 + 4 * ((wIndex & 0xff) - 1));
 	spin_lock_irqsave (&ehci->lock, flags);
 	switch (typeReq) {

@@ -164,6 +164,11 @@ struct devfreq {
 
 	unsigned long min_freq;
 	unsigned long max_freq;
+
+#ifdef CONFIG_ARCH_SUNXI
+	unsigned long scaling_min_freq;
+	unsigned long scaling_max_freq;
+#endif
 };
 
 #if defined(CONFIG_PM_DEVFREQ)
@@ -210,6 +215,12 @@ struct devfreq_simple_ondemand_data {
 	unsigned int downdifferential;
 };
 #endif
+#if defined(CONFIG_DEVFREQ_GOV_VANS) || defined(CONFIG_DEVFREQ_GOV_VANS_POLLING)
+extern const struct devfreq_governor devfreq_vans;
+#endif
+#ifdef CONFIG_DEVFREQ_GOV_DSM
+extern const struct devfreq_governor devfreq_dsm;
+#endif
 
 #else /* !CONFIG_PM_DEVFREQ */
 static struct devfreq *devfreq_add_device(struct device *dev,
@@ -247,6 +258,8 @@ static int devfreq_unregister_opp_notifier(struct device *dev,
 #define devfreq_performance	NULL
 #define devfreq_userspace	NULL
 #define devfreq_simple_ondemand	NULL
+#define devfreq_vans	NULL
+#define devfreq_dsm 	NULL
 
 #endif /* CONFIG_PM_DEVFREQ */
 

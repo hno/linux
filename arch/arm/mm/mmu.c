@@ -417,12 +417,6 @@ static void __init build_mem_type_table(void)
 	vecs_pgprot = kern_pgprot = user_pgprot = cp->pte;
 
 	/*
-	 * Only use write-through for non-SMP systems
-	 */
-	if (!is_smp() && cpu_arch >= CPU_ARCH_ARMv5 && cachepolicy > CPOLICY_WRITETHROUGH)
-		vecs_pgprot = cache_policies[CPOLICY_WRITETHROUGH].pte;
-
-	/*
 	 * Enable CPU-specific coherency if supported.
 	 * (Only available on XSC3 at the moment.)
 	 */
@@ -595,7 +589,8 @@ static void __init alloc_init_pte(pmd_t *pmd, unsigned long addr,
 	pte_t *pte = start_pte + pte_index(addr);
 
 	/* If replacing a section mapping, the whole section must be replaced */
-	BUG_ON(pmd_bad(*pmd) && ((addr | end) & ~PMD_MASK));
+
+	 BUG_ON(!pmd_none(*pmd) && pmd_bad(*pmd) && ((addr | end) & ~PMD_MASK));
 
 	do {
 		set_pte_ext(pte, pfn_pte(pfn, __pgprot(type->prot_pte)), 0);

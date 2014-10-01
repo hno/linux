@@ -1,27 +1,9 @@
 /*
  * SDIO access interface for drivers - linux specific (pci only)
  *
- * Copyright (C) 1999-2013, Broadcom Corporation
- * 
- *      Unless you and Broadcom execute a separate written software license
- * agreement governing use of this software, this software is licensed to you
- * under the terms of the GNU General Public License version 2 (the "GPL"),
- * available at http://www.broadcom.com/licenses/GPLv2.php, with the
- * following added to such license:
- * 
- *      As a special exception, the copyright holders of this software give you
- * permission to link this software with independent modules, and to copy and
- * distribute the resulting executable under terms of your choice, provided that
- * you also meet, for each linked independent module, the terms and conditions of
- * the license of that module.  An independent module is a module which is not
- * derived from this software.  The special exception does not apply to any
- * modifications of the software.
- * 
- *      Notwithstanding the above, under no circumstances may you combine this
- * software in any way with any other Broadcom software provided under a license
- * other than the GPL, without Broadcom's express prior written consent.
+ * $Copyright Open Broadcom Corporation$
  *
- * $Id: bcmsdh_linux.c 384887 2013-02-13 13:23:52Z $
+ * $Id: bcmsdh_linux.c 414953 2013-07-26 17:36:27Z $
  */
 
 /**
@@ -75,13 +57,11 @@ struct bcmsdh_hc {
 };
 static bcmsdh_hc_t *sdhcinfo = NULL;
 
-struct device *pm_dev;
-
 /* driver info, initialized when bcmsdh_register is called */
 static bcmsdh_driver_t drvinfo = {NULL, NULL};
 
 /* debugging macros */
-#define SDLX_MSG(x)
+#define SDLX_MSG(x) printf x
 
 /**
  * Checks to see if vendor and device IDs match a supported SDIO Host Controller.
@@ -154,7 +134,7 @@ static
 int bcmsdh_probe(struct device *dev)
 {
 	osl_t *osh = NULL;
-	bcmsdh_hc_t *sdhc = NULL, *sdhc_org = sdhcinfo;
+	bcmsdh_hc_t *sdhc = NULL;
 	ulong regs = 0;
 	bcmsdh_info_t *sdh = NULL;
 #if !defined(BCMLXSDMMC) && defined(BCMPLATFORM_BUS)
@@ -230,11 +210,6 @@ int bcmsdh_probe(struct device *dev)
 	sdhc->next = sdhcinfo;
 	sdhcinfo = sdhc;
 
-#if !defined(CONFIG_HAS_WAKELOCK) && (LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 36))
-	if (!device_init_wakeup(dev, 1))
-		pm_dev = dev;
-#endif /* !CONFIG_HAS_WAKELOCK */
-
 	/* Read the vendor/device ID from the CIS */
 	vendevid = bcmsdh_query_device(sdh);
 	/* try to attach to the target device */
@@ -253,7 +228,6 @@ err:
 		if (sdhc->sdh)
 			bcmsdh_detach(sdhc->osh, sdhc->sdh);
 		MFREE(osh, sdhc, sizeof(bcmsdh_hc_t));
-		sdhcinfo = sdhc_org;
 	}
 	if (osh)
 		osl_detach(osh);
@@ -267,20 +241,18 @@ int bcmsdh_remove(struct device *dev)
 {
 	bcmsdh_hc_t *sdhc, *prev;
 	osl_t *osh;
-	int sdhcinfo_null = false;
+
+	sdhc = sdhcinfo;
+	drvinfo.detach(sdhc->ch);
+	bcmsdh_detach(sdhc->osh, sdhc->sdh);
 
 	/* find the SDIO Host Controller state for this pdev and take it out from the list */
 	for (sdhc = sdhcinfo, prev = NULL; sdhc; sdhc = sdhc->next) {
 		if (sdhc->dev == (void *)dev) {
 			if (prev)
 				prev->next = sdhc->next;
-			else {
-				if (sdhc->next != NULL) {
-					SDLX_MSG(("%s: more SDHC exist, should be care about it\n",
-						__FUNCTION__));
-				}
-				sdhcinfo_null = true;
-			}
+			else
+				sdhcinfo = NULL;
 			break;
 		}
 		prev = sdhc;
@@ -289,20 +261,6 @@ int bcmsdh_remove(struct device *dev)
 		SDLX_MSG(("%s: failed\n", __FUNCTION__));
 		return 0;
 	}
-
-	/* detach ch & sdhc if dev is valid */
-	drvinfo.detach(sdhc->ch);
-	bcmsdh_detach(sdhc->osh, sdhc->sdh);
-
-#if !defined(CONFIG_HAS_WAKELOCK) && (LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 36))
-	if (pm_dev) {
-		device_init_wakeup(pm_dev, 0);
-		pm_dev = NULL;
-	}
-#endif /* !CONFIG_HAS_WAKELOCK */
-
-	if (sdhcinfo_null == true)
-		sdhcinfo = NULL;
 
 	/* release SDIO Host Controller info */
 	osh = sdhc->osh;
@@ -563,7 +521,7 @@ bcmsdh_register(bcmsdh_driver_t *driver)
 	drvinfo = *driver;
 
 #if defined(BCMPLATFORM_BUS)
-	SDLX_MSG(("Linux Kernel SDIO/MMC Driver\n"));
+	SDLX_MSG(("%s: Linux Kernel SDIO/MMC Driver\n", __FUNCTION__));
 	error = sdio_function_init();
 	return error;
 #endif /* defined(BCMPLATFORM_BUS) */
@@ -601,7 +559,17 @@ bcmsdh_unregister(void)
 #endif /* BCMPLATFORM_BUS */
 }
 
+int bcmsdh_set_drvdata(void * dhdp)
+{
+	SDLX_MSG(("%s: Enter\n", __FUNCTION__));
+
+	dev_set_drvdata(sdhcinfo->dev, dhdp);
+
+	return 0;
+}
+
 #if defined(OOB_INTR_ONLY)
+#define CONFIG_ARCH_SUNXI  1
 void bcmsdh_oob_intr_set(bool enable)
 {
 	static bool curstate = 1;
@@ -627,7 +595,8 @@ static irqreturn_t wlan_oob_irq(int irq, void *dev_id)
 	bcmsdh_oob_intr_set(0);
 
 	if (dhdp == NULL) {
-		SDLX_MSG(("Out of band GPIO interrupt fired way too early\n"));
+		SDLX_MSG(("%s: Out of band GPIO interrupt fired way too early\n",
+			__FUNCTION__));
 		return IRQ_HANDLED;
 	}
 
@@ -640,24 +609,40 @@ int bcmsdh_register_oob_intr(void * dhdp)
 {
 	int error = 0;
 
-	SDLX_MSG(("%s Enter \n", __FUNCTION__));
+	SDLX_MSG(("%s: Enter \n", __FUNCTION__));
 
 	/* IORESOURCE_IRQ | IORESOURCE_IRQ_HIGHLEVEL | IORESOURCE_IRQ_SHAREABLE; */
 
 	dev_set_drvdata(sdhcinfo->dev, dhdp);
 
 	if (!sdhcinfo->oob_irq_registered) {
-		SDLX_MSG(("%s IRQ=%d Type=%X \n", __FUNCTION__,
+		SDLX_MSG(("%s: IRQ=%d Type=%X \n", __FUNCTION__,
 			(int)sdhcinfo->oob_irq, (int)sdhcinfo->oob_flags));
-		/* Refer to customer Host IRQ docs about proper irqflags definition */
-		error = request_irq(sdhcinfo->oob_irq, wlan_oob_irq, sdhcinfo->oob_flags,
-			"bcmsdh_sdmmc", NULL);
-		if (error)
-			return -ENODEV;
 
+#ifndef BCMDHD_OOB_LOW_LEVEL_TRIGGER
+	error = devm_request_irq(sdhcinfo->dev,sdhcinfo->oob_irq, wlan_oob_irq, IRQF_TRIGGER_HIGH, "bcmsdh", NULL);
+#else
+	error = devm_request_irq(sdhcinfo->dev,sdhcinfo->oob_irq, wlan_oob_irq, IRQF_TRIGGER_LOW, "bcmsdh", NULL);
+#endif
+  if (IS_ERR_VALUE(error)) {
+    SDLX_MSG(("Failed to get gpio irq for wifi wakeup ap\n"));
+  }
+
+#if defined(CONFIG_ARCH_RHEA) || defined(CONFIG_ARCH_CAPRI) || defined(CONFIG_ARCH_SUNXI)
+		printk("\nbcmdhd wakeup %d\n", device_may_wakeup(sdhcinfo->dev));
+		if (device_may_wakeup(sdhcinfo->dev)) {
+#endif
+#if defined(DISABLE_WOWLAN)
+			SDLX_MSG(("%s: disable_irq_wake \n", __FUNCTION__));
+			error = disable_irq_wake(sdhcinfo->oob_irq);
+#else
 			error = enable_irq_wake(sdhcinfo->oob_irq);
+#endif
+#if defined(CONFIG_ARCH_RHEA) || defined(CONFIG_ARCH_CAPRI) || defined(CONFIG_ARCH_SUNXI)
+		}
+#endif
 		if (error)
-			SDLX_MSG(("%s enable_irq_wake error=%d \n", __FUNCTION__, error));
+			SDLX_MSG(("%s: enable_irq_wake error=%d \n", __FUNCTION__, error));
 		sdhcinfo->oob_irq_registered = TRUE;
 		sdhcinfo->oob_irq_enable_flag = TRUE;
 	}
@@ -668,12 +653,23 @@ int bcmsdh_register_oob_intr(void * dhdp)
 void bcmsdh_set_irq(int flag)
 {
 	if (sdhcinfo->oob_irq_registered && sdhcinfo->oob_irq_enable_flag != flag) {
-		SDLX_MSG(("%s Flag = %d", __FUNCTION__, flag));
+		SDLX_MSG(("%s: Flag = %d\n", __FUNCTION__, flag));
 		sdhcinfo->oob_irq_enable_flag = flag;
 		if (flag) {
 			enable_irq(sdhcinfo->oob_irq);
+#if defined(CONFIG_ARCH_RHEA) || defined(CONFIG_ARCH_CAPRI) || defined(CONFIG_ARCH_SUNXI)
+			if (device_may_wakeup(sdhcinfo->dev))
+#endif
+#if defined(DISABLE_WOWLAN)
+				SDLX_MSG(("%s: disable_irq_wake \n", __FUNCTION__));
+				disable_irq_wake(sdhcinfo->oob_irq);
+#else
 				enable_irq_wake(sdhcinfo->oob_irq);
+#endif
 		} else {
+#if defined(CONFIG_ARCH_RHEA) || defined(CONFIG_ARCH_CAPRI) || defined(CONFIG_ARCH_SUNXI)
+			if (device_may_wakeup(sdhcinfo->dev))
+#endif
 				disable_irq_wake(sdhcinfo->oob_irq);
 			disable_irq(sdhcinfo->oob_irq);
 		}
@@ -686,9 +682,17 @@ void bcmsdh_unregister_oob_intr(void)
 
 	if (sdhcinfo->oob_irq_registered == TRUE) {
 		bcmsdh_set_irq(FALSE);
-		free_irq(sdhcinfo->oob_irq, NULL);
+        devm_free_irq(sdhcinfo->dev,sdhcinfo->oob_irq,NULL);
 		sdhcinfo->oob_irq_registered = FALSE;
 	}
+}
+
+bool bcmsdh_is_oob_intr_registered(void)
+{
+	if (sdhcinfo)
+		return sdhcinfo->oob_irq_registered;
+	else
+		return FALSE;
 }
 #endif 
 
@@ -733,6 +737,10 @@ extern int sd_delay_value;
 module_param(sd_delay_value, uint, 0);
 #endif
 
+#ifdef BCMSDIOH_TXGLOM
+extern uint sd_txglom;
+module_param(sd_txglom, uint, 0);
+#endif
 
 #ifdef BCMSDH_MODULE
 EXPORT_SYMBOL(bcmsdh_attach);

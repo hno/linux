@@ -30,7 +30,7 @@ struct clk {
 	const struct clk_ops	*ops;
 	struct clk_hw		*hw;
 	struct clk		*parent;
-	char			**parent_names;
+	const char		**parent_names;
 	struct clk		**parents;
 	u8			num_parents;
 	unsigned long		rate;
@@ -60,7 +60,7 @@ extern struct clk_ops clk_fixed_rate_ops;
 #define DEFINE_CLK_FIXED_RATE(_name, _flags, _rate,		\
 				_fixed_rate_flags)		\
 	static struct clk _name;				\
-	static char *_name##_parent_names[] = {};		\
+	static const char *_name##_parent_names[] = {};		\
 	static struct clk_fixed_rate _name##_hw = {		\
 		.hw = {						\
 			.clk = &_name,				\
@@ -84,7 +84,7 @@ extern struct clk_ops clk_gate_ops;
 				_flags, _reg, _bit_idx,		\
 				_gate_flags, _lock)		\
 	static struct clk _name;				\
-	static char *_name##_parent_names[] = {			\
+	static const char *_name##_parent_names[] = {		\
 		_parent_name,					\
 	};							\
 	static struct clk *_name##_parents[] = {		\
@@ -116,7 +116,7 @@ extern struct clk_ops clk_divider_ops;
 				_flags, _reg, _shift, _width,	\
 				_divider_flags, _lock)		\
 	static struct clk _name;				\
-	static char *_name##_parent_names[] = {			\
+	static const char *_name##_parent_names[] = {		\
 		_parent_name,					\
 	};							\
 	static struct clk *_name##_parents[] = {		\
@@ -189,8 +189,10 @@ extern struct clk_ops clk_mux_ops;
  *
  * It is not necessary to call clk_register if __clk_init is used directly with
  * statically initialized clock data.
+ *
+ * Returns 0 on success, otherwise an error code.
  */
-void __clk_init(struct device *dev, struct clk *clk);
+int __clk_init(struct device *dev, struct clk *clk);
 
 #endif /* CONFIG_COMMON_CLK */
 #endif /* CLK_PRIVATE_H */

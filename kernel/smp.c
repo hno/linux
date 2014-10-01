@@ -12,6 +12,8 @@
 #include <linux/gfp.h>
 #include <linux/smp.h>
 #include <linux/cpu.h>
+#define CREATE_TRACE_POINTS
+#include <trace/events/smp.h>
 
 #ifdef CONFIG_USE_GENERIC_SMP_HELPERS
 static struct {
@@ -161,8 +163,10 @@ void generic_exec_single(int cpu, struct call_single_data *data, int wait)
 	 * locking and barrier primitives. Generic code isn't really
 	 * equipped to do the right thing...
 	 */
-	if (ipi)
-		arch_send_call_function_single_ipi(cpu);
+	if (ipi) {
+		trace_smp_call_func_send(data->func, cpu);
+ 		arch_send_call_function_single_ipi(cpu);
+	}
 
 	if (wait)
 		csd_lock_wait(data);
@@ -278,9 +282,9 @@ void generic_smp_call_function_single_interrupt(void)
 		 * so save them away before making the call:
 		 */
 		data_flags = data->flags;
-
+		trace_smp_call_func_entry(data->func);
 		data->func(data->info);
-
+		trace_smp_call_func_exit(data->func);
 		/*
 		 * Unlocked CSDs are valid through generic_exec_single():
 		 */
@@ -309,6 +313,7 @@ int smp_call_function_single(int cpu, smp_call_func_t func, void *info,
 	int this_cpu;
 	int err = 0;
 
+	trace_smp_call_func_send(func, cpu);
 	/*
 	 * prevent preemption and reschedule on another processor,
 	 * as well as CPU removal
@@ -321,12 +326,14 @@ int smp_call_function_single(int cpu, smp_call_func_t func, void *info,
 	 * send smp call function interrupt to this cpu and as such deadlocks
 	 * can't happen.
 	 */
-	WARN_ON_ONCE(cpu_online(this_cpu) && irqs_disabled()
+	WARN_ON_ONCE(cpu_online(this_cpu) && irqs_disabled() && wait
 		     && !oops_in_progress);
 
 	if (cpu == this_cpu) {
 		local_irq_save(flags);
+		trace_smp_call_func_entry(func);
 		func(info);
+		trace_smp_call_func_exit(func);
 		local_irq_restore(flags);
 	} else {
 		if ((unsigned)cpu < nr_cpu_ids && cpu_online(cpu)) {

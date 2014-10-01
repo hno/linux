@@ -13,6 +13,7 @@
  */
 
 #include <crypto/hash.h>
+#include <crypto/sha.h>
 #include <crypto/if_alg.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
@@ -73,8 +74,16 @@ static int hash_sendmsg(struct kiocb *unused, struct socket *sock,
 				goto unlock;
 			}
 
-			ahash_request_set_crypt(&ctx->req, ctx->sgl.sg, NULL,
-						newlen);
+#ifdef CONFIG_ARCH_SUNXI
+			ahash_request_set_crypt(&ctx->req, ctx->sgl.sg, ctx->result, newlen);
+
+			if (newlen%SHA1_BLOCK_SIZE) {
+				copy_from_user(ctx->req.result, &from[newlen - newlen%SHA1_BLOCK_SIZE],
+						newlen%SHA1_BLOCK_SIZE);
+			}
+#else
+			ahash_request_set_crypt(&ctx->req, ctx->sgl.sg, NULL, newlen);
+#endif
 
 			err = af_alg_wait_for_completion(
 				crypto_ahash_update(&ctx->req),
@@ -255,8 +264,13 @@ static void hash_sock_destruct(struct sock *sk)
 	struct alg_sock *ask = alg_sk(sk);
 	struct hash_ctx *ctx = ask->private;
 
+#ifdef CONFIG_ARCH_SUNXI
+	sock_kfree_s(sk, ctx->result, SHA1_BLOCK_SIZE);
+#else
 	sock_kfree_s(sk, ctx->result,
 		     crypto_ahash_digestsize(crypto_ahash_reqtfm(&ctx->req)));
+#endif
+
 	sock_kfree_s(sk, ctx, ctx->len);
 	af_alg_release_parent(sk);
 }
@@ -272,6 +286,9 @@ static int hash_accept_parent(void *private, struct sock *sk)
 	if (!ctx)
 		return -ENOMEM;
 
+#ifdef CONFIG_ARCH_SUNXI
+	ds = SHA1_BLOCK_SIZE;
+#endif
 	ctx->result = sock_kmalloc(sk, ds, GFP_KERNEL);
 	if (!ctx->result) {
 		sock_kfree_s(sk, ctx, len);

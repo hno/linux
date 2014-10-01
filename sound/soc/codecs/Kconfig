@@ -9,7 +9,8 @@ config SND_SOC_I2C_AND_SPI
 	default y if SPI_MASTER=y
 
 config SND_SOC_ALL_CODECS
-	tristate "Build all ASoC CODEC drivers"
+	tristate
+	# "Build all ASoC CODEC drivers"
 	select SND_SOC_88PM860X if MFD_88PM860X
 	select SND_SOC_L3
 	select SND_SOC_AC97_CODEC if SND_SOC_AC97_BUS
@@ -36,6 +37,7 @@ config SND_SOC_ALL_CODECS
 	select SND_SOC_DA7210 if I2C
 	select SND_SOC_DFBMCS320
 	select SND_SOC_JZ4740_CODEC
+	#select SND_SOC_AC100_CODEC
 	select SND_SOC_LM4857 if I2C
 	select SND_SOC_MAX98088 if I2C
 	select SND_SOC_MAX98095 if I2C
@@ -204,6 +206,8 @@ config SND_SOC_CX20442
 
 config SND_SOC_JZ4740_CODEC
 	tristate
+#config SND_SOC_AC100_CODEC
+#	tristate
 
 config SND_SOC_L3
        tristate
@@ -437,3 +441,10 @@ config SND_SOC_MAX9877
 
 config SND_SOC_TPA6130A2
 	tristate
+
+
+config SND_SOC_AC100_CODEC
+	tristate "SUNXI AudioCodec AC100"
+	default n
+	help
+	  Say Y or M if you want to add support for AC100 audiocodec.

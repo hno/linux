@@ -288,6 +288,42 @@ struct v4l2_capability {
 /*
  *	V I D E O   I M A G E   F O R M A T
  */
+/* Add windows coordinates struct by raymonxiu */
+struct v4l2_win_coordinate {
+	__s32			x1;
+	__s32			y1;
+	__s32			x2;
+	__s32			y2;	
+};
+
+#define MAX_EXP_FRAMES     5
+#define MAX_ISP_BUF_SIZE   0x2100
+
+struct isp_hdr_setting_t {
+  __s32 hdr_en;
+  __s32 hdr_mode;
+  __s32 frames_count;
+  __s32 total_frames;
+  __s32 values[MAX_EXP_FRAMES];
+};
+
+struct isp_exif_attribute {
+	struct v4l2_fract exposure_time;
+	struct v4l2_fract shutter_speed;
+	__u32 fnumber;
+	__u32 focal_length;
+	__s32 exposure_bias;
+	__u32 iso_speed;
+	__u32 flash_fire;
+	__u32 brightness;
+};
+
+struct isp_stat_buf {
+	void __user *buf;
+	__u32 buf_size;
+};
+
+ 
 struct v4l2_pix_format {
 	__u32         		width;
 	__u32			height;
@@ -297,6 +333,8 @@ struct v4l2_pix_format {
 	__u32          		sizeimage;
 	enum v4l2_colorspace	colorspace;
 	__u32			priv;		/* private data, depends on pixelformat */
+	__u32			rot_angle;  /* add by raymonxiu */
+	struct v4l2_pix_format	 *subchannel;	/* add by raymonxiu */
 };
 
 /*      Pixel format         FOURCC                          depth  Description  */
@@ -730,6 +768,9 @@ struct v4l2_captureparm {
 
 /*  Flags for 'capability' and 'capturemode' fields */
 #define V4L2_MODE_HIGHQUALITY	0x0001	/*  High quality imaging mode */
+#define V4L2_MODE_VIDEO				0x0002	/*  Added by raymonxiu For video capture */
+#define V4L2_MODE_IMAGE				0x0003	/*  Added by raymonxiu For image capture */
+#define V4L2_MODE_PREVIEW			0x0004	/*  Added by raymonxiu For preview capture */
 #define V4L2_CAP_TIMEPERFRAME	0x1000	/*  timeperframe field is supported */
 
 struct v4l2_outputparm {
@@ -1109,6 +1150,7 @@ struct v4l2_output {
 struct v4l2_control {
 	__u32		     id;
 	__s32		     value;
+	__u32				 user_pt;	/* Add user pointer by raymonxiu */	
 };
 
 struct v4l2_ext_control {
@@ -1247,6 +1289,12 @@ enum v4l2_colorfx {
 	V4L2_COLORFX_GRASS_GREEN = 7,
 	V4L2_COLORFX_SKIN_WHITEN = 8,
 	V4L2_COLORFX_VIVID = 9,
+	V4L2_COLORFX_AQUA			= 10,
+	V4L2_COLORFX_ART_FREEZE			= 11,
+	V4L2_COLORFX_SILHOUETTE			= 12,
+	V4L2_COLORFX_SOLARIZATION		= 13,
+	V4L2_COLORFX_ANTIQUE			= 14,
+	V4L2_COLORFX_SET_CBCR			= 15,
 };
 #define V4L2_CID_AUTOBRIGHTNESS			(V4L2_CID_BASE+32)
 #define V4L2_CID_BAND_STOP_FILTER		(V4L2_CID_BASE+33)
@@ -1263,9 +1311,51 @@ enum v4l2_colorfx {
 #define V4L2_CID_MIN_BUFFERS_FOR_OUTPUT		(V4L2_CID_BASE+40)
 
 #define V4L2_CID_ALPHA_COMPONENT		(V4L2_CID_BASE+41)
+#define V4L2_CID_COLORFX_CBCR			(V4L2_CID_BASE+42)
 
 /* last CID + 1 */
-#define V4L2_CID_LASTP1                         (V4L2_CID_BASE+42)
+#define V4L2_CID_LASTP1                         (V4L2_CID_BASE+43)
+
+/* Driver Specific Control */
+
+/* Add thumb picture mirror and flip by raymonxiu */
+#define V4L2_CID_HFLIP_THUMB		(V4L2_CID_PRIVATE_BASE+0)
+#define V4L2_CID_VFLIP_THUMB		(V4L2_CID_PRIVATE_BASE+1)
+/* Add autofocus windows number by raymonxiu */
+#define V4L2_CID_AUTO_FOCUS_WIN_NUM		(V4L2_CID_PRIVATE_BASE+2)
+/* Add camera autofocus ctrl by raymonxiu */
+#define V4L2_CID_AUTO_FOCUS_INIT		(V4L2_CID_PRIVATE_BASE+3)
+#define V4L2_CID_AUTO_FOCUS_RELEASE	(V4L2_CID_PRIVATE_BASE+4)
+
+/* Add auto exposure windows number by raymonxiu */
+#define V4L2_CID_AUTO_EXPOSURE_WIN_NUM		(V4L2_CID_PRIVATE_BASE+5)
+/* Add gsensor rotation degree by raymonxiu */
+#define V4L2_CID_GSENSOR_ROTATION		(V4L2_CID_PRIVATE_BASE+6)
+
+#define V4L2_CID_FRAME_RATE             (V4L2_CID_PRIVATE_BASE+7)
+/* Add take picture by yang */
+#define V4L2_CID_TAKE_PICTURE           (V4L2_CID_PRIVATE_BASE+8)
+#define V4L2_CID_HDR                   (V4L2_CID_PRIVATE_BASE+9)
+
+/* Add horizontal visual angle by yang */
+#define  V4L2_CID_HOR_VISUAL_ANGLE	(V4L2_CID_PRIVATE_BASE+10)
+/* Add vertical  visual angle by yang */
+#define  V4L2_CID_VER_VISUAL_ANGLE       (V4L2_CID_PRIVATE_BASE+11)
+/* Add focus length by yang */
+#define  V4L2_CID_FOCUS_LENGTH               (V4L2_CID_PRIVATE_BASE+12)
+/* Add red gain by yang */
+#define  V4L2_CID_R_GAIN					(V4L2_CID_PRIVATE_BASE+13)
+/* Add green gain by yang */
+#define  V4L2_CID_G_GAIN   			    (V4L2_CID_PRIVATE_BASE+14)
+/* Add blue gain by yang */
+#define  V4L2_CID_B_GAIN    		           (V4L2_CID_PRIVATE_BASE+15)
+/* Add sensor type by yang */
+#define V4L2_CID_SENSOR_TYPE         (V4L2_CID_PRIVATE_BASE+16)
+enum v4l2_sensor_type
+{
+	V4L2_SENSOR_TYPE_YUV		= 0,
+	V4L2_SENSOR_TYPE_RAW		= 1,
+};
 
 /*  MPEG-class control IDs defined by V4L2 */
 #define V4L2_CID_MPEG_BASE 			(V4L2_CTRL_CLASS_MPEG | 0x900)
@@ -1689,6 +1779,79 @@ enum  v4l2_exposure_auto_type {
 #define V4L2_CID_IRIS_ABSOLUTE			(V4L2_CID_CAMERA_CLASS_BASE+17)
 #define V4L2_CID_IRIS_RELATIVE			(V4L2_CID_CAMERA_CLASS_BASE+18)
 
+#define V4L2_CID_AUTO_EXPOSURE_BIAS		(V4L2_CID_CAMERA_CLASS_BASE+19)
+
+#define V4L2_CID_AUTO_N_PRESET_WHITE_BALANCE	(V4L2_CID_CAMERA_CLASS_BASE+20)
+enum v4l2_auto_n_preset_white_balance {
+	V4L2_WHITE_BALANCE_MANUAL		= 0,
+	V4L2_WHITE_BALANCE_AUTO			= 1,
+	V4L2_WHITE_BALANCE_INCANDESCENT		= 2,
+	V4L2_WHITE_BALANCE_FLUORESCENT		= 3,
+	V4L2_WHITE_BALANCE_FLUORESCENT_H	= 4,
+	V4L2_WHITE_BALANCE_HORIZON		= 5,
+	V4L2_WHITE_BALANCE_DAYLIGHT		= 6,
+	V4L2_WHITE_BALANCE_FLASH		= 7,
+	V4L2_WHITE_BALANCE_CLOUDY		= 8,
+	V4L2_WHITE_BALANCE_SHADE		= 9,
+};
+
+#define V4L2_CID_WIDE_DYNAMIC_RANGE		(V4L2_CID_CAMERA_CLASS_BASE+21)
+#define V4L2_CID_IMAGE_STABILIZATION		(V4L2_CID_CAMERA_CLASS_BASE+22)
+
+#define V4L2_CID_ISO_SENSITIVITY		(V4L2_CID_CAMERA_CLASS_BASE+23)
+#define V4L2_CID_ISO_SENSITIVITY_AUTO		(V4L2_CID_CAMERA_CLASS_BASE+24)
+enum v4l2_iso_sensitivity_auto_type {
+	V4L2_ISO_SENSITIVITY_MANUAL		= 0,
+	V4L2_ISO_SENSITIVITY_AUTO		= 1,
+};
+
+#define V4L2_CID_EXPOSURE_METERING		(V4L2_CID_CAMERA_CLASS_BASE+25)
+enum v4l2_exposure_metering {
+	V4L2_EXPOSURE_METERING_AVERAGE		= 0,
+	V4L2_EXPOSURE_METERING_CENTER_WEIGHTED	= 1,
+	V4L2_EXPOSURE_METERING_SPOT		= 2,
+};
+
+#define V4L2_CID_SCENE_MODE			(V4L2_CID_CAMERA_CLASS_BASE+26)
+enum v4l2_scene_mode {
+	V4L2_SCENE_MODE_NONE			= 0,
+	V4L2_SCENE_MODE_BACKLIGHT		= 1,
+	V4L2_SCENE_MODE_BEACH_SNOW		= 2,
+	V4L2_SCENE_MODE_CANDLE_LIGHT		= 3,
+	V4L2_SCENE_MODE_DAWN_DUSK		= 4,
+	V4L2_SCENE_MODE_FALL_COLORS		= 5,
+	V4L2_SCENE_MODE_FIREWORKS		= 6,
+	V4L2_SCENE_MODE_LANDSCAPE		= 7,
+	V4L2_SCENE_MODE_NIGHT			= 8,
+	V4L2_SCENE_MODE_PARTY_INDOOR		= 9,
+	V4L2_SCENE_MODE_PORTRAIT		= 10,
+	V4L2_SCENE_MODE_SPORTS			= 11,
+	V4L2_SCENE_MODE_SUNSET			= 12,
+	V4L2_SCENE_MODE_TEXT			= 13,
+};
+
+#define V4L2_CID_3A_LOCK			(V4L2_CID_CAMERA_CLASS_BASE+27)
+#define V4L2_LOCK_EXPOSURE			(1 << 0)
+#define V4L2_LOCK_WHITE_BALANCE			(1 << 1)
+#define V4L2_LOCK_FOCUS				(1 << 2)
+
+#define V4L2_CID_AUTO_FOCUS_START		(V4L2_CID_CAMERA_CLASS_BASE+28)
+#define V4L2_CID_AUTO_FOCUS_STOP		(V4L2_CID_CAMERA_CLASS_BASE+29)
+#define V4L2_CID_AUTO_FOCUS_STATUS		(V4L2_CID_CAMERA_CLASS_BASE+30)
+#define V4L2_AUTO_FOCUS_STATUS_IDLE		(0 << 0)
+#define V4L2_AUTO_FOCUS_STATUS_BUSY		(1 << 0)
+#define V4L2_AUTO_FOCUS_STATUS_REACHED		(1 << 1)
+#define V4L2_AUTO_FOCUS_STATUS_FAILED		(1 << 2)
+
+#define V4L2_CID_AUTO_FOCUS_RANGE		(V4L2_CID_CAMERA_CLASS_BASE+31)
+enum v4l2_auto_focus_range {
+	V4L2_AUTO_FOCUS_RANGE_AUTO		= 0,
+	V4L2_AUTO_FOCUS_RANGE_NORMAL		= 1,
+	V4L2_AUTO_FOCUS_RANGE_MACRO		= 2,
+	V4L2_AUTO_FOCUS_RANGE_INFINITY		= 3,
+};
+
+
 /* FM Modulator class control IDs */
 #define V4L2_CID_FM_TX_CLASS_BASE		(V4L2_CTRL_CLASS_FM_TX | 0x900)
 #define V4L2_CID_FM_TX_CLASS			(V4L2_CTRL_CLASS_FM_TX | 1)
@@ -1731,6 +1894,8 @@ enum v4l2_flash_led_mode {
 	V4L2_FLASH_LED_MODE_NONE,
 	V4L2_FLASH_LED_MODE_FLASH,
 	V4L2_FLASH_LED_MODE_TORCH,
+	V4L2_FLASH_LED_MODE_AUTO,		//add by raymonxiu
+	V4L2_FLASH_LED_MODE_RED_EYE,	//add by raymonxiu
 };
 
 #define V4L2_CID_FLASH_STROBE_SOURCE		(V4L2_CID_FLASH_CLASS_BASE + 2)
@@ -2412,5 +2577,21 @@ struct v4l2_create_buffers {
    drivers/media/video/v4l2-compat-ioctl32.c as well! */
 
 #define BASE_VIDIOC_PRIVATE	192		/* 192-255 are private */
+
+//add by yang
+#define VIDIOC_ISP_AE_STAT_REQ \
+	_IOWR('V', BASE_VIDIOC_PRIVATE + 1, struct isp_stat_buf)
+//add by yang
+#define VIDIOC_ISP_HIST_STAT_REQ \
+	_IOWR('V', BASE_VIDIOC_PRIVATE + 2, struct isp_stat_buf)
+//add by yang
+#define VIDIOC_ISP_AF_STAT_REQ \
+	_IOWR('V', BASE_VIDIOC_PRIVATE + 3, struct isp_stat_buf)
+//add by yang
+#define VIDIOC_ISP_EXIF_REQ \
+	_IOWR('V', BASE_VIDIOC_PRIVATE + 4, struct isp_exif_attribute)
+//add by yang
+#define VIDIOC_ISP_GAMMA_REQ \
+	_IOWR('V', BASE_VIDIOC_PRIVATE + 5, struct isp_exif_attribute)
 
 #endif /* __LINUX_VIDEODEV2_H */

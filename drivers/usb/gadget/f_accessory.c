@@ -74,11 +74,11 @@ struct acc_dev {
 	struct usb_ep *ep_out;
 
 	/* set to 1 when we connect */
-	int online:1;
+	 unsigned int online:1;
 	/* Set to 1 when we disconnect.
 	 * Not cleared until our file is closed.
 	 */
-	int disconnected:1;
+	 unsigned int disconnected:1;
 
 	/* strings sent by the host */
 	char manufacturer[ACC_STRING_SIZE];
@@ -132,6 +132,35 @@ static struct usb_interface_descriptor acc_interface_desc = {
 	.bInterfaceProtocol     = 0,
 };
 
+static struct usb_endpoint_descriptor acc_superspeed_in_desc = {
+	.bLength                = USB_DT_ENDPOINT_SIZE,
+	.bDescriptorType        = USB_DT_ENDPOINT,
+	.bEndpointAddress       = USB_DIR_IN,
+	.bmAttributes           = USB_ENDPOINT_XFER_BULK,
+	.wMaxPacketSize         = __constant_cpu_to_le16(1024),
+};
+static struct usb_ss_ep_comp_descriptor acc_superspeed_in_comp_desc = {
+	.bLength =		sizeof(acc_superspeed_in_comp_desc),
+	.bDescriptorType =	USB_DT_SS_ENDPOINT_COMP,
+
+	/*.bMaxBurst =		DYNAMIC, */
+};
+
+static struct usb_endpoint_descriptor acc_superspeed_out_desc = {
+	.bLength                = USB_DT_ENDPOINT_SIZE,
+	.bDescriptorType        = USB_DT_ENDPOINT,
+	.bEndpointAddress       = USB_DIR_OUT,
+	.bmAttributes           = USB_ENDPOINT_XFER_BULK,
+	.wMaxPacketSize         = __constant_cpu_to_le16(1024),
+};
+
+static struct usb_ss_ep_comp_descriptor acc_superspeed_out_comp_desc = {
+	.bLength =		sizeof(acc_superspeed_out_comp_desc),
+	.bDescriptorType =	USB_DT_SS_ENDPOINT_COMP,
+
+	/*.bMaxBurst =		DYNAMIC, */
+};
+
 static struct usb_endpoint_descriptor acc_highspeed_in_desc = {
 	.bLength                = USB_DT_ENDPOINT_SIZE,
 	.bDescriptorType        = USB_DT_ENDPOINT,
@@ -173,6 +202,15 @@ static struct usb_descriptor_header *hs_acc_descs[] = {
 	(struct usb_descriptor_header *) &acc_interface_desc,
 	(struct usb_descriptor_header *) &acc_highspeed_in_desc,
 	(struct usb_descriptor_header *) &acc_highspeed_out_desc,
+	NULL,
+};
+
+static struct usb_descriptor_header *ss_acc_descs[] = {
+	(struct usb_descriptor_header *) &acc_interface_desc,
+	(struct usb_descriptor_header *) &acc_superspeed_in_desc,
+	(struct usb_descriptor_header *) &acc_superspeed_in_comp_desc,
+	(struct usb_descriptor_header *) &acc_superspeed_out_desc,
+	(struct usb_descriptor_header *) &acc_superspeed_out_comp_desc,
 	NULL,
 };
 
@@ -511,6 +549,7 @@ static int create_bulk_endpoints(struct acc_dev *dev,
 	ep->driver_data = dev;		/* claim the endpoint */
 	dev->ep_out = ep;
 
+#ifndef CONFIG_USB_SUNXI_USB
 	ep = usb_ep_autoconfig(cdev->gadget, out_desc);
 	if (!ep) {
 		DBG(cdev, "usb_ep_autoconfig for ep_out failed\n");
@@ -519,6 +558,7 @@ static int create_bulk_endpoints(struct acc_dev *dev,
 	DBG(cdev, "usb_ep_autoconfig for ep_out got %s\n", ep->name);
 	ep->driver_data = dev;		/* claim the endpoint */
 	dev->ep_out = ep;
+#endif
 
 	/* now allocate requests for our endpoints */
 	for (i = 0; i < TX_REQ_MAX; i++) {
@@ -574,7 +614,12 @@ static ssize_t acc_read(struct file *fp, char __user *buf,
 requeue_req:
 	/* queue a request */
 	req = dev->rx_req[0];
+#ifndef CONFIG_ARCH_SUN9I
 	req->length = count;
+#else
+	req->length = count + dev->ep_out->maxpacket - 1;
+	req->length -= req->length % dev->ep_out->maxpacket;
+#endif
 	dev->rx_done = 0;
 	ret = usb_ep_queue(dev->ep_out, req, GFP_KERNEL);
 	if (ret < 0) {
@@ -907,6 +952,14 @@ acc_function_bind(struct usb_configuration *c, struct usb_function *f)
 			acc_fullspeed_out_desc.bEndpointAddress;
 	}
 
+	/* support super speed hardware */
+	if (gadget_is_superspeed(c->cdev->gadget)) {
+		acc_superspeed_in_desc.bEndpointAddress =
+			acc_fullspeed_in_desc.bEndpointAddress;
+		acc_superspeed_out_desc.bEndpointAddress =
+			acc_fullspeed_out_desc.bEndpointAddress;
+	}
+
 	DBG(cdev, "%s speed %s: IN/%s, OUT/%s\n",
 			gadget_is_dualspeed(c->cdev->gadget) ? "dual" : "full",
 			f->name, dev->ep_in->name, dev->ep_out->name);
@@ -1123,6 +1176,7 @@ static int acc_bind_config(struct usb_configuration *c)
 	dev->function.strings = acc_strings,
 	dev->function.descriptors = fs_acc_descs;
 	dev->function.hs_descriptors = hs_acc_descs;
+	dev->function.ss_descriptors = ss_acc_descs;
 	dev->function.bind = acc_function_bind;
 	dev->function.unbind = acc_function_unbind;
 	dev->function.set_alt = acc_function_set_alt;

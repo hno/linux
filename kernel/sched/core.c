@@ -1111,6 +1111,8 @@ void set_task_cpu(struct task_struct *p, unsigned int new_cpu)
 	trace_sched_migrate_task(p, new_cpu);
 
 	if (task_cpu(p) != new_cpu) {
+		if (p->sched_class->migrate_task_rq)
+			p->sched_class->migrate_task_rq(p, new_cpu);
 		p->se.nr_migrations++;
 		perf_sw_event(PERF_COUNT_SW_CPU_MIGRATIONS, 1, NULL, 0);
 	}
@@ -1716,6 +1718,29 @@ static void __sched_fork(struct task_struct *p)
 	p->se.vruntime			= 0;
 	INIT_LIST_HEAD(&p->se.group_node);
 
+/*
+ * Load-tracking only depends on SMP, FAIR_GROUP_SCHED dependency below may be
+ * removed when useful for applications beyond shares distribution (e.g.
+ * load-balance).
+ */
+#if defined(CONFIG_SMP) && defined(CONFIG_FAIR_GROUP_SCHED)
+	p->se.avg.runnable_avg_period = 0;
+	p->se.avg.runnable_avg_sum = 0;
+#ifdef CONFIG_SCHED_HMP
+	/* keep LOAD_AVG_MAX in sync with fair.c if load avg series is changed */
+#define LOAD_AVG_MAX 47742
+	if (p->mm) {
+		p->se.avg.hmp_last_up_migration = 0;
+		p->se.avg.hmp_last_down_migration = 0;
+		p->se.avg.load_avg_ratio = 1023;
+		p->se.avg.load_avg_contrib =
+				(1023 * scale_load_down(p->se.load.weight));
+		p->se.avg.runnable_avg_period = LOAD_AVG_MAX;
+		p->se.avg.runnable_avg_sum = LOAD_AVG_MAX;
+		p->se.avg.usage_avg_sum = LOAD_AVG_MAX;
+	}
+#endif    
+#endif
 #ifdef CONFIG_SCHEDSTATS
 	memset(&p->se.statistics, 0, sizeof(p->se.statistics));
 #endif
@@ -2095,6 +2120,38 @@ context_switch(struct rq *rq, struct task_struct *prev,
 	finish_task_switch(this_rq(), prev);
 }
 
+#ifdef CONFIG_CPU_FREQ_GOV_FANTASYS
+
+#define NR_RUNNING_AVG_BITSHIFT     (5)
+#define NR_RUNNING_MULT_VAL(x)      ((x<<10)-(x<<4)-(x<<3))
+static DEFINE_SPINLOCK(nr_running_avg_lock);
+static DEFINE_PER_CPU_SHARED_ALIGNED(int, nr_running_avg_val);
+
+#ifdef CONFIG_SMP
+static void cal_nr_running_avg(struct rq *rq)
+{
+    int             avg;
+    unsigned long   flags;
+
+    spin_lock_irqsave(&nr_running_avg_lock, flags);
+    /* calculate average value for cpu n */
+    avg = per_cpu(nr_running_avg_val, rq->cpu)<<NR_RUNNING_AVG_BITSHIFT;
+    avg -= per_cpu(nr_running_avg_val, rq->cpu);
+    avg += NR_RUNNING_MULT_VAL(rq->nr_running);
+    avg >>= NR_RUNNING_AVG_BITSHIFT;
+    per_cpu(nr_running_avg_val, rq->cpu) = avg;
+
+    spin_unlock_irqrestore(&nr_running_avg_lock, flags);
+}
+#else
+static void cal_nr_running_avg(struct rq *rq)
+{
+
+}
+#endif
+
+#endif  /* #ifdef CONFIG_CPU_FREQ_GOV_FANTASYS */
+
 /*
  * nr_running, nr_uninterruptible and nr_context_switches:
  *
@@ -2111,6 +2168,36 @@ unsigned long nr_running(void)
 
 	return sum;
 }
+
+#ifdef CONFIG_CPU_FREQ_GOV_FANTASYS
+unsigned long nr_running_avg(void)
+{
+    int             cpu, avg = 0;
+    unsigned long   flags;
+
+    spin_lock_irqsave(&nr_running_avg_lock, flags);
+    /* calculate on line cpus' rq loading */
+    for_each_online_cpu(cpu) {
+        avg += per_cpu(nr_running_avg_val, cpu);
+    }
+    spin_unlock_irqrestore(&nr_running_avg_lock, flags);
+
+    return avg;
+}
+EXPORT_SYMBOL_GPL(nr_running_avg);
+#endif
+
+#ifdef CONFIG_CPU_FREQ_GOV_FANTASYS
+unsigned long nr_running_avg_cpu(int cpu)
+{
+    if (!cpu_online(cpu)) {
+        per_cpu(nr_running_avg_val, cpu) = 0;
+    }
+
+    return per_cpu(nr_running_avg_val, cpu);
+}
+EXPORT_SYMBOL_GPL(nr_running_avg_cpu);
+#endif
 
 unsigned long nr_uninterruptible(void)
 {
@@ -2656,6 +2743,15 @@ void update_cpu_load(struct rq *this_rq)
 	}
 
 	sched_avg_update(this_rq);
+
+#ifdef CONFIG_CPU_FREQ_GOV_FANTASYS
+    pending_updates--;
+    while(pending_updates--) {
+        cal_nr_running_avg(this_rq);
+    }
+    cal_nr_running_avg(this_rq);
+#endif
+
 }
 
 static void update_cpu_load_active(struct rq *this_rq)
@@ -4154,6 +4250,8 @@ static struct task_struct *find_process_by_pid(pid_t pid)
 	return pid ? find_task_by_vpid(pid) : current;
 }
 
+extern struct cpumask hmp_slow_cpu_mask;
+
 /* Actually do priority change: must hold rq lock. */
 static void
 __setscheduler(struct rq *rq, struct task_struct *p, int policy, int prio)
@@ -4163,8 +4261,16 @@ __setscheduler(struct rq *rq, struct task_struct *p, int policy, int prio)
 	p->normal_prio = normal_prio(p);
 	/* we are holding p->pi_lock already */
 	p->prio = rt_mutex_getprio(p);
-	if (rt_prio(p->prio))
+	if (rt_prio(p->prio)) {
 		p->sched_class = &rt_sched_class;
+#ifdef CONFIG_SCHED_HMP
+			if (cpumask_equal(&p->cpus_allowed, cpu_all_mask)) {
+				p->rt.nr_cpus_allowed =
+					cpumask_weight(&hmp_slow_cpu_mask);
+			do_set_cpus_allowed(p, &hmp_slow_cpu_mask);
+			}
+#endif
+	}
 	else
 		p->sched_class = &fair_sched_class;
 	set_load_weight(p);
@@ -5298,9 +5404,6 @@ static void migrate_tasks(unsigned int dead_cpu)
 	 * done here.
 	 */
 	rq->stop = NULL;
-
-	/* Ensure any throttled groups are reachable by pick_next_task */
-	unthrottle_offline_cfs_rqs(rq);
 
 	for ( ; ; ) {
 		/*

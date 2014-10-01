@@ -157,6 +157,15 @@ config LEDS_GPIO
 	  defined as platform devices and/or OpenFirmware platform devices.
 	  The code to use these bindings can be selected below.
 
+config SUNXI_LEDS
+	tristate "LED Support for GPIO connected LEDs on sunxi"
+	depends on LEDS_GPIO
+	select LEDS_TRIGGERS
+	select LEDS_TRIGGER_TIMER
+	help
+	  This option enables support for the LEDs connected to GPIO
+	  outputs on sunxi platform.
+
 config LEDS_LP3944
 	tristate "LED Support for N.S. LP3944 (Fun Light) I2C chip"
 	depends on LEDS_CLASS
@@ -400,6 +409,13 @@ config LEDS_OT200
 	help
 	  This option enables support for the LEDs on the Bachmann OT200.
 	  Say Y to enable LEDs on the Bachmann OT200.
+
+config LEDS_SUNXI
+	tristate "LED support for SUNXI"
+	depends on LEDS_CLASS
+	default m
+	help
+	  LED support for SUNXI.
 
 config LEDS_TRIGGERS
 	bool "LED Trigger support"

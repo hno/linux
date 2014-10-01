@@ -24,7 +24,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: wlioctl.h 395294 2013-04-05 23:44:11Z $
+ * $Id: wlioctl.h 419132 2013-08-19 21:33:05Z $
  */
 
 #ifndef _wlioctl_h_
@@ -823,6 +823,29 @@ typedef struct wl_rm_rep {
 } wl_rm_rep_t;
 #define WL_RM_REP_FIXED_LEN	8
 
+#ifdef BCMCCX
+
+#define LEAP_USER_MAX		32
+#define LEAP_DOMAIN_MAX		32
+#define LEAP_PASSWORD_MAX	32
+
+typedef struct wl_leap_info {
+	wlc_ssid_t ssid;
+	uint8 user_len;
+	uchar user[LEAP_USER_MAX];
+	uint8 password_len;
+	uchar password[LEAP_PASSWORD_MAX];
+	uint8 domain_len;
+	uchar domain[LEAP_DOMAIN_MAX];
+} wl_leap_info_t;
+
+typedef struct wl_leap_list {
+	uint32 buflen;
+	uint32 version;
+	uint32 count;
+	wl_leap_info_t leap_info[1];
+} wl_leap_list_t;
+#endif	/* BCMCCX */
 
 typedef enum sup_auth_status {
 	/* Basic supplicant authentication states */
@@ -857,14 +880,17 @@ typedef enum sup_auth_status {
 #define CRYPTO_ALGO_AES_CCM		4
 #define CRYPTO_ALGO_AES_OCB_MSDU	5
 #define CRYPTO_ALGO_AES_OCB_MPDU	6
-#if !defined(BCMEXTCCX)
+#if !defined(BCMCCX) && !defined(BCMEXTCCX)
 #define CRYPTO_ALGO_NALG		7
 #else
 #define CRYPTO_ALGO_CKIP		7
 #define CRYPTO_ALGO_CKIP_MMH		8
 #define CRYPTO_ALGO_WEP_MMH		9
 #define CRYPTO_ALGO_NALG		10
-#endif 
+#endif /* !BCMCCX && !BCMEXTCCX */
+#ifdef BCMWAPI_WPI
+#define CRYPTO_ALGO_SMS4		11
+#endif /* BCMWAPI_WPI */
 #define CRYPTO_ALGO_PMK			12	/* for 802.1x supp to set PMK before 4-way */
 #define CRYPTO_ALGO_BIP			13  /* 802.11w BIP (aes cmac) */
 
@@ -877,13 +903,13 @@ typedef enum sup_auth_status {
 
 #define WL_SOFT_KEY	(1 << 0)	/* Indicates this key is using soft encrypt */
 #define WL_PRIMARY_KEY	(1 << 1)	/* Indicates this key is the primary (ie tx) key */
-#if defined(BCMEXTCCX)
+#if defined(BCMCCX) || defined(BCMEXTCCX)
 #define WL_CKIP_KP	(1 << 4)	/* CMIC */
 #define WL_CKIP_MMH	(1 << 5)	/* CKIP */
 #else
 #define WL_KF_RES_4	(1 << 4)	/* Reserved for backward compat */
 #define WL_KF_RES_5	(1 << 5)	/* Reserved for backward compat */
-#endif 
+#endif /* BCMCCX || BCMEXTCCX */
 #define WL_IBSS_PEER_GROUP_KEY	(1 << 6)	/* Indicates a group key for a IBSS PEER */
 
 typedef struct wl_wsec_key {
@@ -924,15 +950,45 @@ typedef struct {
 #define TKIP_ENABLED		0x0002
 #define AES_ENABLED		0x0004
 #define WSEC_SWFLAG		0x0008
+#ifdef BCMCCX
+#define CKIP_KP_ENABLED		0x0010
+#define CKIP_MIC_ENABLED	0x0020
+#endif /* BCMCCX */
 #define SES_OW_ENABLED		0x0040	/* to go into transition mode without setting wep */
+#ifdef BCMWAPI_WPI
+#define SMS4_ENABLED		0x0100
+#endif /* BCMWAPI_WPI */
 
 /* wsec macros for operating on the above definitions */
 #define WSEC_WEP_ENABLED(wsec)	((wsec) & WEP_ENABLED)
 #define WSEC_TKIP_ENABLED(wsec)	((wsec) & TKIP_ENABLED)
 #define WSEC_AES_ENABLED(wsec)	((wsec) & AES_ENABLED)
 
+#ifdef BCMCCX
+#define WSEC_CKIP_KP_ENABLED(wsec)	((wsec) & CKIP_KP_ENABLED)
+#define WSEC_CKIP_MIC_ENABLED(wsec)	((wsec) & CKIP_MIC_ENABLED)
+#define WSEC_CKIP_ENABLED(wsec)	((wsec) & (CKIP_KP_ENABLED|CKIP_MIC_ENABLED))
+
+#ifdef BCMWAPI_WPI
+#define WSEC_ENABLED(wsec) \
+	((wsec) & (WEP_ENABLED | TKIP_ENABLED | AES_ENABLED | CKIP_KP_ENABLED |	\
+	  CKIP_MIC_ENABLED | SMS4_ENABLED))
+#else /* BCMWAPI_WPI */
+#define WSEC_ENABLED(wsec) \
+		((wsec) & \
+		 (WEP_ENABLED | TKIP_ENABLED | AES_ENABLED | CKIP_KP_ENABLED | CKIP_MIC_ENABLED))
+#endif /* BCMWAPI_WPI */
+#else /* defined BCMCCX */
+#ifdef BCMWAPI_WPI
+#define WSEC_ENABLED(wsec)	((wsec) & (WEP_ENABLED | TKIP_ENABLED | AES_ENABLED | SMS4_ENABLED))
+#else /* BCMWAPI_WPI */
 #define WSEC_ENABLED(wsec)	((wsec) & (WEP_ENABLED | TKIP_ENABLED | AES_ENABLED))
+#endif /* BCMWAPI_WPI */
+#endif /* BCMCCX */
 #define WSEC_SES_OW_ENABLED(wsec)	((wsec) & SES_OW_ENABLED)
+#ifdef BCMWAPI_WAI
+#define WSEC_SMS4_ENABLED(wsec)	((wsec) & SMS4_ENABLED)
+#endif /* BCMWAPI_WAI */
 
 #define MFP_CAPABLE		0x0200
 #define MFP_REQUIRED	0x0400
@@ -943,15 +999,21 @@ typedef struct {
 #define WPA_AUTH_NONE		0x0001	/* none (IBSS) */
 #define WPA_AUTH_UNSPECIFIED	0x0002	/* over 802.1x */
 #define WPA_AUTH_PSK		0x0004	/* Pre-shared key */
-#if defined(BCMEXTCCX)
+#if defined(BCMCCX) || defined(BCMEXTCCX)
 #define WPA_AUTH_CCKM		0x0008	/* CCKM */
 #define WPA2_AUTH_CCKM		0x0010	/* CCKM2 */
-#endif	
+#endif	/* BCMCCX || BCMEXTCCX */
 /* #define WPA_AUTH_8021X 0x0020 */	/* 802.1x, reserved */
 #define WPA2_AUTH_UNSPECIFIED	0x0040	/* over 802.1x */
 #define WPA2_AUTH_PSK		0x0080	/* Pre-shared key */
 #define BRCM_AUTH_PSK           0x0100  /* BRCM specific PSK */
 #define BRCM_AUTH_DPT		0x0200	/* DPT PSK without group keys */
+#if defined(BCMWAPI_WAI) || defined(BCMWAPI_WPI)
+#define WPA_AUTH_WAPI           0x0400
+#define WAPI_AUTH_NONE		WPA_AUTH_NONE	/* none (IBSS) */
+#define WAPI_AUTH_UNSPECIFIED	0x0400	/* over AS */
+#define WAPI_AUTH_PSK		0x0800	/* Pre-shared key */
+#endif /* BCMWAPI_WAI || BCMWAPI_WPI */
 #define WPA2_AUTH_MFP           0x1000  /* MFP (11w) in contrast to CCX */
 #define WPA2_AUTH_TPK		0x2000 	/* TDLS Peer Key */
 #define WPA2_AUTH_FT		0x4000 	/* Fast Transition. */
@@ -1742,7 +1804,8 @@ typedef struct {
 /* WLC_GET_AUTH, WLC_SET_AUTH values */
 #define WL_AUTH_OPEN_SYSTEM		0	/* d11 open authentication */
 #define WL_AUTH_SHARED_KEY		1	/* d11 shared authentication */
-#define WL_AUTH_OPEN_SHARED		3	/* try open, then shared if open failed w/rc 13 */
+#define WL_AUTH_OPEN_SHARED		2	 /* try open, then shared if open failed w/rc 13 */
+
 #endif /* LINUX_POSTMOGRIFY_REMOVAL */
 
 /* Bit masks for radio disabled status - returned by WL_GET_RADIO */
@@ -3796,6 +3859,13 @@ typedef	struct wme_max_bandwidth {
 #define TSPEC_UNKNOWN		3	/* TSPEC unknown */
 #define TSPEC_STATUS_MASK	7	/* TSPEC status mask */
 
+#ifdef BCMCCX
+/* "wlan_reason" iovar interface */
+#define WL_WLAN_ASSOC_REASON_NORMAL_NETWORK	0 /* normal WLAN network setup */
+#define WL_WLAN_ASSOC_REASON_ROAM_FROM_CELLULAR_NETWORK	1 /* roam from Cellular network */
+#define WL_WLAN_ASSOC_REASON_ROAM_FROM_LAN	2 /* roam from LAN */
+#define WL_WLAN_ASSOC_REASON_MAX		2 /* largest value allowed */
+#endif /* BCMCCX */
 
 /* Software feature flag defines used by wlfeatureflag */
 #ifdef WLAFTERBURNER
@@ -3868,7 +3938,8 @@ enum {
 #define ENABLE_ADAPTSCAN_BIT		6
 #define IMMEDIATE_EVENT_BIT		8
 #define SUPPRESS_SSID_BIT		9
-#define ENABLE_NET_OFFLOAD_BIT		10
+#define ENABLE_NET_OFFLOAD_BIT	10
+#define REPORT_SEPERATELY_BIT 	11
 
 #define SORT_CRITERIA_MASK		0x0001
 #define AUTO_NET_SWITCH_MASK		0x0002
@@ -3881,18 +3952,22 @@ enum {
 #define IMMEDIATE_EVENT_MASK	0x0100
 #define SUPPRESS_SSID_MASK	0x0200
 #define ENABLE_NET_OFFLOAD_MASK	0x0400
+#define REPORT_SEPERATELY_MASK 0x800
 
 #define PFN_VERSION		2
 #define PFN_SCANRESULT_VERSION	1
+#define PFN_LSCANRESULT_VERSION 2
 #define MAX_PFN_LIST_COUNT	16
 
 #define PFN_COMPLETE			1
 #define PFN_INCOMPLETE			0
+#define PFN_OUTOFMEMORY			2
 
 #define DEFAULT_BESTN			2
 #define DEFAULT_MSCAN			0
 #define DEFAULT_REPEAT			10
-#define DEFAULT_EXP			2
+#define DEFAULT_EXP				2
+#define DEFAULT_RTTN			0
 
 /* PFN network info structure */
 typedef struct wl_pfn_subnet_info {
@@ -3907,6 +3982,21 @@ typedef struct wl_pfn_net_info {
 	int16	RSSI; /* receive signal strength (in dBm) */
 	uint16	timestamp; /* age in seconds */
 } wl_pfn_net_info_t;
+
+typedef struct wl_pfn_lnet_info {
+	wl_pfn_subnet_info_t pfnsubnet;
+	int32 	RSSI;
+	uint32  timestamp;
+	uint16	rtt0;
+	uint16 	rtt1;
+} wl_pfn_lnet_info_t;
+
+typedef struct wl_pfn_lscanresults {
+	uint32 version;
+	uint32 status;
+	uint32 count;
+	wl_pfn_lnet_info_t netinfo[1];
+} wl_pfn_lscanresults_t;
 
 typedef struct wl_pfn_scanresults {
 	uint32 version;
@@ -3936,6 +4026,7 @@ typedef struct wl_pfn_param {
 					*/
 	uint8 exp;			/* Exponent of 2 for maximum scan interval */
 	int32 slow_freq;		/* slow scan period */
+	uint8	rttn;
 } wl_pfn_param_t;
 
 typedef struct wl_pfn_bssid {
@@ -4766,6 +4857,20 @@ typedef struct assertlog_results {
 #define LOGRRC_FIX_LEN	8
 #define IOBUF_ALLOWED_NUM_OF_LOGREC(type, len) ((len - LOGRRC_FIX_LEN)/sizeof(type))
 
+#ifdef BCMWAPI_WAI
+#define IV_LEN 16
+struct wapi_sta_msg_t
+{
+	uint16	msg_type;
+	uint16	datalen;
+	uint8	vap_mac[6];
+	uint8	reserve_data1[2];
+	uint8	sta_mac[6];
+	uint8	reserve_data2[2];
+	uint8	gsn[IV_LEN];
+	uint8	wie[256];
+};
+#endif /* BCMWAPI_WAI */
 
 /* channel interference measurement (chanim) related defines */
 
@@ -5451,8 +5556,29 @@ typedef struct txdelay_params {
 #define WL_RELMCAST_FLAG_INBLACKLIST	1
 #define WL_RELMCAST_FLAG_ACTIVEACKER	2
 #define WL_RELMCAST_FLAG_RELMCAST		4
+#define WL_RELMCAST_MAX_TABLE_ENTRY     4
 
 #define WL_RELMCAST_VER					1
+#define WL_RELMCAST_INDEX_ACK_ALL       255
+#define WL_RELMCAST_NUM_OF_MC_STREAMS   4
+#define WL_RELMCAST_MAX_TRS_PER_GROUP   1
+#define WL_RELMCAST_ACK_MCAST0          0x02
+#define WL_RELMCAST_ACK_MCAST_ALL             0x01
+#define WL_RELMCAST_ACTF_TIME_MIN          300	 /* time in ms */
+#define WL_RELMCAST_ACTF_TIME_MAX          20000 /* time in ms */
+
+enum {
+	RELMCAST_ENTRY_OP_DISABLE = 0,
+	RELMCAST_ENTRY_OP_DELETE,
+	RELMCAST_ENTRY_OP_ENABLE,
+	RELMCAST_ENTRY_OP_ACK_ALL
+};
+
+enum {
+	WL_RELMCAST_MODE_RECEIVER = 0,
+	WL_RELMCAST_MODE_TRANSMITTER,
+	WL_RELMCAST_MODE_INITIATOR
+};
 
 typedef struct wl_relmcast_client {
 	uint8 flag;
@@ -5464,8 +5590,42 @@ typedef struct wl_relmcast_st {
 	uint8 ver;
 	uint8 num;
 	wl_relmcast_client_t clients[WL_RELMCAST_MAX_CLIENT];
+	uint16 err;
 } wl_relmcast_status_t;
 
+typedef struct wl_relmcast_entry {
+	int8 flag;
+	struct ether_addr addr;
+} wl_relmcast_entry_t;
+
+typedef struct wl_relmcast_entry_table {
+	int8 index;
+	int8 opcode;
+	wl_relmcast_entry_t entry[WL_RELMCAST_MAX_TABLE_ENTRY];
+} wl_relmcast_entry_table_t;
+
+typedef struct wl_tr_Info {
+	struct ether_addr addr;
+	uint32 timeVal;
+	uint16 seq;
+} wl_tr_Info_t;
+
+typedef struct wl_mcGrpEntry {
+	struct ether_addr mcaddr;
+	struct ether_addr ar;
+	wl_tr_Info_t trInfo[WL_RELMCAST_MAX_TRS_PER_GROUP];
+} wl_mcGrpEntry_t;
+
+typedef struct wl_mcAckAllEntry {
+	struct ether_addr ar;
+	wl_tr_Info_t trInfo[WL_RELMCAST_NUM_OF_MC_STREAMS];
+} wl_mcAckAllEntry_t;
+
+typedef struct wl_relmcast_globalMcTbl {
+	uint8 activeMask;
+	wl_mcAckAllEntry_t ackAll;
+	wl_mcGrpEntry_t mcEntry[WL_RELMCAST_NUM_OF_MC_STREAMS];
+} wl_relmcast_globalMcTbl_t;
 #endif /* LINUX_POSTMOGRIFY_REMOVAL */
 
 /* fbt_cap: FBT assoc / reassoc modes. */

@@ -849,6 +849,9 @@ static int wm8983_set_pll(struct snd_soc_dai *dai, int pll_id,
 	int ret;
 	struct snd_soc_codec *codec;
 	struct pll_div pll_div;
+	pll_div.k = 0;
+	pll_div.n = 0;
+	pll_div.div2 = 0;
 
 	codec = dai->codec;
 	if (freq_in && freq_out) {

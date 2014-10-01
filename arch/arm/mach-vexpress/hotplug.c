@@ -16,8 +16,6 @@
 #include <asm/smp_plat.h>
 #include <asm/cp15.h>
 
-extern volatile int pen_release;
-
 static inline void cpu_enter_lowpower(void)
 {
 	unsigned int v;
@@ -94,7 +92,7 @@ int platform_cpu_kill(unsigned int cpu)
  *
  * Called with IRQs disabled
  */
-void platform_cpu_die(unsigned int cpu)
+void __cpuinit platform_cpu_die(unsigned int cpu)
 {
 	int spurious = 0;
 

@@ -230,6 +230,19 @@ const char * const *v4l2_ctrl_get_menu(u32 id)
 		"Aperture Priority Mode",
 		NULL
 	};
+	static const char * const camera_exposure_metering[] = {
+		"Average",
+		"Center Weighted",
+		"Spot",
+		NULL
+	};
+	static const char * const camera_auto_focus_range[] = {
+		"Auto",
+		"Normal",
+		"Macro",
+		"Infinity",
+		NULL
+	};
 	static const char * const colorfx[] = {
 		"None",
 		"Black & White",
@@ -241,6 +254,47 @@ const char * const *v4l2_ctrl_get_menu(u32 id)
 		"Grass Green",
 		"Skin Whiten",
 		"Vivid",
+		"Aqua",
+		"Art Freeze",
+		"Silhouette",
+		"Solarization",
+		"Antique",
+		"Set Cb/Cr",
+		NULL
+	};
+	static const char * const auto_n_preset_white_balance[] = {
+		"Manual",
+		"Auto",
+		"Incandescent",
+		"Fluorescent",
+		"Fluorescent H",
+		"Horizon",
+		"Daylight",
+		"Flash",
+		"Cloudy",
+		"Shade",
+		NULL,
+	};
+	static const char * const camera_iso_sensitivity_auto[] = {
+		"Manual",
+		"Auto",
+		NULL
+	};
+	static const char * const scene_mode[] = {
+		"None",
+		"Backlight",
+		"Beach/Snow",
+		"Candle Light",
+		"Dusk/Dawn",
+		"Fall Colors",
+		"Fireworks",
+		"Landscape",
+		"Night",
+		"Party/Indoor",
+		"Portrait",
+		"Sports",
+		"Sunset",
+		"Text",
 		NULL
 	};
 	static const char * const tune_preemphasis[] = {
@@ -354,6 +408,9 @@ const char * const *v4l2_ctrl_get_menu(u32 id)
 		"Off",
 		"Flash",
 		"Torch",
+		//add by raymonxiu
+		"Auto",
+		"RedEye",
 		NULL,
 	};
 	static const char * const flash_strobe_source[] = {
@@ -410,8 +467,18 @@ const char * const *v4l2_ctrl_get_menu(u32 id)
 		return camera_power_line_frequency;
 	case V4L2_CID_EXPOSURE_AUTO:
 		return camera_exposure_auto;
+	case V4L2_CID_EXPOSURE_METERING:
+		return camera_exposure_metering;
+	case V4L2_CID_AUTO_FOCUS_RANGE:
+		return camera_auto_focus_range;
 	case V4L2_CID_COLORFX:
 		return colorfx;
+	case V4L2_CID_AUTO_N_PRESET_WHITE_BALANCE:
+		return auto_n_preset_white_balance;
+	case V4L2_CID_ISO_SENSITIVITY_AUTO:
+		return camera_iso_sensitivity_auto;
+	case V4L2_CID_SCENE_MODE:
+		return scene_mode;
 	case V4L2_CID_TUNE_PREEMPHASIS:
 		return tune_preemphasis;
 	case V4L2_CID_FLASH_LED_MODE:
@@ -493,6 +560,25 @@ const char *v4l2_ctrl_get_name(u32 id)
 	case V4L2_CID_MIN_BUFFERS_FOR_CAPTURE:	return "Min Number of Capture Buffers";
 	case V4L2_CID_MIN_BUFFERS_FOR_OUTPUT:	return "Min Number of Output Buffers";
 	case V4L2_CID_ALPHA_COMPONENT:		return "Alpha Component";
+	case V4L2_CID_COLORFX_CBCR:		return "Color Effects, CbCr";
+	//add by raymonxiu
+	case V4L2_CID_HFLIP_THUMB:		return "Horizontal Flip For Thumb";
+	case V4L2_CID_VFLIP_THUMB:		return "Vertical Flip For Thumb";
+	case V4L2_CID_AUTO_FOCUS_WIN_NUM:	return "AutoFocus Windows Number";
+	case V4L2_CID_AUTO_FOCUS_INIT:	return "AutoFocus Initial";
+	case V4L2_CID_AUTO_FOCUS_RELEASE:	return "AutoFocus Release";
+	case V4L2_CID_AUTO_EXPOSURE_WIN_NUM:	return "AutoExposure Windows Number";
+	case V4L2_CID_GSENSOR_ROTATION:		return "Gsensor Rotaion";
+	case V4L2_CID_FRAME_RATE:	return "AutoExposure Frame Rate";
+	case V4L2_CID_TAKE_PICTURE:         return "Take Picture";
+	case V4L2_CID_HOR_VISUAL_ANGLE:		return "Horizontal Visual Angle";
+	case V4L2_CID_VER_VISUAL_ANGLE:	return "Vertical  Visual Angle";
+	case V4L2_CID_FOCUS_LENGTH:         return "Focus Length";
+	case V4L2_CID_HDR:         return "Set HDR";
+	case V4L2_CID_SENSOR_TYPE:         return "Sensor type";
+	case V4L2_CID_R_GAIN:		return "R GAIN";
+	case V4L2_CID_G_GAIN:		return "G GAIN";
+	case V4L2_CID_B_GAIN:         return "B GAIN";
 
 	/* MPEG controls */
 	/* Keep the order of the 'case's the same as in videodev2.h! */
@@ -590,13 +676,26 @@ const char *v4l2_ctrl_get_name(u32 id)
 	case V4L2_CID_TILT_ABSOLUTE:		return "Tilt, Absolute";
 	case V4L2_CID_FOCUS_ABSOLUTE:		return "Focus, Absolute";
 	case V4L2_CID_FOCUS_RELATIVE:		return "Focus, Relative";
-	case V4L2_CID_FOCUS_AUTO:		return "Focus, Automatic";
+	case V4L2_CID_FOCUS_AUTO:		return "Focus, Automatic Continuous";
 	case V4L2_CID_ZOOM_ABSOLUTE:		return "Zoom, Absolute";
 	case V4L2_CID_ZOOM_RELATIVE:		return "Zoom, Relative";
 	case V4L2_CID_ZOOM_CONTINUOUS:		return "Zoom, Continuous";
 	case V4L2_CID_PRIVACY:			return "Privacy";
 	case V4L2_CID_IRIS_ABSOLUTE:		return "Iris, Absolute";
 	case V4L2_CID_IRIS_RELATIVE:		return "Iris, Relative";
+	case V4L2_CID_AUTO_EXPOSURE_BIAS:	return "Auto Exposure, Bias";
+	case V4L2_CID_AUTO_N_PRESET_WHITE_BALANCE: return "White Balance, Auto & Preset";
+	case V4L2_CID_WIDE_DYNAMIC_RANGE:	return "Wide Dynamic Range";
+	case V4L2_CID_IMAGE_STABILIZATION:	return "Image Stabilization";
+	case V4L2_CID_ISO_SENSITIVITY:		return "ISO Sensitivity";
+	case V4L2_CID_ISO_SENSITIVITY_AUTO:	return "ISO Sensitivity, Auto";
+	case V4L2_CID_EXPOSURE_METERING:	return "Exposure, Metering Mode";
+	case V4L2_CID_SCENE_MODE:		return "Scene Mode";
+	case V4L2_CID_3A_LOCK:			return "3A Lock";
+	case V4L2_CID_AUTO_FOCUS_START:		return "Auto Focus, Start";
+	case V4L2_CID_AUTO_FOCUS_STOP:		return "Auto Focus, Stop";
+	case V4L2_CID_AUTO_FOCUS_STATUS:	return "Auto Focus, Status";
+	case V4L2_CID_AUTO_FOCUS_RANGE:		return "Auto Focus, Range";
 
 	/* FM Radio Modulator control */
 	/* Keep the order of the 'case's the same as in videodev2.h! */
@@ -666,6 +765,7 @@ void v4l2_ctrl_fill(u32 id, const char **name, enum v4l2_ctrl_type *type,
 	case V4L2_CID_HUE_AUTO:
 	case V4L2_CID_CHROMA_AGC:
 	case V4L2_CID_COLOR_KILLER:
+	case V4L2_CID_AUTOBRIGHTNESS:
 	case V4L2_CID_MPEG_AUDIO_MUTE:
 	case V4L2_CID_MPEG_VIDEO_MUTE:
 	case V4L2_CID_MPEG_VIDEO_GOP_CLOSURE:
@@ -688,6 +788,11 @@ void v4l2_ctrl_fill(u32 id, const char **name, enum v4l2_ctrl_type *type,
 	case V4L2_CID_MPEG_VIDEO_H264_8X8_TRANSFORM:
 	case V4L2_CID_MPEG_VIDEO_H264_VUI_SAR_ENABLE:
 	case V4L2_CID_MPEG_VIDEO_MPEG4_QPEL:
+	//add by raymonxiu
+	case V4L2_CID_HFLIP_THUMB:
+	case V4L2_CID_VFLIP_THUMB:
+	case V4L2_CID_WIDE_DYNAMIC_RANGE:
+	case V4L2_CID_IMAGE_STABILIZATION:
 		*type = V4L2_CTRL_TYPE_BOOLEAN;
 		*min = 0;
 		*max = *step = 1;
@@ -696,6 +801,11 @@ void v4l2_ctrl_fill(u32 id, const char **name, enum v4l2_ctrl_type *type,
 	case V4L2_CID_TILT_RESET:
 	case V4L2_CID_FLASH_STROBE:
 	case V4L2_CID_FLASH_STROBE_STOP:
+	case V4L2_CID_AUTO_FOCUS_START:
+	case V4L2_CID_AUTO_FOCUS_STOP:
+	case V4L2_CID_AUTO_FOCUS_INIT:
+	case V4L2_CID_AUTO_FOCUS_RELEASE:
+	case V4L2_CID_TAKE_PICTURE:
 		*type = V4L2_CTRL_TYPE_BUTTON;
 		*flags |= V4L2_CTRL_FLAG_WRITE_ONLY;
 		*min = *max = *step = *def = 0;
@@ -719,7 +829,10 @@ void v4l2_ctrl_fill(u32 id, const char **name, enum v4l2_ctrl_type *type,
 	case V4L2_CID_MPEG_STREAM_TYPE:
 	case V4L2_CID_MPEG_STREAM_VBI_FMT:
 	case V4L2_CID_EXPOSURE_AUTO:
+	case V4L2_CID_AUTO_FOCUS_RANGE:
 	case V4L2_CID_COLORFX:
+	case V4L2_CID_SENSOR_TYPE:
+	case V4L2_CID_AUTO_N_PRESET_WHITE_BALANCE:
 	case V4L2_CID_TUNE_PREEMPHASIS:
 	case V4L2_CID_FLASH_LED_MODE:
 	case V4L2_CID_FLASH_STROBE_SOURCE:
@@ -733,11 +846,18 @@ void v4l2_ctrl_fill(u32 id, const char **name, enum v4l2_ctrl_type *type,
 	case V4L2_CID_MPEG_VIDEO_MPEG4_LEVEL:
 	case V4L2_CID_MPEG_VIDEO_MPEG4_PROFILE:
 	case V4L2_CID_JPEG_CHROMA_SUBSAMPLING:
+	case V4L2_CID_ISO_SENSITIVITY_AUTO:
+	case V4L2_CID_EXPOSURE_METERING:
+	case V4L2_CID_SCENE_MODE:
 		*type = V4L2_CTRL_TYPE_MENU;
 		break;
 	case V4L2_CID_RDS_TX_PS_NAME:
 	case V4L2_CID_RDS_TX_RADIO_TEXT:
 		*type = V4L2_CTRL_TYPE_STRING;
+		break;
+	case V4L2_CID_ISO_SENSITIVITY:
+	case V4L2_CID_AUTO_EXPOSURE_BIAS:
+		*type = V4L2_CTRL_TYPE_INTEGER;
 		break;
 	case V4L2_CID_USER_CLASS:
 	case V4L2_CID_CAMERA_CLASS:
@@ -751,6 +871,20 @@ void v4l2_ctrl_fill(u32 id, const char **name, enum v4l2_ctrl_type *type,
 		*min = *max = *step = *def = 0;
 		break;
 	case V4L2_CID_BG_COLOR:
+	//add by raymonxiu
+	//private
+	case V4L2_CID_HDR:
+	case V4L2_CID_AUTO_FOCUS_WIN_NUM:
+	case V4L2_CID_AUTO_EXPOSURE_WIN_NUM:
+	case V4L2_CID_GSENSOR_ROTATION:
+	case V4L2_CID_FRAME_RATE:
+	case V4L2_CID_HOR_VISUAL_ANGLE:
+	case V4L2_CID_VER_VISUAL_ANGLE:
+	case V4L2_CID_FOCUS_LENGTH:
+	case V4L2_CID_R_GAIN:	
+	case V4L2_CID_G_GAIN:	
+	case V4L2_CID_B_GAIN: 
+
 		*type = V4L2_CTRL_TYPE_INTEGER;
 		*step = 1;
 		*min = 0;
@@ -759,6 +893,8 @@ void v4l2_ctrl_fill(u32 id, const char **name, enum v4l2_ctrl_type *type,
 		break;
 	case V4L2_CID_FLASH_FAULT:
 	case V4L2_CID_JPEG_ACTIVE_MARKER:
+	case V4L2_CID_3A_LOCK:
+	case V4L2_CID_AUTO_FOCUS_STATUS:
 		*type = V4L2_CTRL_TYPE_BITMASK;
 		break;
 	case V4L2_CID_MIN_BUFFERS_FOR_CAPTURE:
@@ -817,6 +953,7 @@ void v4l2_ctrl_fill(u32 id, const char **name, enum v4l2_ctrl_type *type,
 		*flags |= V4L2_CTRL_FLAG_WRITE_ONLY;
 		break;
 	case V4L2_CID_FLASH_STROBE_STATUS:
+	case V4L2_CID_AUTO_FOCUS_STATUS:
 	case V4L2_CID_FLASH_READY:
 		*flags |= V4L2_CTRL_FLAG_READ_ONLY;
 		break;

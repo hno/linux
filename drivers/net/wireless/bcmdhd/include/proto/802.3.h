@@ -1,15 +1,9 @@
 /*
- * Copyright (C) 2013, Broadcom Corporation
- * All Rights Reserved.
- * 
- * This is UNPUBLISHED PROPRIETARY SOURCE CODE of Broadcom Corporation;
- * the contents of this file may not be disclosed to third parties, copied
- * or duplicated in any form, in whole or in part, without the prior
- * written permission of Broadcom Corporation.
+ * $Copyright Open Broadcom Corporation$
  *
  * Fundamental constants relating to 802.3
  *
- * $Id: 802.3.h 382882 2013-02-04 23:24:31Z $
+ * $Id: 802.3.h 417942 2013-08-13 07:53:57Z $
  */
 
 #ifndef _802_3_h_

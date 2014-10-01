@@ -1,26 +1,8 @@
 /*
 * Customer code to add GPIO control during WLAN start/stop
-* Copyright (C) 1999-2013, Broadcom Corporation
-* 
-*      Unless you and Broadcom execute a separate written software license
-* agreement governing use of this software, this software is licensed to you
-* under the terms of the GNU General Public License version 2 (the "GPL"),
-* available at http://www.broadcom.com/licenses/GPLv2.php, with the
-* following added to such license:
-* 
-*      As a special exception, the copyright holders of this software give you
-* permission to link this software with independent modules, and to copy and
-* distribute the resulting executable under terms of your choice, provided that
-* you also meet, for each linked independent module, the terms and conditions of
-* the license of that module.  An independent module is a module which is not
-* derived from this software.  The special exception does not apply to any
-* modifications of the software.
-* 
-*      Notwithstanding the above, under no circumstances may you combine this
-* software in any way with any other Broadcom software provided under a license
-* other than the GPL, without Broadcom's express prior written consent.
+* $Copyright Open Broadcom Corporation$
 *
-* $Id: dhd_custom_gpio.c 389250 2013-03-06 02:05:03Z $
+* $Id: dhd_custom_gpio.c 417465 2013-08-09 11:47:27Z $
 */
 
 #include <typedefs.h>
@@ -34,15 +16,26 @@
 #include <wlioctl.h>
 #include <wl_iw.h>
 
+#include <mach/sys_config.h>
+#include <mach/gpio.h>
+
 #define WL_ERROR(x) printf x
 #define WL_TRACE(x)
+extern void sunxi_mci_rescan_card(unsigned id, unsigned insert);
+extern void wifi_pm_power(int on);
 
 #ifdef CUSTOMER_HW
+#if defined(CUSTOMER_OOB)
+extern int bcm_wlan_get_oob_irq(void);
+#endif
 extern  void bcm_wlan_power_off(int);
 extern  void bcm_wlan_power_on(int);
 #endif /* CUSTOMER_HW */
 #if defined(CUSTOMER_HW2)
 
+#if defined(PLATFORM_MPS)
+int __attribute__ ((weak)) wifi_get_fw_nv_path(char *fw, char *nv) { return 0;};
+#endif
 
 #ifdef CONFIG_WIFI_CONTROL_FUNC
 int wifi_set_power(int on, unsigned long msec);
@@ -63,7 +56,7 @@ void *wifi_get_country_code(char *ccode) { return NULL; }
 extern int sdioh_mmc_irq(int irq);
 #endif /* (BCMLXSDMMC)  */
 
-#if defined(CUSTOMER_HW3)
+#if defined(CUSTOMER_HW3) || defined(PLATFORM_MPS)
 #include <mach/gpio.h>
 #endif
 
@@ -88,8 +81,11 @@ int dhd_customer_oob_irq_map(unsigned long *irq_flags_ptr)
 {
 	int  host_oob_irq = 0;
 
-#if defined(CUSTOMER_HW2)
+#if defined(CUSTOMER_HW2) && !defined(PLATFORM_MPS)
 	host_oob_irq = wifi_get_irq_number(irq_flags_ptr);
+
+#elif defined(CUSTOMER_OOB)
+	host_oob_irq = bcm_wlan_get_oob_irq();
 
 #else
 #if defined(CUSTOM_OOB_GPIO_NUM)
@@ -109,7 +105,7 @@ int dhd_customer_oob_irq_map(unsigned long *irq_flags_ptr)
 
 #if defined CUSTOMER_HW
 	host_oob_irq = MSM_GPIO_TO_INT(dhd_oob_gpio_num);
-#elif defined CUSTOMER_HW3
+#elif defined CUSTOMER_HW3 || defined(PLATFORM_MPS)
 	gpio_request(dhd_oob_gpio_num, "oob irq");
 	host_oob_irq = gpio_to_irq(dhd_oob_gpio_num);
 	gpio_direction_input(dhd_oob_gpio_num);
@@ -124,15 +120,31 @@ int dhd_customer_oob_irq_map(unsigned long *irq_flags_ptr)
 void
 dhd_customer_gpio_wlan_ctrl(int onoff)
 {
+	static int first = 1;
+	static int sdc_id = 1;
+
+	script_item_value_type_e type;
+	script_item_u val;
+
+	if (first == 1) {
+		type = script_get_item("wifi_para", "wifi_sdc_id", &val);
+		if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
+			WL_ERROR(("failed to fetch sdio card's sdcid\n"));
+			return ;
+		}
+		sdc_id = val.val;
+		first = 0;
+	}
+
 	switch (onoff) {
 		case WLAN_RESET_OFF:
 			WL_TRACE(("%s: call customer specific GPIO to insert WLAN RESET\n",
 				__FUNCTION__));
 #ifdef CUSTOMER_HW
-			bcm_wlan_power_off(2);
+			wifi_pm_power(0);
 #endif /* CUSTOMER_HW */
 #if defined(CUSTOMER_HW2)
-			wifi_set_power(0, 0);
+			wifi_set_power(0, WIFI_TURNOFF_DELAY);
 #endif
 			WL_ERROR(("=========== WLAN placed in RESET ========\n"));
 		break;
@@ -141,10 +153,11 @@ dhd_customer_gpio_wlan_ctrl(int onoff)
 			WL_TRACE(("%s: callc customer specific GPIO to remove WLAN RESET\n",
 				__FUNCTION__));
 #ifdef CUSTOMER_HW
-			bcm_wlan_power_on(2);
+			wifi_pm_power(1);
+			OSL_DELAY(200);
 #endif /* CUSTOMER_HW */
 #if defined(CUSTOMER_HW2)
-			wifi_set_power(1, 0);
+			wifi_set_power(1, 200);
 #endif
 			WL_ERROR(("=========== WLAN going back to live  ========\n"));
 		break;
@@ -153,18 +166,22 @@ dhd_customer_gpio_wlan_ctrl(int onoff)
 			WL_TRACE(("%s: call customer specific GPIO to turn off WL_REG_ON\n",
 				__FUNCTION__));
 #ifdef CUSTOMER_HW
-			bcm_wlan_power_off(1);
+			wifi_pm_power(0);
+			sunxi_mci_rescan_card(sdc_id, 0);
 #endif /* CUSTOMER_HW */
+			WL_ERROR(("=========== WLAN placed in POWER OFF ========\n"));
 		break;
 
 		case WLAN_POWER_ON:
 			WL_TRACE(("%s: call customer specific GPIO to turn on WL_REG_ON\n",
 				__FUNCTION__));
 #ifdef CUSTOMER_HW
-			bcm_wlan_power_on(1);
+			wifi_pm_power(1);
+			sunxi_mci_rescan_card(sdc_id, 1);
+#endif /* CUSTOMER_HW */
 			/* Lets customer power to get stable */
 			OSL_DELAY(200);
-#endif /* CUSTOMER_HW */
+			WL_ERROR(("=========== WLAN placed in POWER ON ========\n"));
 		break;
 	}
 }

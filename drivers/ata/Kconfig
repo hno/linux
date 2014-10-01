@@ -83,6 +83,15 @@ config SATA_AHCI_PLATFORM
 
 	  If unsure, say N.
 
+config SATA_SUNXI
+	tristate "Allwinner SATA support"
+	depends on ARCH_SUN9IW1P1
+	help
+	  This option enables support for Allwinner Platform AHCI Serial ATA
+	  controllers.
+
+	  If unsure, say N.
+
 config SATA_FSL
 	tristate "Freescale 3.0Gbps SATA support"
 	depends on FSL_SOC

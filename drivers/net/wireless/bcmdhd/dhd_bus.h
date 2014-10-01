@@ -4,25 +4,7 @@
  * Provides type definitions and function prototypes used to link the
  * DHD OS, bus, and protocol modules.
  *
- * Copyright (C) 1999-2013, Broadcom Corporation
- * 
- *      Unless you and Broadcom execute a separate written software license
- * agreement governing use of this software, this software is licensed to you
- * under the terms of the GNU General Public License version 2 (the "GPL"),
- * available at http://www.broadcom.com/licenses/GPLv2.php, with the
- * following added to such license:
- * 
- *      As a special exception, the copyright holders of this software give you
- * permission to link this software with independent modules, and to copy and
- * distribute the resulting executable under terms of your choice, provided that
- * you also meet, for each linked independent module, the terms and conditions of
- * the license of that module.  An independent module is a module which is not
- * derived from this software.  The special exception does not apply to any
- * modifications of the software.
- * 
- *      Notwithstanding the above, under no circumstances may you combine this
- * software in any way with any other Broadcom software provided under a license
- * other than the GPL, without Broadcom's express prior written consent.
+ * $Copyright Open Broadcom Corporation$
  *
  * $Id: dhd_bus.h 335569 2012-05-29 12:04:43Z $
  */
@@ -40,7 +22,7 @@ extern void dhd_bus_unregister(void);
 
 /* Download firmware image and nvram image */
 extern bool dhd_bus_download_firmware(struct dhd_bus *bus, osl_t *osh,
-	char *fw_path, char *nv_path);
+	char *fw_path, char *nv_path, char *conf_path);
 
 /* Stop bus module: clear pending frames, disable data flow */
 extern void dhd_bus_stop(struct dhd_bus *bus, bool enforce_mutex);

@@ -4,6 +4,11 @@
 
 # Each configuration option enables a list of files.
 
+obj-$(CONFIG_E_COMPASS_L3M303D)		+= lsm303d.o
+obj-$(CONFIG_E_COMPASS_FXOS8700)	+= fxos8700.o
+obj-$(CONFIG_GYR_L3GD20)			+= l3gd20_gyr.o
+obj-$(CONFIG_INPUT_LTR501ALS)		+= ltr_501als.o
+obj-$(CONFIG_INPUT_JSA1127)			+= jsa1127.o
 obj-$(CONFIG_INPUT_88PM860X_ONKEY)	+= 88pm860x_onkey.o
 obj-$(CONFIG_INPUT_AB8500_PONKEY)	+= ab8500-ponkey.o
 obj-$(CONFIG_INPUT_AD714X)		+= ad714x.o
@@ -56,4 +61,7 @@ obj-$(CONFIG_INPUT_UINPUT)		+= uinput.o
 obj-$(CONFIG_INPUT_WISTRON_BTNS)	+= wistron_btns.o
 obj-$(CONFIG_INPUT_WM831X_ON)		+= wm831x-on.o
 obj-$(CONFIG_INPUT_XEN_KBDDEV_FRONTEND)	+= xen-kbdfront.o
-obj-$(CONFIG_INPUT_YEALINK)		+= yealink.o
+obj-$(CONFIG_INPUT_YEALINK)				+= yealink.o
+obj-$(CONFIG_E_COMPASS_AKM8963)				+= akm8963.o
+obj-$(CONFIG_GYR_BMG160)      		+= bmg160_gyr.o
+bmg160_gyr-objs := bmg160_driver.o bmg160.o

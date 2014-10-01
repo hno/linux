@@ -620,10 +620,55 @@ static void regulator_dev_release(struct device *dev)
 	kfree(rdev);
 }
 
+#ifdef CONFIG_AW_AXP
+static ssize_t axp_print_state(char *buf, int state)
+{
+	if (state > 0)
+		return sprintf(buf, "enabled  ");
+	else if (state == 0)
+		return sprintf(buf, "disabled  ");
+	else
+		return sprintf(buf, "unknown  ");
+}
+
+static ssize_t axp_dump_show(struct class *class,
+			struct class_attribute *attr,	char *buf)
+{
+	struct regulator *regulator = NULL;
+	struct regulator_dev *rdev;
+	int count = 0;
+
+	mutex_lock(&regulator_list_mutex);
+	list_for_each_entry(rdev, &regulator_list, list) {
+		mutex_lock(&rdev->mutex);
+		count += sprintf(buf+count, "%s : ", rdev_get_name(rdev));
+		count += axp_print_state(buf+count, _regulator_is_enabled(rdev));
+		count += sprintf(buf+count, "%d  ", rdev->use_count);
+		count += sprintf(buf+count, "%d  ", _regulator_get_voltage(rdev));
+		count += sprintf(buf+count, "  %s:  ", "supply_name");
+		list_for_each_entry(regulator, &rdev->consumer_list, list) {
+			count += sprintf(buf+count, "%s  ", regulator->supply_name);
+		}
+		mutex_unlock(&rdev->mutex);
+		count += sprintf(buf+count, "\n ");
+	}
+	mutex_unlock(&regulator_list_mutex);
+	return count;
+}
+
+static struct class_attribute axp_class_attrs[] = {
+	__ATTR(dump,S_IRUGO|S_IWUSR,axp_dump_show,NULL),
+	__ATTR_NULL
+};
+#endif
+
 static struct class regulator_class = {
 	.name = "regulator",
 	.dev_release = regulator_dev_release,
 	.dev_attrs = regulator_dev_attrs,
+#ifdef CONFIG_AW_AXP
+	.class_attrs = axp_class_attrs,
+#endif
 };
 
 /* Calculate the new optimum regulator operating mode based on the new total

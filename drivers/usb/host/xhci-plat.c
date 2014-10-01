@@ -15,8 +15,14 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 
-#include "xhci.h"
+#include <mach/platform.h>
 
+#include "xhci.h"
+extern atomic_t thread_suspend_flag;
+
+int sunxi_xhci_disable(void);
+int sunxi_xhci_enable(void);
+static struct platform_device *sunxi_ehci;
 static void xhci_plat_quirks(struct device *dev, struct xhci_hcd *xhci)
 {
 	/*
@@ -111,23 +117,11 @@ static int xhci_plat_probe(struct platform_device *pdev)
 	hcd->rsrc_start = res->start;
 	hcd->rsrc_len = resource_size(res);
 
-	if (!request_mem_region(hcd->rsrc_start, hcd->rsrc_len,
-				driver->description)) {
-		dev_dbg(&pdev->dev, "controller already in use\n");
-		ret = -EBUSY;
-		goto put_hcd;
-	}
-
-	hcd->regs = ioremap_nocache(hcd->rsrc_start, hcd->rsrc_len);
-	if (!hcd->regs) {
-		dev_dbg(&pdev->dev, "error mapping memory\n");
-		ret = -EFAULT;
-		goto release_mem_region;
-	}
+	hcd->regs = (void __iomem *)pdev->dev.platform_data;
 
 	ret = usb_add_hcd(hcd, irq, IRQF_SHARED);
 	if (ret)
-		goto unmap_registers;
+		goto put_hcd;
 
 	/* USB 2.0 roothub is stored in the platform_device now. */
 	hcd = dev_get_drvdata(&pdev->dev);
@@ -149,6 +143,9 @@ static int xhci_plat_probe(struct platform_device *pdev)
 	if (ret)
 		goto put_usb3_hcd;
 
+	platform_set_drvdata(pdev, hcd);
+	sunxi_ehci = pdev;
+
 	return 0;
 
 put_usb3_hcd:
@@ -156,12 +153,6 @@ put_usb3_hcd:
 
 dealloc_usb2_hcd:
 	usb_remove_hcd(hcd);
-
-unmap_registers:
-	iounmap(hcd->regs);
-
-release_mem_region:
-	release_mem_region(hcd->rsrc_start, hcd->rsrc_len);
 
 put_hcd:
 	usb_put_hcd(hcd);
@@ -171,25 +162,111 @@ put_hcd:
 
 static int xhci_plat_remove(struct platform_device *dev)
 {
-	struct usb_hcd	*hcd = platform_get_drvdata(dev);
-	struct xhci_hcd	*xhci = hcd_to_xhci(hcd);
+	struct usb_hcd	*hcd = NULL;
+	struct xhci_hcd	*xhci = NULL;
+	struct usb_device *hdev = NULL;
+	struct usb_device *rhdev = NULL;
+
+	hcd = platform_get_drvdata(dev);
+	if(hcd == NULL){
+		printk("%s,hcd is null\n", __func__);
+		return 0;
+	}
+
+	xhci = hcd_to_xhci(hcd);
+	if(xhci == NULL){
+		printk("%s,xhci is null\n", __func__);
+		return 0;
+	}
+
+	rhdev = hcd->self.root_hub;
+	if(rhdev == NULL){
+		printk("%s, hcd->self.root_hub is null\n", __func__);
+		return 0;
+	}
+
+	hdev = rhdev->children[rhdev->descriptor.bNumConfigurations -1];
+	while(hdev != NULL){
+		dev_info(&hdev->dev, "device number %d is exist when %s and need wait until disconnect, hubportNum:%d\n",
+			hdev->devnum, __func__, rhdev->descriptor.bNumConfigurations);
+		msleep(1000);
+		hdev = rhdev->children[rhdev->descriptor.bNumConfigurations -1];
+	}
 
 	usb_remove_hcd(xhci->shared_hcd);
 	usb_put_hcd(xhci->shared_hcd);
 
 	usb_remove_hcd(hcd);
-	iounmap(hcd->regs);
 	usb_put_hcd(hcd);
 	kfree(xhci);
 
+	platform_set_drvdata(dev, NULL);
+
 	return 0;
 }
+
+#ifdef CONFIG_PM
+static int xhci_plat_suspend(struct device *dev)
+{
+	struct usb_hcd	*hcd = NULL;
+	struct xhci_hcd	*xhci = NULL;
+
+	atomic_set(&thread_suspend_flag, 1);
+
+	hcd = dev_get_drvdata(dev);
+	if(hcd == NULL){
+		printk("xhci hcd is null and no need to suspend\n");
+		return 0;
+	}
+
+	xhci = hcd_to_xhci(hcd);
+	if(xhci == NULL){
+		printk("xhci is null and no need to suspend\n");
+		return 0;
+	}
+
+	return xhci_suspend(xhci);
+}
+
+static int xhci_plat_resume(struct device *dev)
+{
+	struct usb_hcd	*hcd = NULL;
+	struct xhci_hcd	*xhci = NULL;
+	int ret = 0;
+
+	hcd = dev_get_drvdata(dev);
+	if(hcd == NULL){
+		printk("xhci hcd is null and no need to resume\n");
+		return 0;
+	}
+
+	xhci = hcd_to_xhci(hcd);
+	if(xhci == NULL){
+		printk("xhci is null and no need to resume\n");
+		return 0;
+	}
+
+	ret = xhci_resume(xhci, 0);
+
+	atomic_set(&thread_suspend_flag, 0);
+
+	return ret;
+}
+
+static const struct dev_pm_ops xhci_plat_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(xhci_plat_suspend, xhci_plat_resume)
+};
+#define DEV_PM_OPS	(&xhci_plat_pm_ops)
+#else
+#define DEV_PM_OPS	NULL
+#endif
 
 static struct platform_driver usb_xhci_driver = {
 	.probe	= xhci_plat_probe,
 	.remove	= xhci_plat_remove,
 	.driver	= {
 		.name = "xhci-hcd",
+		.pm = DEV_PM_OPS,
 	},
 };
 MODULE_ALIAS("platform:xhci-hcd");
@@ -203,3 +280,69 @@ void xhci_unregister_plat(void)
 {
 	platform_driver_unregister(&usb_xhci_driver);
 }
+
+/*
+*******************************************************************************
+*                     sunxi_xhci_enable
+*
+* Description:
+*    void
+*
+* Parameters:
+*    void
+*
+* Return value:
+*    void
+*
+* note:
+*    void
+*
+*******************************************************************************
+*/
+int sunxi_xhci_enable(void)
+{
+	struct platform_device *pdev = sunxi_ehci;
+
+	if(pdev == NULL){
+		printk("%s, pdev is NULL\n", __func__);
+		return 0;
+	}
+
+	xhci_plat_probe(pdev);
+
+ 	return 0;
+}
+EXPORT_SYMBOL(sunxi_xhci_enable);
+
+/*
+*******************************************************************************
+*                     sunxi_xhci_disable
+*
+* Description:
+*    void
+*
+* Parameters:
+*    void
+*
+* Return value:
+*    void
+*
+* note:
+*    void
+*
+*******************************************************************************
+*/
+int sunxi_xhci_disable(void)
+{
+	struct platform_device *pdev = sunxi_ehci;
+
+	if(pdev == NULL){
+		printk("%s, pdev is NULL\n", __func__);
+		return 0;
+	}
+
+	xhci_plat_remove(pdev);
+
+	return 0;
+}
+EXPORT_SYMBOL(sunxi_xhci_disable);

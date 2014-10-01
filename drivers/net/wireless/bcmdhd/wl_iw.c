@@ -1,27 +1,9 @@
 /*
  * Linux Wireless Extensions support
  *
- * Copyright (C) 1999-2013, Broadcom Corporation
- * 
- *      Unless you and Broadcom execute a separate written software license
- * agreement governing use of this software, this software is licensed to you
- * under the terms of the GNU General Public License version 2 (the "GPL"),
- * available at http://www.broadcom.com/licenses/GPLv2.php, with the
- * following added to such license:
- * 
- *      As a special exception, the copyright holders of this software give you
- * permission to link this software with independent modules, and to copy and
- * distribute the resulting executable under terms of your choice, provided that
- * you also meet, for each linked independent module, the terms and conditions of
- * the license of that module.  An independent module is a module which is not
- * derived from this software.  The special exception does not apply to any
- * modifications of the software.
- * 
- *      Notwithstanding the above, under no circumstances may you combine this
- * software in any way with any other Broadcom software provided under a license
- * other than the GPL, without Broadcom's express prior written consent.
+ * $Copyright Open Broadcom Corporation$
  *
- * $Id: wl_iw.c 386946 2013-02-22 12:06:46Z $
+ * $Id: wl_iw.c 396420 2013-04-12 06:55:45Z $
  */
 
 #if defined(USE_IW)
@@ -45,6 +27,32 @@ typedef const struct si_pub	si_t;
 #include <wl_dbg.h>
 #include <wl_iw.h>
 
+#ifdef BCMWAPI_WPI
+/* these items should evetually go into wireless.h of the linux system headfile dir */
+#ifndef IW_ENCODE_ALG_SM4
+#define IW_ENCODE_ALG_SM4 0x20
+#endif
+
+#ifndef IW_AUTH_WAPI_ENABLED
+#define IW_AUTH_WAPI_ENABLED 0x20
+#endif
+
+#ifndef IW_AUTH_WAPI_VERSION_1
+#define IW_AUTH_WAPI_VERSION_1	0x00000008
+#endif
+
+#ifndef IW_AUTH_CIPHER_SMS4
+#define IW_AUTH_CIPHER_SMS4	0x00000020
+#endif
+
+#ifndef IW_AUTH_KEY_MGMT_WAPI_PSK
+#define IW_AUTH_KEY_MGMT_WAPI_PSK 4
+#endif
+
+#ifndef IW_AUTH_KEY_MGMT_WAPI_CERT
+#define IW_AUTH_KEY_MGMT_WAPI_CERT 8
+#endif
+#endif /* BCMWAPI_WPI */
 
 /* Broadcom extensions to WEXT, linux upstream has obsoleted WEXT */
 #ifndef IW_AUTH_KEY_MGMT_FT_802_1X
@@ -82,7 +90,7 @@ tsk_ctl_t ap_eth_ctl;  /* apsta AP netdev waiter thread */
 extern bool wl_iw_conn_status_str(uint32 event_type, uint32 status,
 	uint32 reason, char* stringBuf, uint buflen);
 
-uint wl_msg_level = WL_ERROR_VAL;
+uint iw_msg_level = WL_ERROR_VAL;
 
 #define MAX_WLIW_IOCTL_LEN 1024
 
@@ -103,7 +111,10 @@ extern int dhd_wait_pend8021x(struct net_device *dev);
 #endif /* WIRELESS_EXT < 19 */
 
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0))
+#define DAEMONIZE(a)
+#elif ((LINUX_VERSION_CODE < KERNEL_VERSION(3, 8, 0)) && \
+	(LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 0)))
 #define DAEMONIZE(a) daemonize(a); \
 	allow_signal(SIGKILL); \
 	allow_signal(SIGTERM);
@@ -428,9 +439,6 @@ wl_iw_set_pm(
 	error = dev_wlc_ioctl(dev, WLC_SET_PM, &pm, sizeof(pm));
 	return error;
 }
-
-#if WIRELESS_EXT > 17
-#endif /* WIRELESS_EXT > 17 */
 #endif /* WIRELESS_EXT > 12 */
 
 int
@@ -1312,6 +1320,42 @@ ie_is_wps_ie(uint8 **wpsie, uint8 **tlvs, int *tlvs_len)
 }
 #endif /* WIRELESS_EXT > 17 */
 
+#ifdef BCMWAPI_WPI
+static inline int _wpa_snprintf_hex(char *buf, size_t buf_size, const u8 *data,
+	size_t len, int uppercase)
+{
+	size_t i;
+	char *pos = buf, *end = buf + buf_size;
+	int ret;
+	if (buf_size == 0)
+		return 0;
+	for (i = 0; i < len; i++) {
+		ret = snprintf(pos, end - pos, uppercase ? "%02X" : "%02x",
+			data[i]);
+		if (ret < 0 || ret >= end - pos) {
+			end[-1] = '\0';
+			return pos - buf;
+		}
+		pos += ret;
+	}
+	end[-1] = '\0';
+	return pos - buf;
+}
+
+/**
+ * wpa_snprintf_hex - Print data as a hex string into a buffer
+ * @buf: Memory area to use as the output buffer
+ * @buf_size: Maximum buffer size in bytes (should be at least 2 * len + 1)
+ * @data: Data to be printed
+ * @len: Length of data in bytes
+ * Returns: Number of bytes written
+ */
+static int
+wpa_snprintf_hex(char *buf, size_t buf_size, const u8 *data, size_t len)
+{
+	return _wpa_snprintf_hex(buf, buf_size, data, len, 0);
+}
+#endif /* BCMWAPI_WPI */
 
 static int
 wl_iw_handle_scanresults_ies(char **event_p, char *end,
@@ -1320,6 +1364,10 @@ wl_iw_handle_scanresults_ies(char **event_p, char *end,
 #if WIRELESS_EXT > 17
 	struct iw_event	iwe;
 	char *event;
+#ifdef BCMWAPI_WPI
+	char *buf;
+	int custom_event_len;
+#endif
 
 	event = *event_p;
 	if (bi->ie_length) {
@@ -1363,6 +1411,38 @@ wl_iw_handle_scanresults_ies(char **event_p, char *end,
 			}
 		}
 
+#ifdef BCMWAPI_WPI
+		ptr = ((uint8 *)bi) + sizeof(wl_bss_info_t);
+		ptr_len = bi->ie_length;
+
+		while ((ie = bcm_parse_tlvs(ptr, ptr_len, DOT11_MNG_WAPI_ID))) {
+			WL_TRACE(("%s: found a WAPI IE...\n", __FUNCTION__));
+#ifdef WAPI_IE_USE_GENIE
+			iwe.cmd = IWEVGENIE;
+			iwe.u.data.length = ie->len + 2;
+			event = IWE_STREAM_ADD_POINT(info, event, end, &iwe, (char *)ie);
+#else /* using CUSTOM event */
+			iwe.cmd = IWEVCUSTOM;
+			custom_event_len = strlen("wapi_ie=") + 2*(ie->len + 2);
+			iwe.u.data.length = custom_event_len;
+
+			buf = kmalloc(custom_event_len+1, GFP_KERNEL);
+			if (buf == NULL)
+			{
+				WL_ERROR(("malloc(%d) returned NULL...\n", custom_event_len));
+				break;
+			}
+
+			memcpy(buf, "wapi_ie=", 8);
+			wpa_snprintf_hex(buf + 8, 2+1, &(ie->id), 1);
+			wpa_snprintf_hex(buf + 10, 2+1, &(ie->len), 1);
+			wpa_snprintf_hex(buf + 12, 2*ie->len+1, ie->data, ie->len);
+			event = IWE_STREAM_ADD_POINT(info, event, end, &iwe, buf);
+			kfree(buf);
+#endif /* WAPI_IE_USE_GENIE */
+			break;
+		}
+#endif /* BCMWAPI_WPI */
 	*event_p = event;
 	}
 
@@ -2002,11 +2082,11 @@ wl_iw_set_retry(
 		/* "max limit" or just "limit" */
 #if WIRELESS_EXT > 20
 		if ((vwrq->flags & IW_RETRY_LONG) ||(vwrq->flags & IW_RETRY_MAX) ||
-			!((vwrq->flags & IW_RETRY_SHORT) || (vwrq->flags & IW_RETRY_MIN))) {
+			!((vwrq->flags & IW_RETRY_SHORT) || (vwrq->flags & IW_RETRY_MIN)))
 #else
-		if ((vwrq->flags & IW_RETRY_MAX) || !(vwrq->flags & IW_RETRY_MIN)) {
+		if ((vwrq->flags & IW_RETRY_MAX) || !(vwrq->flags & IW_RETRY_MIN))
 #endif /* WIRELESS_EXT > 20 */
-
+		{
 			lrl = htod32(vwrq->value);
 			if ((error = dev_wlc_ioctl(dev, WLC_SET_LRL, &lrl, sizeof(lrl))))
 				return error;
@@ -2014,11 +2094,11 @@ wl_iw_set_retry(
 		/* "min limit" or just "limit" */
 #if WIRELESS_EXT > 20
 		if ((vwrq->flags & IW_RETRY_SHORT) ||(vwrq->flags & IW_RETRY_MIN) ||
-			!((vwrq->flags & IW_RETRY_LONG) || (vwrq->flags & IW_RETRY_MAX))) {
+			!((vwrq->flags & IW_RETRY_LONG) || (vwrq->flags & IW_RETRY_MAX)))
 #else
-		if ((vwrq->flags & IW_RETRY_MIN) || !(vwrq->flags & IW_RETRY_MAX)) {
+		if ((vwrq->flags & IW_RETRY_MIN) || !(vwrq->flags & IW_RETRY_MAX))
 #endif /* WIRELESS_EXT > 20 */
-
+		{
 			srl = htod32(vwrq->value);
 			if ((error = dev_wlc_ioctl(dev, WLC_SET_SRL, &srl, sizeof(srl))))
 				return error;
@@ -2273,6 +2353,21 @@ wl_iw_set_wpaie(
 	char *extra
 )
 {
+#if defined(BCMWAPI_WPI)
+	uchar buf[WLC_IOCTL_SMLEN] = {0};
+	uchar *p = buf;
+	int wapi_ie_size;
+
+	WL_TRACE(("%s: SIOCSIWGENIE\n", dev->name));
+
+	if (extra[0] == DOT11_MNG_WAPI_ID)
+	{
+		wapi_ie_size = iwp->length;
+		memcpy(p, extra, iwp->length);
+		dev_wlc_bufvar_set(dev, "wapiie", buf, wapi_ie_size);
+	}
+	else
+#endif
 		dev_wlc_bufvar_set(dev, "wpaie", extra, iwp->length);
 
 	return 0;
@@ -2415,6 +2510,14 @@ wl_iw_set_encodeext(
 			case IW_ENCODE_ALG_CCMP:
 				key.algo = CRYPTO_ALGO_AES_CCM;
 				break;
+#ifdef BCMWAPI_WPI
+			case IW_ENCODE_ALG_SM4:
+				key.algo = CRYPTO_ALGO_SMS4;
+				if (iwe->ext_flags & IW_ENCODE_EXT_GROUP_KEY) {
+					key.flags &= ~WL_PRIMARY_KEY;
+				}
+				break;
+#endif
 			default:
 				break;
 		}
@@ -2430,7 +2533,6 @@ wl_iw_set_encodeext(
 }
 
 
-#if WIRELESS_EXT > 17
 struct {
 	pmkid_list_t pmkids;
 	pmkid_t foo[MAXPMKID-1];
@@ -2517,7 +2619,6 @@ wl_iw_set_pmksa(
 	dev_wlc_bufvar_set(dev, "pmkid_info", (char *)&pmkid_list, sizeof(pmkid_list));
 	return 0;
 }
-#endif /* WIRELESS_EXT > 17 */
 
 static int
 wl_iw_get_encodeext(
@@ -2564,6 +2665,10 @@ wl_iw_set_wpaauth(
 			val = WPA_AUTH_PSK | WPA_AUTH_UNSPECIFIED;
 		else if (paramval & IW_AUTH_WPA_VERSION_WPA2)
 			val = WPA2_AUTH_PSK | WPA2_AUTH_UNSPECIFIED;
+#ifdef BCMWAPI_WPI
+		else if (paramval & IW_AUTH_WAPI_VERSION_1)
+			val = WAPI_AUTH_UNSPECIFIED;
+#endif
 		WL_TRACE(("%s: %d: setting wpa_auth to 0x%0x\n", __FUNCTION__, __LINE__, val));
 		if ((error = dev_wlc_intvar_set(dev, "wpa_auth", val)))
 			return error;
@@ -2591,6 +2696,11 @@ wl_iw_set_wpaauth(
 			val |= TKIP_ENABLED;
 		if (cipher_combined & IW_AUTH_CIPHER_CCMP)
 			val |= AES_ENABLED;
+#ifdef BCMWAPI_WPI
+		val &= ~SMS4_ENABLED;
+		if (cipher_combined & IW_AUTH_CIPHER_SMS4)
+			val |= SMS4_ENABLED;
+#endif
 
 		if (iw->privacy_invoked && !val) {
 			WL_WSEC(("%s: %s: 'Privacy invoked' TRUE but clearing wsec, assuming "
@@ -2647,6 +2757,10 @@ wl_iw_set_wpaauth(
 			if (paramval & (IW_AUTH_KEY_MGMT_FT_802_1X | IW_AUTH_KEY_MGMT_FT_PSK))
 				val |= WPA2_AUTH_FT;
 		}
+#ifdef BCMWAPI_WPI
+		if (paramval & (IW_AUTH_KEY_MGMT_WAPI_PSK | IW_AUTH_KEY_MGMT_WAPI_CERT))
+			val = WAPI_AUTH_UNSPECIFIED;
+#endif
 		WL_TRACE(("%s: %d: setting wpa_auth to %d\n", __FUNCTION__, __LINE__, val));
 		if ((error = dev_wlc_intvar_set(dev, "wpa_auth", val)))
 			return error;
@@ -2729,6 +2843,29 @@ wl_iw_set_wpaauth(
 
 #endif /* WIRELESS_EXT > 17 */
 
+#ifdef BCMWAPI_WPI
+
+	case IW_AUTH_WAPI_ENABLED:
+		if ((error = dev_wlc_intvar_get(dev, "wsec", &val)))
+			return error;
+		if (paramval) {
+			val |= SMS4_ENABLED;
+			if ((error = dev_wlc_intvar_set(dev, "wsec", val))) {
+				WL_ERROR(("%s: setting wsec to 0x%0x returned error %d\n",
+					__FUNCTION__, val, error));
+				return error;
+			}
+			if ((error = dev_wlc_intvar_set(dev, "wpa_auth", WAPI_AUTH_UNSPECIFIED))) {
+				WL_ERROR(("%s: setting wpa_auth(%d) returned %d\n",
+					__FUNCTION__, WAPI_AUTH_UNSPECIFIED,
+					error));
+				return error;
+			}
+		}
+
+		break;
+
+#endif /* BCMWAPI_WPI */
 
 	default:
 		break;
@@ -2911,8 +3048,6 @@ enum {
 	WL_IW_SET_LEDDC = SIOCIWFIRSTPRIV,
 	WL_IW_SET_VLANMODE,
 	WL_IW_SET_PM,
-#if WIRELESS_EXT > 17
-#endif /* WIRELESS_EXT > 17 */
 	WL_IW_SET_LAST
 };
 
@@ -2920,8 +3055,6 @@ static iw_handler wl_iw_priv_handler[] = {
 	wl_iw_set_leddc,
 	wl_iw_set_vlanmode,
 	wl_iw_set_pm,
-#if WIRELESS_EXT > 17
-#endif /* WIRELESS_EXT > 17 */
 	NULL
 };
 
@@ -2944,8 +3077,6 @@ static struct iw_priv_args wl_iw_priv_args[] = {
 		0,
 		"set_pm"
 	},
-#if WIRELESS_EXT > 17
-#endif /* WIRELESS_EXT > 17 */
 	{ 0, 0, 0, { 0 } }
 };
 

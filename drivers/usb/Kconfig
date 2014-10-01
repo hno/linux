@@ -20,6 +20,7 @@ config USB_ARCH_HAS_OHCI
 	default y if ARCH_CNS3XXX
 	default y if PLAT_SPEAR
 	default y if ARCH_EXYNOS
+	default y if ARCH_SUNXI
 	# PPC:
 	default y if STB03xxx
 	default y if PPC_MPC52xx
@@ -48,11 +49,13 @@ config USB_ARCH_HAS_EHCI
 	default y if SPARC_LEON
 	default y if ARCH_MMP
 	default y if MACH_LOONGSON1
+	default y if ARCH_SUNXI
 	default PCI
 
 # some non-PCI HCDs implement xHCI
 config USB_ARCH_HAS_XHCI
 	boolean
+	default y if ARCH_SUNXI
 	default PCI
 
 menuconfig USB_SUPPORT
@@ -125,6 +128,8 @@ source "drivers/usb/core/Kconfig"
 
 source "drivers/usb/dwc3/Kconfig"
 
+source "drivers/usb/sunxi_usb/usb3/Kconfig"
+
 source "drivers/usb/mon/Kconfig"
 
 source "drivers/usb/wusbcore/Kconfig"
@@ -182,5 +187,7 @@ source "drivers/usb/atm/Kconfig"
 source "drivers/usb/gadget/Kconfig"
 
 source "drivers/usb/otg/Kconfig"
+
+source "drivers/usb/sunxi_usb/Kconfig"
 
 endif # USB_SUPPORT

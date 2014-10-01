@@ -63,9 +63,17 @@ ep_matches (
 
 	int		num_req_streams = 0;
 
+#ifndef CONFIG_USB_SUNXI_USB
 	/* endpoint already claimed? */
 	if (NULL != ep->driver_data)
 		return 0;
+#else
+	if (NULL != ep->driver_data) {
+		printk("%s, wrn: endpoint already claimed, ep(0x%p, 0x%p, %s)\n", __func__,
+		ep, ep->driver_data, ep->name);
+		return 0;
+	}
+#endif
 
 	/* only support ep0 for portable CONTROL traffic */
 	type = desc->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
@@ -84,17 +92,64 @@ ep_matches (
 		if (tmp) {
 			switch (type) {
 			case USB_ENDPOINT_XFER_INT:
-				/* bulk endpoints handle interrupt transfers,
-				 * except the toggle-quirky iso-synch kind
-				 */
-				if ('s' == tmp[2])	// == "-iso"
-					return 0;
-				/* for now, avoid PXA "interrupt-in";
-				 * it's documented as never using DATA1.
-				 */
-				if (gadget_is_pxa (gadget)
-						&& 'i' == tmp [1])
-					return 0;
+#ifndef CONFIG_USB_SUNXI_USB
+			/* bulk endpoints handle interrupt transfers,
+			* except the toggle-quirky iso-synch kind
+			*/
+			if ('s' == tmp[2])	// == "-iso"
+				return 0;
+			/* for now, avoid PXA "interrupt-in";
+			* it's documented as never using DATA1.
+			*/
+			if (gadget_is_pxa (gadget)
+				&& 'i' == tmp [1])
+				return 0;
+
+			/* softwinner otg support -int */
+#ifdef CONFIG_ARCH_SUN9IW1
+			if(gadget_is_sunxi(gadget) && 'n' != tmp [2]){
+				printk("gadget_is_softwinner_otg is not -int\n");
+				return 0;
+			}
+#else
+			if(gadget_is_softwinner_otg(gadget) && 'n' != tmp [2]){
+				printk("gadget_is_softwinner_otg is not -int\n");
+				return 0;
+			}
+#endif
+
+#else
+	                /* bulk endpoints handle interrupt transfers,
+	                 * except the toggle-quirky iso-synch kind
+	                 */
+	                if ('s' == tmp[2]){ // == "-iso"
+	                    printk("-iso\n");
+	                    return 0;
+	                }
+
+	                /* for now, avoid PXA "interrupt-in";
+	                 * it's documented as never using DATA1.
+	                 */
+	                if (gadget_is_pxa (gadget) && 'i' == tmp [1]){
+	                    printk("gadget_is_pxa\n");
+	                    return 0;
+	                }
+
+
+                /* softwinner otg support -int */
+#ifdef CONFIG_ARCH_SUN9IW1
+			if(gadget_is_sunxi(gadget) && 'n' != tmp [2]){
+				printk("gadget_is_softwinner_otg is not -int\n");
+				return 0;
+			}
+#else
+			if(gadget_is_softwinner_otg(gadget) && 'n' != tmp [2]){
+				printk("gadget_is_softwinner_otg is not -int\n");
+				return 0;
+			}
+#endif
+
+#endif
 				break;
 			case USB_ENDPOINT_XFER_BULK:
 				if ('b' != tmp[1])	// != "-bulk"
@@ -275,24 +330,24 @@ struct usb_ep *usb_ep_autoconfig_ss(
 		/* ep-e, ep-f are PIO with only 64 byte fifos */
 		ep = find_ep (gadget, "ep-e");
 		if (ep && ep_matches(gadget, ep, desc, ep_comp))
-			goto found_ep;
+			return ep;
 		ep = find_ep (gadget, "ep-f");
 		if (ep && ep_matches(gadget, ep, desc, ep_comp))
-			goto found_ep;
+			return ep;
 
 	} else if (gadget_is_goku (gadget)) {
 		if (USB_ENDPOINT_XFER_INT == type) {
 			/* single buffering is enough */
 			ep = find_ep(gadget, "ep3-bulk");
 			if (ep && ep_matches(gadget, ep, desc, ep_comp))
-				goto found_ep;
+				return ep;
 		} else if (USB_ENDPOINT_XFER_BULK == type
 				&& (USB_DIR_IN & desc->bEndpointAddress)) {
 			/* DMA may be available */
 			ep = find_ep(gadget, "ep2-bulk");
 			if (ep && ep_matches(gadget, ep, desc,
 					      ep_comp))
-				goto found_ep;
+				return ep;
 		}
 
 #ifdef CONFIG_BLACKFIN
@@ -311,22 +366,18 @@ struct usb_ep *usb_ep_autoconfig_ss(
 		} else
 			ep = NULL;
 		if (ep && ep_matches(gadget, ep, desc, ep_comp))
-			goto found_ep;
+			return ep;;
 #endif
 	}
 
 	/* Second, look at endpoints until an unclaimed one looks usable */
 	list_for_each_entry (ep, &gadget->ep_list, ep_list) {
 		if (ep_matches(gadget, ep, desc, ep_comp))
-			goto found_ep;
+			return ep;;
 	}
 
 	/* Fail */
 	return NULL;
-found_ep:
-	ep->desc = NULL;
-	ep->comp_desc = NULL;
-	return ep;
 }
 
 /**

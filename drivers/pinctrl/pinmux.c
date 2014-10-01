@@ -33,10 +33,12 @@
 int pinmux_check_ops(struct pinctrl_dev *pctldev)
 {
 	const struct pinmux_ops *ops = pctldev->desc->pmxops;
+	unsigned nfuncs;
 	unsigned selector = 0;
 
 	/* Check that we implement required operations */
-	if (!ops->list_functions ||
+	if (!ops ||
+	    !ops->get_functions_count ||
 	    !ops->get_function_name ||
 	    !ops->get_function_groups ||
 	    !ops->enable ||
@@ -44,7 +46,8 @@ int pinmux_check_ops(struct pinctrl_dev *pctldev)
 		return -EINVAL;
 
 	/* Check that all functions registered have names */
-	while (ops->list_functions(pctldev, selector) >= 0) {
+	nfuncs = ops->get_functions_count(pctldev);
+	while (selector < nfuncs) {
 		const char *fname = ops->get_function_name(pctldev,
 							   selector);
 		if (!fname) {
@@ -188,6 +191,11 @@ static const char *pin_free(struct pinctrl_dev *pctldev, int pin,
 	}
 
 	if (!gpio_range) {
+		/*
+		 * A pin should not be freed more times than allocated.
+		 */
+		if (WARN_ON(!desc->mux_usecount))
+			return NULL;
 		desc->mux_usecount--;
 		if (desc->mux_usecount)
 			return NULL;
@@ -287,10 +295,11 @@ static int pinmux_func_name_to_selector(struct pinctrl_dev *pctldev,
 					const char *function)
 {
 	const struct pinmux_ops *ops = pctldev->desc->pmxops;
+	unsigned nfuncs = ops->get_functions_count(pctldev);
 	unsigned selector = 0;
 
 	/* See if this pctldev has this function */
-	while (ops->list_functions(pctldev, selector) >= 0) {
+	while (selector < nfuncs) {
 		const char *fname = ops->get_function_name(pctldev,
 							   selector);
 
@@ -477,11 +486,16 @@ static int pinmux_functions_show(struct seq_file *s, void *what)
 {
 	struct pinctrl_dev *pctldev = s->private;
 	const struct pinmux_ops *pmxops = pctldev->desc->pmxops;
+	unsigned nfuncs;
 	unsigned func_selector = 0;
+
+	if (!pmxops)
+		return 0;
 
 	mutex_lock(&pinctrl_mutex);
 
-	while (pmxops->list_functions(pctldev, func_selector) >= 0) {
+	nfuncs = pmxops->get_functions_count(pctldev);
+	while (func_selector < nfuncs) {
 		const char *func = pmxops->get_function_name(pctldev,
 							  func_selector);
 		const char * const *groups;

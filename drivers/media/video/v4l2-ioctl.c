@@ -279,6 +279,16 @@ static const char *v4l2_ioctls[] = {
 	[_IOC_NR(VIDIOC_UNSUBSCRIBE_EVENT)] = "VIDIOC_UNSUBSCRIBE_EVENT",
 	[_IOC_NR(VIDIOC_CREATE_BUFS)]      = "VIDIOC_CREATE_BUFS",
 	[_IOC_NR(VIDIOC_PREPARE_BUF)]      = "VIDIOC_PREPARE_BUF",
+	
+	//add_for_isp by yang
+
+	[_IOC_NR(VIDIOC_ISP_AE_STAT_REQ )] 		   = "VIDIOC_ISP_AE_STAT_REQ",
+	[_IOC_NR(VIDIOC_ISP_HIST_STAT_REQ )]            = "VIDIOC_ISP_HIST_STAT_REQ",
+	[_IOC_NR(VIDIOC_ISP_AF_STAT_REQ )]            = "VIDIOC_ISP_AF_STAT_REQ",
+	[_IOC_NR(VIDIOC_ISP_GAMMA_REQ )] 		   = "VIDIOC_ISP_AE_STAT_REQ",
+
+	[_IOC_NR(VIDIOC_ISP_EXIF_REQ )]            = "VIDIOC_ISP_EXIF_REQ",
+
 };
 #define V4L2_IOCTLS ARRAY_SIZE(v4l2_ioctls)
 
@@ -2286,6 +2296,48 @@ static long __video_do_ioctl(struct file *file,
 		dbgarg(cmd, "index=%d", b->index);
 		break;
 	}
+	//add_for_isp by yang
+	case VIDIOC_ISP_AE_STAT_REQ :
+	{
+		struct isp_stat_buf *ae_buf = arg;
+		if (!ops->vidioc_isp_ae_stat_req)
+			break;		
+		ret = ops->vidioc_isp_ae_stat_req(file, fh, ae_buf);
+		break;
+	}
+	case VIDIOC_ISP_HIST_STAT_REQ :
+	{
+		struct isp_stat_buf *hist_buf = arg;
+		if (!ops->vidioc_isp_hist_stat_req)
+			break;		
+		ret = ops->vidioc_isp_hist_stat_req(file, fh, hist_buf);
+		break;
+	}
+	case VIDIOC_ISP_AF_STAT_REQ :
+	{
+		struct isp_stat_buf *af_buf = arg;
+		if (!ops->vidioc_isp_af_stat_req)
+			break;		
+		ret = ops->vidioc_isp_af_stat_req(file, fh, af_buf);
+		break;
+	}
+	case VIDIOC_ISP_GAMMA_REQ :
+	{
+		struct isp_stat_buf *gamma_buf = arg;
+		if (!ops->vidioc_isp_gamma_req)
+			break;		
+		ret = ops->vidioc_isp_gamma_req(file, fh, gamma_buf);
+		break;
+	}
+	case VIDIOC_ISP_EXIF_REQ :
+	{
+		struct isp_exif_attribute *exif_attri = arg;
+		if (!ops->vidioc_isp_exif_req)
+			break;		
+		ret = ops->vidioc_isp_exif_req(file, fh, exif_attri);
+		break;
+	}
+
 	default:
 		if (!ops->vidioc_default)
 			break;

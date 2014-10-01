@@ -2,6 +2,21 @@
 # ARM CPU Frequency scaling drivers
 #
 
+config ARM_SUNXI_IKS_CPUFREQ
+	bool "SUNXI CPUFreq IKS driver support"
+	depends on ARCH_SUN9IW1 || ARCH_SUN8IW6
+	help
+	  This adds the CPUFreq driver for sunxi big.little soc.
+	  If in doubt, say N.
+
+config ARM_SUNXI_CPUFREQ
+	bool "SUNXI CPUFreq driver support"
+	depends on !ARCH_SUN9IW1 && !ARCH_SUN8IW6
+	help
+	  This adds the CPUFreq driver for the Allwinner SUNXI SoC.
+
+	  If in doubt, say N.
+
 config ARM_OMAP2PLUS_CPUFREQ
 	bool "TI OMAP2+"
 	depends on ARCH_OMAP2PLUS

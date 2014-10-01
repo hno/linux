@@ -31,6 +31,8 @@
 #define GIC_DIST_TARGET			0x800
 #define GIC_DIST_CONFIG			0xc00
 #define GIC_DIST_SOFTINT		0xf00
+#define GIC_DIST_SGI_PENDING_CLEAR      0xf10
+#define GIC_DIST_SGI_PENDING_SET        0xf20
 
 #ifndef __ASSEMBLY__
 #include <linux/irqdomain.h>
@@ -46,11 +48,19 @@ void gic_handle_irq(struct pt_regs *regs);
 void gic_cascade_irq(unsigned int gic_nr, unsigned int irq);
 void gic_raise_softirq(const struct cpumask *mask, unsigned int irq);
 
+void gic_cpu_exit(unsigned int gic_nr);
+bool gic_pending_irq(unsigned int gic_nr);
+
 static inline void gic_init(unsigned int nr, int start,
 			    void __iomem *dist , void __iomem *cpu)
 {
 	gic_init_bases(nr, start, dist, cpu, 0, NULL);
 }
+
+void gic_send_sgi(unsigned int cpu_id, unsigned int irq);
+int  gic_get_cpu_id(unsigned int cpu);
+void gic_migrate_target(unsigned int new_cpu_id);
+unsigned long gic_get_sgir_physaddr(void);
 
 #endif
 

@@ -253,6 +253,50 @@ static struct ion_heap_ops system_heap_ops = {
 	.map_user = ion_heap_map_user,
 };
 
+static int ion_system_heap_shrink(struct shrinker *shrinker,
+				  struct shrink_control *sc) {
+
+	struct ion_heap *heap = container_of(shrinker, struct ion_heap,
+					     shrinker);
+	struct ion_system_heap *sys_heap = container_of(heap,
+							struct ion_system_heap,
+							heap);
+	int nr_total = 0;
+	int nr_freed = 0;
+	int i;
+
+	if (sc->nr_to_scan == 0)
+		goto end;
+
+	/* shrink the free list first, no point in zeroing the memory if
+	   we're just going to reclaim it */
+	nr_freed += ion_heap_freelist_drain(heap, sc->nr_to_scan * PAGE_SIZE) /
+		PAGE_SIZE;
+
+	if (nr_freed >= sc->nr_to_scan)
+		goto end;
+
+	for (i = 0; i < num_orders; i++) {
+		struct ion_page_pool *pool = sys_heap->pools[i];
+
+		nr_freed += ion_page_pool_shrink(pool, sc->gfp_mask,
+						 sc->nr_to_scan);
+		if (nr_freed >= sc->nr_to_scan)
+			break;
+	}
+
+end:
+	/* total number of items is whatever the page pools are holding
+	   plus whatever's in the freelist */
+	for (i = 0; i < num_orders; i++) {
+		struct ion_page_pool *pool = sys_heap->pools[i];
+		nr_total += ion_page_pool_shrink(pool, sc->gfp_mask, 0);
+	}
+	nr_total += ion_heap_freelist_size(heap) / PAGE_SIZE;
+	return nr_total;
+
+}
+
 static int ion_system_heap_debug_show(struct ion_heap *heap, struct seq_file *s,
 				      void *unused)
 {
@@ -299,6 +343,11 @@ struct ion_heap *ion_system_heap_create(struct ion_platform_heap *unused)
 			goto err_create_pool;
 		heap->pools[i] = pool;
 	}
+
+	heap->heap.shrinker.shrink = ion_system_heap_shrink;
+	heap->heap.shrinker.seeks = DEFAULT_SEEKS;
+	heap->heap.shrinker.batch = 0;
+	register_shrinker(&heap->heap.shrinker);
 	heap->heap.debug_show = ion_system_heap_debug_show;
 	return &heap->heap;
 err_create_pool:
@@ -331,8 +380,17 @@ static int ion_system_contig_heap_allocate(struct ion_heap *heap,
 					   unsigned long flags)
 {
 	buffer->priv_virt = kzalloc(len, GFP_KERNEL);
-	if (!buffer->priv_virt)
+	if (!buffer->priv_virt) {
+		pr_info("%s(%d) err: alloc 0x%08x bytes failed\n", __func__, __LINE__, (u32)len);
 		return -ENOMEM;
+	}
+	/*
+	 * fix display problem (with stripe);
+	 * kzalloc is with cache, so the physical memory of buffer->priv_virt is not all 0,
+	 * which lead to stripe when gpu use it;
+	 * so we clean cache(write back) immediate after kzalloc, which actually set phys mem to 0;
+	 */
+	dma_sync_single_for_device(NULL, (dma_addr_t)virt_to_phys(buffer->priv_virt), len, DMA_TO_DEVICE);
 	return 0;
 }
 

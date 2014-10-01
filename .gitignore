@@ -22,7 +22,10 @@
 *.lst
 *.symtypes
 *.order
+*.map
 modules.builtin
+Module.symvers
+Module.markers
 *.elf
 *.bin
 *.gz
@@ -32,6 +35,8 @@ modules.builtin
 *.lzo
 *.patch
 *.gcno
+standby.code
+resume1.code
 
 #
 # Top-level generic files
@@ -84,3 +89,11 @@ GTAGS
 *.orig
 *~
 \#*#
+
+# lichee ingnore files
+skel/
+output/
+bImage
+*.swp
+rootfs.cpio.gz
+drivers/arisc/binary/arisc

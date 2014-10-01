@@ -277,6 +277,16 @@ struct v4l2_ioctl_ops {
 	int (*vidioc_unsubscribe_event)(struct v4l2_fh *fh,
 					struct v4l2_event_subscription *sub);
 
+	int (*vidioc_isp_ae_stat_req)(struct file *file, struct v4l2_fh *fh,
+					struct isp_stat_buf *ae_buf);
+	int (*vidioc_isp_hist_stat_req)(struct file *file, struct v4l2_fh *fh,
+					struct isp_stat_buf *hist_buf);
+	int (*vidioc_isp_af_stat_req )(struct file *file, struct v4l2_fh *fh,
+					struct isp_stat_buf *af_buf);
+	int (*vidioc_isp_gamma_req )(struct file *file, struct v4l2_fh *fh,
+					struct isp_stat_buf *gamma_buf);
+	int (*vidioc_isp_exif_req )(struct file *file, struct v4l2_fh *fh,
+					struct isp_exif_attribute *exif_attri);
 	/* For other private ioctls */
 	long (*vidioc_default)	       (struct file *file, void *fh,
 					bool valid_prio, int cmd, void *arg);

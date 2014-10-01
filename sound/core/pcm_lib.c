@@ -341,6 +341,7 @@ static int snd_pcm_update_hw_ptr0(struct snd_pcm_substream *substream,
 		/* we know that one period was processed */
 		/* delta = "expected next hw_ptr" for in_interrupt != 0 */
 		delta = runtime->hw_ptr_interrupt + runtime->period_size;
+
 		if (delta > new_hw_ptr) {
 			/* check for double acknowledged interrupts */
 			hdelta = jiffies - runtime->hw_ptr_jiffies;
@@ -1861,7 +1862,7 @@ static int wait_for_avail(struct snd_pcm_substream *substream,
 	*availp = avail;
 	return err;
 }
-	
+
 static int snd_pcm_lib_write_transfer(struct snd_pcm_substream *substream,
 				      unsigned int hwoff,
 				      unsigned long data, unsigned int off,
@@ -1875,6 +1876,8 @@ static int snd_pcm_lib_write_transfer(struct snd_pcm_substream *substream,
 			return err;
 	} else {
 		char *hwbuf = runtime->dma_area + frames_to_bytes(runtime, hwoff);
+
+		memset(hwbuf, 0, frames_to_bytes(runtime, frames));
 		if (copy_from_user(hwbuf, buf, frames_to_bytes(runtime, frames)))
 			return -EFAULT;
 	}

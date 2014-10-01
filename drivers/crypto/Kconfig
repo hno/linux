@@ -296,4 +296,6 @@ config CRYPTO_DEV_TEGRA_AES
 	  To compile this driver as a module, choose M here: the module
 	  will be called tegra-aes.
 
+source drivers/crypto/sunxi/Kconfig
+
 endif # CRYPTO_HW

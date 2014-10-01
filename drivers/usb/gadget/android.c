@@ -28,6 +28,12 @@
 #include <linux/usb/composite.h>
 #include <linux/usb/gadget.h>
 
+#include <mach/sunxi-chip.h>
+
+#ifdef CONFIG_USB_SUNXI_USB
+//#include <mach/system.h>
+#include <asm/cputype.h>
+#endif
 #include "gadget_chips.h"
 
 /*
@@ -162,7 +168,7 @@ static struct usb_configuration android_config_driver = {
 	.unbind		= android_unbind_config,
 	.bConfigurationValue = 1,
 	.bmAttributes	= USB_CONFIG_ATT_ONE | USB_CONFIG_ATT_SELFPOWER,
-	.bMaxPower	= 0xFA, /* 500ma */
+	.bMaxPower	= 0x70, /* modify 500ma to 224ma support levono win7 mass_storage in usb3.0 by wangjx 2014-3-20 */
 };
 
 static void android_work(struct work_struct *data)
@@ -185,11 +191,11 @@ static void android_work(struct work_struct *data)
 
 	if (uevent_envp) {
 		kobject_uevent_env(&dev->dev->kobj, KOBJ_CHANGE, uevent_envp);
-		pr_info("%s: sent uevent %s\n", __func__, uevent_envp[0]);
-	} else {
-		pr_info("%s: did not send uevent (%d %d %p)\n", __func__,
-			 dev->connected, dev->sw_connected, cdev->config);
-	}
+		//pr_info("%s: sent uevent %s\n", __func__, uevent_envp[0]);
+	} //else {
+		//pr_info("%s: did not send uevent (%d %d %p)\n", __func__,
+		//	 dev->connected, dev->sw_connected, cdev->config);
+	//}
 }
 
 static void android_enable(struct android_dev *dev)
@@ -200,6 +206,7 @@ static void android_enable(struct android_dev *dev)
 		return;
 
 	if (--dev->disable_depth == 0) {
+		usb_gadget_disconnect(cdev->gadget);
 		usb_add_config(cdev, &android_config_driver,
 					android_bind_config);
 		usb_gadget_connect(cdev->gadget);
@@ -807,21 +814,37 @@ static int mass_storage_function_init(struct android_usb_function *f,
 	struct mass_storage_function_config *config;
 	struct fsg_common *common;
 	int err;
-
+	int i = 0;
 	config = kzalloc(sizeof(struct mass_storage_function_config),
 								GFP_KERNEL);
 	if (!config)
 		return -ENOMEM;
 
+#ifndef CONFIG_USB_SUNXI_USB
 	config->fsg.nluns = 1;
 	config->fsg.luns[0].removable = 1;
+#else
+    if(g_android_usb_config.luns <= FSG_MAX_LUNS){
+        config->fsg.nluns = g_android_usb_config.luns;
+     }else{
+		config->fsg.nluns = FSG_MAX_LUNS;
+        pr_debug("err: g_android_usb_config.luns is too big, (%d, 8)\n", g_android_usb_config.luns);
+    }
 
+    for(i = 0; i < config->fsg.nluns; i++){
+        config->fsg.luns[i].removable   = 1;
+        config->fsg.luns[i].ro          = 0;
+        config->fsg.luns[i].cdrom       = 0;
+        config->fsg.luns[i].nofua       = 1;
+    }
+#endif
 	common = fsg_common_init(NULL, cdev, &config->fsg);
 	if (IS_ERR(common)) {
 		kfree(config);
 		return PTR_ERR(common);
 	}
 
+#ifndef CONFIG_USB_SUNXI_USB
 	err = sysfs_create_link(&f->dev->kobj,
 				&common->luns[0].dev.kobj,
 				"lun");
@@ -829,6 +852,29 @@ static int mass_storage_function_init(struct android_usb_function *f,
 		kfree(config);
 		return err;
 	}
+#else
+    for(i = 0; i < config->fsg.nluns; i++){
+        char name[32];
+
+        memset(name, 0, 32);
+
+        if(i){
+            snprintf(name, 5, "lun%d\n", i);
+        }else{
+            strcpy(name, "lun");
+        }
+
+        pr_debug("lun name: %s\n", name);
+
+        err = sysfs_create_link(&f->dev->kobj,
+                    &common->luns[i].dev.kobj,
+                    name);
+        if (err) {
+            kfree(config);
+            return err;
+        }
+    }
+#endif
 
 	config->common = common;
 	f->config = config;
@@ -1388,10 +1434,34 @@ static int android_bind(struct usb_composite_dev *cdev)
 	strings_dev[STRING_PRODUCT_IDX].id = id;
 	device_desc.iProduct = id;
 
+#ifndef CONFIG_USB_SUNXI_USB
 	/* Default strings - should be updated by userspace */
 	strncpy(manufacturer_string, "Android", sizeof(manufacturer_string)-1);
 	strncpy(product_string, "Android", sizeof(product_string) - 1);
 	strncpy(serial_string, "0123456789ABCDEF", sizeof(serial_string) - 1);
+#else
+{
+	struct android_usb_config usb_config;
+
+	get_android_usb_config(&usb_config);
+
+	strncpy(manufacturer_string, usb_config.usb_manufacturer_name, sizeof(manufacturer_string) - 1);
+	strncpy(product_string, usb_config.usb_product_name, sizeof(product_string) - 1);
+
+	printk("%s, serial_unique = %d\n", __func__, usb_config.serial_unique);
+
+	if(usb_config.serial_unique){
+		u32 serial[4];
+
+		memset(serial, 0, sizeof(serial));
+		sunxi_get_serial((u8 *)serial);
+		memset(serial_string, 0, 256);
+		sprintf(serial_string, "%04x%08x%08x", serial[2], serial[1], serial[0]);
+	}else{
+		strncpy(serial_string, usb_config.usb_serial_number, sizeof(serial_string) - 1);
+	}
+}
+#endif
 
 	id = usb_string_id(cdev);
 	if (id < 0)
@@ -1518,12 +1588,34 @@ static int android_create_device(struct android_dev *dev)
 	return 0;
 }
 
+/*add for bat charge usb/ac detection*/
+int android_get_usb_state(void)
+{
+	struct android_dev *dev = _android_dev;
+	int ret = 0;
+
+	if(dev)
+		ret = dev->connected;
+	return ret;       //if can not get connection state, act as not connected!
+}
+EXPORT_SYMBOL_GPL(android_get_usb_state);
 
 static int __init init(void)
 {
 	struct android_dev *dev;
 	int err;
 
+#ifdef CONFIG_USB_SUNXI_USB
+{
+	struct android_usb_config usb_config;
+
+	parse_android_usb_config();
+	get_android_usb_config(&usb_config);
+
+	device_desc.idVendor    = usb_config.vendor_id;
+	device_desc.idProduct   = usb_config.mass_storage_id;
+}
+#endif
 	android_class = class_create(THIS_MODULE, "android_usb");
 	if (IS_ERR(android_class))
 		return PTR_ERR(android_class);

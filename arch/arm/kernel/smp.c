@@ -19,7 +19,6 @@
 #include <linux/mm.h>
 #include <linux/err.h>
 #include <linux/cpu.h>
-#include <linux/smp.h>
 #include <linux/seq_file.h>
 #include <linux/irq.h>
 #include <linux/percpu.h>
@@ -27,6 +26,7 @@
 #include <linux/completion.h>
 
 #include <linux/atomic.h>
+#include <asm/smp.h>
 #include <asm/cacheflush.h>
 #include <asm/cpu.h>
 #include <asm/cputype.h>
@@ -40,8 +40,10 @@
 #include <asm/sections.h>
 #include <asm/tlbflush.h>
 #include <asm/ptrace.h>
-#include <asm/localtimer.h>
 #include <asm/smp_plat.h>
+#include <asm/mach/arch.h>
+#define CREATE_TRACE_POINTS
+#include <trace/events/arm-ipi.h>
 
 /*
  * as from 2.5, kernels no longer have an init_tasks structure
@@ -50,16 +52,32 @@
  */
 struct secondary_data secondary_data;
 
+/*
+ * control for which core is the next to come out of the secondary
+ * boot "holding pen"
+ */
+volatile int __cpuinitdata pen_release = -1;
+
 enum ipi_msg_type {
-	IPI_TIMER = 2,
+	IPI_WAKEUP,
+	IPI_TIMER,
 	IPI_RESCHEDULE,
 	IPI_CALL_FUNC,
 	IPI_CALL_FUNC_SINGLE,
 	IPI_CPU_STOP,
 	IPI_CPU_BACKTRACE,
+        IPI_COMPLETION,
 };
 
 static DECLARE_COMPLETION(cpu_running);
+
+static struct smp_operations smp_ops;
+
+void __init smp_set_ops(struct smp_operations *ops)
+{
+       if (ops)
+               smp_ops = *ops;
+};
 
 int __cpuinit __cpu_up(unsigned int cpu)
 {
@@ -122,13 +140,64 @@ int __cpuinit __cpu_up(unsigned int cpu)
 	return ret;
 }
 
+/* platform specific SMP operations */
+void __init smp_init_cpus(void)
+{
+	if (smp_ops.smp_init_cpus)
+		smp_ops.smp_init_cpus();
+}
+
+static void __init platform_smp_prepare_cpus(unsigned int max_cpus)
+{
+	if (smp_ops.smp_prepare_cpus)
+		smp_ops.smp_prepare_cpus(max_cpus);
+}
+
+static void __cpuinit platform_secondary_init(unsigned int cpu)
+{
+	if (smp_ops.smp_secondary_init)
+		smp_ops.smp_secondary_init(cpu);
+}
+
+int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
+{
+	if (smp_ops.smp_boot_secondary)
+		return smp_ops.smp_boot_secondary(cpu, idle);
+	return -ENOSYS;
+}
+
 #ifdef CONFIG_HOTPLUG_CPU
-static void percpu_timer_stop(void);
+
+static int platform_cpu_kill(unsigned int cpu)
+{
+	if (smp_ops.cpu_kill)
+		return smp_ops.cpu_kill(cpu);
+	return 1;
+}
+
+static void platform_cpu_die(unsigned int cpu)
+{
+	if (smp_ops.cpu_die)
+		smp_ops.cpu_die(cpu);
+}
+
+static int platform_cpu_disable(unsigned int cpu)
+{
+	if (smp_ops.cpu_disable)
+		return smp_ops.cpu_disable(cpu);
+
+	/*
+	 * By default, allow disabling all CPUs except the first one,
+	 * since this is special on a lot of platforms, e.g. because
+	 * of clock tick interrupts.
+	 */
+	return cpu == 0 ? -EPERM : 0;
+}
 
 /*
  * __cpu_disable runs on the processor to be shutdown.
  */
-int __cpu_disable(void)
+int __cpuinit __cpu_disable(void)
 {
 	unsigned int cpu = smp_processor_id();
 	struct task_struct *p;
@@ -150,15 +219,10 @@ int __cpu_disable(void)
 	migrate_irqs();
 
 	/*
-	 * Stop the local timer for this CPU.
-	 */
-	percpu_timer_stop();
-
-	/*
 	 * Flush user cache and TLB mappings, and then remove this CPU
 	 * from the vm mask set of all processes.
 	 */
-	flush_cache_all();
+	flush_cache_louis();
 	local_flush_tlb_all();
 
 	read_lock(&tasklist_lock);
@@ -177,7 +241,7 @@ static DECLARE_COMPLETION(cpu_died);
  * called on the thread which is asking for a CPU to be shutdown -
  * waits until shutdown has completed, or it is timed out.
  */
-void __cpu_die(unsigned int cpu)
+void __cpuinit __cpu_die(unsigned int cpu)
 {
 	if (!wait_for_completion_timeout(&cpu_died, msecs_to_jiffies(5000))) {
 		pr_err("CPU%u: cpu didn't die\n", cpu);
@@ -241,8 +305,6 @@ static void __cpuinit smp_store_cpu_info(unsigned int cpuid)
 	store_cpu_topology(cpuid);
 }
 
-static void percpu_timer_setup(void);
-
 /*
  * This is the secondary CPU boot entry.  We're using this CPUs
  * idle thread stack, but a set of temporary page tables.
@@ -294,11 +356,6 @@ asmlinkage void __cpuinit secondary_start_kernel(void)
 	set_cpu_online(cpu, true);
 	complete(&cpu_running);
 
-	/*
-	 * Setup the percpu timer for this CPU.
-	 */
-	percpu_timer_setup();
-
 	local_irq_enable();
 	local_fiq_enable();
 
@@ -345,12 +402,6 @@ void __init smp_prepare_cpus(unsigned int max_cpus)
 		max_cpus = ncores;
 	if (ncores > 1 && max_cpus) {
 		/*
-		 * Enable the local timer or broadcast device for the
-		 * boot CPU, but only if we have more than one CPU.
-		 */
-		percpu_timer_setup();
-
-		/*
 		 * Initialise the present map, which describes the set of CPUs
 		 * actually populated at the present time. A platform should
 		 * re-initialize the map in platform_smp_prepare_cpus() if
@@ -378,19 +429,26 @@ void arch_send_call_function_ipi_mask(const struct cpumask *mask)
 	smp_cross_call(mask, IPI_CALL_FUNC);
 }
 
+void arch_send_wakeup_ipi_mask(const struct cpumask *mask)
+{
+	smp_cross_call(mask, IPI_WAKEUP);
+}
+
 void arch_send_call_function_single_ipi(int cpu)
 {
 	smp_cross_call(cpumask_of(cpu), IPI_CALL_FUNC_SINGLE);
 }
 
 static const char *ipi_types[NR_IPI] = {
-#define S(x,s)	[x - IPI_TIMER] = s
+#define S(x,s)	[x] = s
+	S(IPI_WAKEUP, "CPU wakeup interrupts"),
 	S(IPI_TIMER, "Timer broadcast interrupts"),
 	S(IPI_RESCHEDULE, "Rescheduling interrupts"),
 	S(IPI_CALL_FUNC, "Function call interrupts"),
 	S(IPI_CALL_FUNC_SINGLE, "Single function call interrupts"),
 	S(IPI_CPU_STOP, "CPU stop interrupts"),
 	S(IPI_CPU_BACKTRACE, "CPU backtrace"),
+        S(IPI_COMPLETION, "completion interrupts"),
 };
 
 void show_ipi_list(struct seq_file *p, int prec)
@@ -419,19 +477,8 @@ u64 smp_irq_stat_cpu(unsigned int cpu)
 	return sum;
 }
 
-/*
- * Timer (local or broadcast) support
- */
-static DEFINE_PER_CPU(struct clock_event_device, percpu_clockevent);
-
-static void ipi_timer(void)
-{
-	struct clock_event_device *evt = &__get_cpu_var(percpu_clockevent);
-	evt->event_handler(evt);
-}
-
 #ifdef CONFIG_GENERIC_CLOCKEVENTS_BROADCAST
-static void smp_timer_broadcast(const struct cpumask *mask)
+void smp_timer_broadcast(const struct cpumask *mask)
 {
 	smp_cross_call(mask, IPI_TIMER);
 }
@@ -444,7 +491,7 @@ static void broadcast_timer_set_mode(enum clock_event_mode mode,
 {
 }
 
-static void __cpuinit broadcast_timer_setup(struct clock_event_device *evt)
+void __cpuinit broadcast_timer_setup(struct clock_event_device *evt)
 {
 	evt->name	= "dummy_timer";
 	evt->features	= CLOCK_EVT_FEAT_ONESHOT |
@@ -456,47 +503,6 @@ static void __cpuinit broadcast_timer_setup(struct clock_event_device *evt)
 
 	clockevents_register_device(evt);
 }
-
-static struct local_timer_ops *lt_ops;
-
-#ifdef CONFIG_LOCAL_TIMERS
-int local_timer_register(struct local_timer_ops *ops)
-{
-	if (lt_ops)
-		return -EBUSY;
-
-	lt_ops = ops;
-	return 0;
-}
-#endif
-
-static void __cpuinit percpu_timer_setup(void)
-{
-	unsigned int cpu = smp_processor_id();
-	struct clock_event_device *evt = &per_cpu(percpu_clockevent, cpu);
-
-	evt->cpumask = cpumask_of(cpu);
-	evt->broadcast = smp_timer_broadcast;
-
-	if (!lt_ops || lt_ops->setup(evt))
-		broadcast_timer_setup(evt);
-}
-
-#ifdef CONFIG_HOTPLUG_CPU
-/*
- * The generic clock events code purposely does not stop the local timer
- * on CPU_DEAD/CPU_DEAD_FROZEN hotplug events, so we have to do it
- * manually here.
- */
-static void percpu_timer_stop(void)
-{
-	unsigned int cpu = smp_processor_id();
-	struct clock_event_device *evt = &per_cpu(percpu_clockevent, cpu);
-
-	if (lt_ops)
-		lt_ops->stop(evt);
-}
-#endif
 
 static DEFINE_RAW_SPINLOCK(stop_lock);
 
@@ -521,6 +527,20 @@ static void ipi_cpu_stop(unsigned int cpu)
 	while (1)
 		cpu_relax();
 }
+
+static DEFINE_PER_CPU(struct completion *, cpu_completion);
+
+int register_ipi_completion(struct completion *completion, int cpu)
+{
+       per_cpu(cpu_completion, cpu) = completion;
+       return IPI_COMPLETION;
+}
+
+static void ipi_complete(unsigned int cpu)
+{
+       complete(per_cpu(cpu_completion, cpu));
+}
+
 
 static cpumask_t backtrace_mask;
 static DEFINE_RAW_SPINLOCK(backtrace_lock);
@@ -587,13 +607,17 @@ void handle_IPI(int ipinr, struct pt_regs *regs)
 	unsigned int cpu = smp_processor_id();
 	struct pt_regs *old_regs = set_irq_regs(regs);
 
-	if (ipinr >= IPI_TIMER && ipinr < IPI_TIMER + NR_IPI)
-		__inc_irq_stat(cpu, ipi_irqs[ipinr - IPI_TIMER]);
+	if (ipinr < NR_IPI)
+		__inc_irq_stat(cpu, ipi_irqs[ipinr]);
 
+	trace_arm_ipi_entry(ipinr);
 	switch (ipinr) {
+	case IPI_WAKEUP:
+		break;
+	
 	case IPI_TIMER:
 		irq_enter();
-		ipi_timer();
+		tick_receive_broadcast();
 		irq_exit();
 		break;
 
@@ -623,11 +647,18 @@ void handle_IPI(int ipinr, struct pt_regs *regs)
 		ipi_cpu_backtrace(cpu, regs);
 		break;
 
+        case IPI_COMPLETION:
+               irq_enter();
+               ipi_complete(cpu);
+               irq_exit();
+               break;
+
 	default:
 		printk(KERN_CRIT "CPU%u: Unknown IPI message 0x%x\n",
 		       cpu, ipinr);
 		break;
 	}
+	trace_arm_ipi_exit(ipinr);
 	set_irq_regs(old_regs);
 }
 

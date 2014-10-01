@@ -18,6 +18,7 @@
 #include <linux/bootmem.h>
 #include <linux/seq_file.h>
 #include <linux/screen_info.h>
+#include <linux/of_platform.h>
 #include <linux/init.h>
 #include <linux/kexec.h>
 #include <linux/of_fdt.h>
@@ -55,6 +56,8 @@
 #include <asm/traps.h>
 #include <asm/unwind.h>
 #include <asm/memblock.h>
+
+#include <mach/sunxi-chip.h>
 
 #if defined(CONFIG_DEPRECATED_PARAM_STRUCT)
 #include "compat.h"
@@ -344,11 +347,48 @@ static void __init cacheid_init(void)
  */
 extern struct proc_info_list *lookup_processor_type(unsigned int);
 
+#ifndef CONFIG_EVB_PLATFORM
+#include <linux/io.h>
+#include <mach/platform.h>
+
+bool first_print = true;
+int __init  uart_init(void)
+{
+#define SUART_BAUDRATE	115200
+	u32 p2clk;
+	u32 df;
+	u32 lcr;
+
+	/* set baudrate */
+	p2clk = 24000000;
+	df = (p2clk + (SUART_BAUDRATE<<3))/(SUART_BAUDRATE<<4);
+	lcr = readl((volatile void *)(SUNXI_UART0_VBASE + SUNXI_UART_LCR));
+	writel(1, (volatile void *)(SUNXI_UART0_VBASE + SUNXI_UART_HALT));
+	writel(lcr|0x80, (volatile void *)(SUNXI_UART0_VBASE + SUNXI_UART_LCR));
+	writel(df>>8, (volatile void *)(SUNXI_UART0_VBASE + SUNXI_UART_DLH));
+	writel(df&0xff, (volatile void *)(SUNXI_UART0_VBASE + SUNXI_UART_DLL));
+	writel(lcr&(~0x80), (volatile void *)(SUNXI_UART0_VBASE + SUNXI_UART_LCR));
+	writel(0, (volatile void *)(SUNXI_UART0_VBASE + SUNXI_UART_HALT));
+	/* set mode */
+	writel(3, (volatile void *)(SUNXI_UART0_VBASE + SUNXI_UART_LCR));
+	/* enable fifo */
+	writel(7, (volatile void *)(SUNXI_UART0_VBASE + SUNXI_UART_FCR));
+	return 0;
+}
+#endif
+
 void __init early_print(const char *str, ...)
 {
 	extern void printascii(const char *);
 	char buf[256];
 	va_list ap;
+
+#ifndef CONFIG_EVB_PLATFORM
+	if(first_print) {
+		first_print = false;
+		uart_init();
+	}
+#endif
 
 	va_start(ap, str);
 	vsnprintf(buf, sizeof(buf), str, ap);
@@ -428,7 +468,7 @@ void cpu_init(void)
 	    : "r14");
 }
 
-int __cpu_logical_map[NR_CPUS];
+u32 __cpu_logical_map[NR_CPUS] = { [0 ... NR_CPUS-1] = MPIDR_INVALID };
 
 void __init smp_setup_processor_id(void)
 {
@@ -441,6 +481,72 @@ void __init smp_setup_processor_id(void)
 
 	printk(KERN_INFO "Booting Linux on physical CPU %d\n", cpu);
 }
+
+struct mpidr_hash mpidr_hash;
+#ifdef CONFIG_SMP
+/**
+ * smp_build_mpidr_hash - Pre-compute shifts required at each affinity
+ *			  level in order to build a linear index from an
+ *			  MPIDR value. Resulting algorithm is a collision
+ *			  free hash carried out through shifting and ORing
+ */
+static void __init smp_build_mpidr_hash(void)
+{
+	u32 i, affinity;
+	u32 fs[3], bits[3], ls, mask = 0;
+	/*
+	 * Pre-scan the list of MPIDRS and filter out bits that do
+	 * not contribute to affinity levels, ie they never toggle.
+	 */
+	for_each_possible_cpu(i)
+		mask |= (cpu_logical_map(i) ^ cpu_logical_map(0));
+	pr_debug("mask of set bits 0x%x\n", mask);
+	/*
+	 * Find and stash the last and first bit set at all affinity levels to
+	 * check how many bits are required to represent them.
+	 */
+	for (i = 0; i < 3; i++) {
+		affinity = MPIDR_AFFINITY_LEVEL(mask, i);
+		/*
+		 * Find the MSB bit and LSB bits position
+		 * to determine how many bits are required
+		 * to express the affinity level.
+		 */
+		ls = fls(affinity);
+		fs[i] = affinity ? ffs(affinity) - 1 : 0;
+		bits[i] = ls - fs[i];
+	}
+	/*
+	 * An index can be created from the MPIDR by isolating the
+	 * significant bits at each affinity level and by shifting
+	 * them in order to compress the 24 bits values space to a
+	 * compressed set of values. This is equivalent to hashing
+	 * the MPIDR through shifting and ORing. It is a collision free
+	 * hash though not minimal since some levels might contain a number
+	 * of CPUs that is not an exact power of 2 and their bit
+	 * representation might contain holes, eg MPIDR[7:0] = {0x2, 0x80}.
+	 */
+	mpidr_hash.shift_aff[0] = fs[0];
+	mpidr_hash.shift_aff[1] = MPIDR_LEVEL_BITS + fs[1] - bits[0];
+	mpidr_hash.shift_aff[2] = 2*MPIDR_LEVEL_BITS + fs[2] -
+						(bits[1] + bits[0]);
+	mpidr_hash.mask = mask;
+	mpidr_hash.bits = bits[2] + bits[1] + bits[0];
+	pr_debug("MPIDR hash: aff0[%u] aff1[%u] aff2[%u] mask[0x%x] bits[%u]\n",
+				mpidr_hash.shift_aff[0],
+				mpidr_hash.shift_aff[1],
+				mpidr_hash.shift_aff[2],
+				mpidr_hash.mask,
+				mpidr_hash.bits);
+	/*
+	 * 4x is an arbitrary value used to warn on a hash table much bigger
+	 * than expected on most systems.
+	 */
+	if (mpidr_hash_size() > 4 * num_possible_cpus())
+		pr_warn("Large number of MPIDR hash buckets detected\n");
+	sync_cache_w(&mpidr_hash);
+}
+#endif
 
 static void __init setup_processor(void)
 {
@@ -507,7 +613,7 @@ void __init dump_machine_table(void)
 		/* can't use cpu_relax() here as it may require MMU setup */;
 }
 
-int __init arm_add_memory(phys_addr_t start, unsigned long size)
+int __init arm_add_memory(phys_addr_t start, phys_addr_t size)
 {
 	struct membank *bank = &meminfo.bank[meminfo.nr_banks];
 
@@ -537,7 +643,7 @@ int __init arm_add_memory(phys_addr_t start, unsigned long size)
 	}
 #endif
 
-	bank->size = size & PAGE_MASK;
+	bank->size = size & ~(phys_addr_t)(PAGE_SIZE - 1);
 
 	/*
 	 * Check whether this memory region has non-zero size or
@@ -557,7 +663,7 @@ int __init arm_add_memory(phys_addr_t start, unsigned long size)
 static int __init early_mem(char *p)
 {
 	static int usermem __initdata = 0;
-	unsigned long size;
+	phys_addr_t size;
 	phys_addr_t start;
 	char *endp;
 
@@ -793,9 +899,19 @@ static struct init_tags {
 
 static int __init customize_machine(void)
 {
-	/* customizes platform devices, or adds new ones */
+	/*
+	 * customizes platform devices, or adds new ones
+	 * On DT based machines, we fall back to populating the
+	 * machine from the device tree, if no callback is provided,
+	 * otherwise we would always need an init_machine callback.
+	 */
 	if (machine_desc->init_machine)
 		machine_desc->init_machine();
+#ifdef CONFIG_OF
+	else
+		of_platform_populate(NULL, of_default_bus_match_table,
+					NULL, NULL);
+#endif
 	return 0;
 }
 arch_initcall(customize_machine);
@@ -972,8 +1088,12 @@ void __init setup_arch(char **cmdline_p)
 	unflatten_device_tree();
 
 #ifdef CONFIG_SMP
-	if (is_smp())
+	if (is_smp()) {
+		if (!mdesc->smp_init || !mdesc->smp_init())
+			smp_set_ops(mdesc->smp);
 		smp_init_cpus();
+		smp_build_mpidr_hash();
+	}
 #endif
 	reserve_crashkernel();
 
@@ -1050,6 +1170,14 @@ static int c_show(struct seq_file *m, void *v)
 {
 	int i;
 
+#if defined(CONFIG_ARCH_SUNXI)
+	u32 serial[4];
+	int ret;
+	
+	memset(serial, 0, sizeof(serial));
+	ret = sunxi_get_serial((u8 *)serial);
+#endif
+
 	seq_printf(m, "Processor\t: %s rev %d (%s)\n",
 		   cpu_name, read_cpuid_id() & 15, elf_platform);
 
@@ -1103,8 +1231,13 @@ static int c_show(struct seq_file *m, void *v)
 
 	seq_printf(m, "Hardware\t: %s\n", machine_name);
 	seq_printf(m, "Revision\t: %04x\n", system_rev);
+#if defined(CONFIG_ARCH_SUNXI)
+	seq_printf(m, "Serial\t\t: %04x%08x%08x\n",
+		   serial[2], serial[1], serial[0]);
+#else
 	seq_printf(m, "Serial\t\t: %08x%08x\n",
 		   system_serial_high, system_serial_low);
+#endif
 
 	return 0;
 }
@@ -1130,3 +1263,9 @@ const struct seq_operations cpuinfo_op = {
 	.stop	= c_stop,
 	.show	= c_show
 };
+
+#ifndef MULTI_CACHE
+EXPORT_SYMBOL(__glue(_CACHE,_dma_map_area));
+EXPORT_SYMBOL(__glue(_CACHE,_dma_unmap_area));
+EXPORT_SYMBOL(__glue(_CACHE,_dma_flush_range));
+#endif

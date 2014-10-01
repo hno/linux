@@ -21,18 +21,19 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: bcmsdh_sdmmc.h 393685 2013-03-28 11:04:06Z $
+ * $Id: bcmsdh_sdmmc.h 396592 2013-04-13 16:14:38Z $
  */
 
 #ifndef __BCMSDH_SDMMC_H__
 #define __BCMSDH_SDMMC_H__
 
-#define sd_err(x)
-#define sd_trace(x)
-#define sd_info(x)
-#define sd_debug(x)
-#define sd_data(x)
-#define sd_ctrl(x)
+#define sd_err(x)	do { if (sd_msglevel & SDH_ERROR_VAL) printf x; } while (0)
+#define sd_trace(x)	do { if (sd_msglevel & SDH_TRACE_VAL) printf x; } while (0)
+#define sd_info(x)	do { if (sd_msglevel & SDH_INFO_VAL) printf x; } while (0)
+#define sd_debug(x)	do { if (sd_msglevel & SDH_DEBUG_VAL) printf x; } while (0)
+#define sd_data(x)	do { if (sd_msglevel & SDH_DATA_VAL) printf x; } while (0)
+#define sd_ctrl(x)	do { if (sd_msglevel & SDH_CTRL_VAL) printf x; } while (0)
+
 
 #define sd_sync_dma(sd, read, nbytes)
 #define sd_init_dma(sd)
@@ -61,6 +62,14 @@ extern void sdioh_sdmmc_osfree(sdioh_info_t *sd);
 #define SDIOH_MODE_SD4		2
 #define CLIENT_INTR			0x100	/* Get rid of this! */
 
+#ifdef BCMSDIOH_TXGLOM
+
+typedef struct glom_buf {
+	void *glom_pkt_head;
+	void *glom_pkt_tail;
+	uint32 count;				/* Total number of pkts queued */
+} glom_buf_t;
+#endif /* BCMSDIOH_TXGLOM */
 
 struct sdioh_info {
 	osl_t		*osh;			/* osh handler */
@@ -88,6 +97,10 @@ struct sdioh_info {
 	struct scatterlist sg_list[SDIOH_SDMMC_MAX_SG_ENTRIES];
 	bool		use_rxchain;
 
+#ifdef BCMSDIOH_TXGLOM
+	glom_buf_t glom_info;		/* pkt information used for glomming */
+	uint	txglom_mode;		/* Txglom mode: 0 - copy, 1 - multi-descriptor */
+#endif
 };
 
 /************************************************************

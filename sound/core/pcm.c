@@ -969,6 +969,7 @@ int snd_pcm_attach_substream(struct snd_pcm *pcm, int stream,
 void snd_pcm_detach_substream(struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime;
+	unsigned long flags;
 
 	if (PCM_RUNTIME_CHECK(substream))
 		return;
@@ -984,8 +985,11 @@ void snd_pcm_detach_substream(struct snd_pcm_substream *substream)
 	if (runtime->hwptr_log)
 		kfree(runtime->hwptr_log);
 #endif
+
 	kfree(runtime);
+	snd_pcm_stream_lock_irqsave(substream, flags);
 	substream->runtime = NULL;
+	snd_pcm_stream_unlock_irqrestore(substream, flags);
 	put_pid(substream->pid);
 	substream->pid = NULL;
 	substream->pstr->substream_opened--;

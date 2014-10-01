@@ -20,7 +20,7 @@
 static int __maybe_unused ehci_lpm_set_da(struct ehci_hcd *ehci,
 	int dev_addr, int port_num)
 {
-	u32 __iomem portsc;
+	u32 portsc;
 
 	ehci_dbg(ehci, "set dev address %d for port %d\n", dev_addr, port_num);
 	if (port_num > HCS_N_PORTS(ehci->hcs_params)) {

@@ -580,4 +580,19 @@ config KEYBOARD_W90P910
 	  To compile this driver as a module, choose M here: the
 	  module will be called w90p910_keypad.
 
+config KEYBOARD_SUNXI
+	tristate "softwinnner KEY BOARD support"
+	help
+		Say Y here to enable the keyboard, support 7 keys.
+		based on verify board.
+
+config IR_RX_SUNXI
+       tristate "sunxi IR RX support"
+         help
+          Say Y here to enable the IR RX, support NEC code.
+
+config IR_TX_SUNXI
+       tristate "sunxi IR TX support"
+         help
+          Say Y here to enable the IR TX, support NEC code.
 endif

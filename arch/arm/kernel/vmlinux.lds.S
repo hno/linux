@@ -200,7 +200,7 @@ SECTIONS
 
 		/*
 		 * first, the init task union, aligned
-		 * to an 8192 byte boundary.
+		 * to an THREAD_SIZE byte boundary.
 		 */
 		INIT_TASK_DATA(THREAD_SIZE)
 
@@ -292,6 +292,10 @@ SECTIONS
 		. = ALIGN(PAGE_SIZE);
 		__tcm_end = .;
 	}
+#endif
+
+#if defined(CONFIG_ARCH_SUN9IW1P1) || defined(CONFIG_ARCH_SUN8IW5P1)
+	SUNXI_DDRFREQ_SRAM_SECTION(SRAM_DDRFREQ_OFFSET, PAGE_SIZE)
 #endif
 
 	NOTES

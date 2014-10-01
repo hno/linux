@@ -20,6 +20,7 @@
 #include <asm/thread_info.h>
 #include <asm/memory.h>
 #include <asm/procinfo.h>
+#include <asm/suspend.h>
 #include <asm/hardware/cache-l2x0.h>
 #include <linux/kbuild.h>
 
@@ -140,9 +141,18 @@ int main(void)
 #ifdef MULTI_CACHE
   DEFINE(CACHE_FLUSH_KERN_ALL,	offsetof(struct cpu_cache_fns, flush_kern_all));
 #endif
+#ifdef CONFIG_ARM_CPU_SUSPEND
+  DEFINE(SLEEP_SAVE_SP_SZ,	sizeof(struct sleep_save_sp));
+  DEFINE(SLEEP_SAVE_SP_PHYS,	offsetof(struct sleep_save_sp, save_ptr_stash_phys));
+  DEFINE(SLEEP_SAVE_SP_VIRT,	offsetof(struct sleep_save_sp, save_ptr_stash));
+#endif
   BLANK();
   DEFINE(DMA_BIDIRECTIONAL,	DMA_BIDIRECTIONAL);
   DEFINE(DMA_TO_DEVICE,		DMA_TO_DEVICE);
   DEFINE(DMA_FROM_DEVICE,	DMA_FROM_DEVICE);
+  BLANK();
+  DEFINE(CACHE_WRITEBACK_ORDER, __CACHE_WRITEBACK_ORDER);
+  DEFINE(CACHE_WRITEBACK_GRANULE, __CACHE_WRITEBACK_GRANULE);
+  BLANK();
   return 0; 
 }

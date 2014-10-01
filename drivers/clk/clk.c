@@ -16,6 +16,7 @@
 #include <linux/err.h>
 #include <linux/list.h>
 #include <linux/slab.h>
+#include <linux/device.h>
 
 static DEFINE_SPINLOCK(enable_lock);
 static DEFINE_MUTEX(prepare_lock);
@@ -250,6 +251,79 @@ late_initcall(clk_disable_unused);
 static inline int clk_disable_unused(struct clk *clk) { return 0; }
 #endif /* CONFIG_COMMON_CLK_DISABLE_UNUSED */
 
+#ifdef CONFIG_COMMON_CLK_ENABLE_SYNCBOOT
+/* caller must hold prepare_lock */
+static void clk_syncboot_subtree(struct clk *clk)
+{
+	struct clk *child;
+	struct clk *parent;
+	struct hlist_node *tmp;
+	unsigned long flags;
+
+	if (!clk)
+		goto out;
+
+	hlist_for_each_entry(child, tmp, &clk->children, child_node)
+		clk_syncboot_subtree(child);
+
+	spin_lock_irqsave(&enable_lock, flags);
+
+	if (clk->enable_count)
+		goto unlock_out;
+
+	if (!(clk->flags & CLK_IGNORE_SYNCBOOT) && __clk_is_enabled(clk) && clk->ops->enable && (!clk->ops->prepare))
+    {
+        printk(KERN_INFO "try to syncboot of clk %s\n",clk->name);
+        if((!clk->prepare_count) && (!clk->enable_count))
+        {
+            clk->ops->enable(clk->hw);
+            clk->prepare_count++;
+            clk->enable_count++;
+            parent = clk->parent;
+            while(parent)
+            {
+                parent->enable_count++;
+                parent->prepare_count++;
+                parent = parent->parent;
+            }
+        }
+
+    }
+unlock_out:
+	spin_unlock_irqrestore(&enable_lock, flags);
+
+out:
+	return;
+}
+#ifdef CONFIG_COMMON_CLK_ENABLE_SYNCBOOT_EARLY
+int clk_syncboot(void)
+#else
+static int clk_syncboot(void)
+#endif
+{
+	struct clk *clk;
+	struct hlist_node *tmp;
+
+	mutex_lock(&prepare_lock);
+
+	hlist_for_each_entry(clk, tmp, &clk_root_list, child_node)
+		clk_syncboot_subtree(clk);
+
+	hlist_for_each_entry(clk, tmp, &clk_orphan_list, child_node)
+		clk_syncboot_subtree(clk);
+
+	mutex_unlock(&prepare_lock);
+
+	return 0;
+}
+#ifdef CONFIG_COMMON_CLK_ENABLE_SYNCBOOT_EARLY
+EXPORT_SYMBOL_GPL(clk_syncboot);
+#else
+postcore_initcall(clk_syncboot);
+#endif
+#else
+static inline int clk_syncboot(struct clk *clk) { return 0; }
+#endif /* CONFIG_COMMON_CLK_DISABLE_UNUSED */
 /***    helper functions   ***/
 
 inline const char *__clk_get_name(struct clk *clk)
@@ -264,7 +338,7 @@ inline struct clk_hw *__clk_get_hw(struct clk *clk)
 
 inline u8 __clk_get_num_parents(struct clk *clk)
 {
-	return !clk ? -EINVAL : clk->num_parents;
+	return !clk ? 0 : clk->num_parents;
 }
 
 inline struct clk *__clk_get_parent(struct clk *clk)
@@ -272,14 +346,14 @@ inline struct clk *__clk_get_parent(struct clk *clk)
 	return !clk ? NULL : clk->parent;
 }
 
-inline int __clk_get_enable_count(struct clk *clk)
+inline unsigned int __clk_get_enable_count(struct clk *clk)
 {
-	return !clk ? -EINVAL : clk->enable_count;
+	return !clk ? 0 : clk->enable_count;
 }
 
-inline int __clk_get_prepare_count(struct clk *clk)
+inline unsigned int __clk_get_prepare_count(struct clk *clk)
 {
-	return !clk ? -EINVAL : clk->prepare_count;
+	return !clk ? 0 : clk->prepare_count;
 }
 
 unsigned long __clk_get_rate(struct clk *clk)
@@ -287,7 +361,7 @@ unsigned long __clk_get_rate(struct clk *clk)
 	unsigned long ret;
 
 	if (!clk) {
-		ret = -EINVAL;
+		ret = 0;
 		goto out;
 	}
 
@@ -297,7 +371,7 @@ unsigned long __clk_get_rate(struct clk *clk)
 		goto out;
 
 	if (!clk->parent)
-		ret = -ENODEV;
+		ret = 0;
 
 out:
 	return ret;
@@ -305,15 +379,15 @@ out:
 
 inline unsigned long __clk_get_flags(struct clk *clk)
 {
-	return !clk ? -EINVAL : clk->flags;
+	return !clk ? 0 : clk->flags;
 }
 
-int __clk_is_enabled(struct clk *clk)
+bool __clk_is_enabled(struct clk *clk)
 {
 	int ret;
 
 	if (!clk)
-		return -EINVAL;
+		return false;
 
 	/*
 	 * .is_enabled is only mandatory for clocks that gate
@@ -326,7 +400,7 @@ int __clk_is_enabled(struct clk *clk)
 
 	ret = clk->ops->is_enabled(clk->hw);
 out:
-	return ret;
+	return !!ret;
 }
 
 static struct clk *__clk_lookup_subtree(const char *name, struct clk *clk)
@@ -468,6 +542,9 @@ static void __clk_disable(struct clk *clk)
 	if (!clk)
 		return;
 
+	if (WARN_ON(IS_ERR(clk)))
+		return;
+
 	if (WARN_ON(clk->enable_count == 0))
 		return;
 
@@ -558,25 +635,6 @@ int clk_enable(struct clk *clk)
 EXPORT_SYMBOL_GPL(clk_enable);
 
 /**
- * clk_get_rate - return the rate of clk
- * @clk: the clk whose rate is being returned
- *
- * Simply returns the cached rate of the clk.  Does not query the hardware.  If
- * clk is NULL then returns -EINVAL.
- */
-unsigned long clk_get_rate(struct clk *clk)
-{
-	unsigned long rate;
-
-	mutex_lock(&prepare_lock);
-	rate = __clk_get_rate(clk);
-	mutex_unlock(&prepare_lock);
-
-	return rate;
-}
-EXPORT_SYMBOL_GPL(clk_get_rate);
-
-/**
  * __clk_round_rate - round the given rate for a clk
  * @clk: round the rate of this clock
  *
@@ -584,18 +642,22 @@ EXPORT_SYMBOL_GPL(clk_get_rate);
  */
 unsigned long __clk_round_rate(struct clk *clk, unsigned long rate)
 {
-	unsigned long unused;
+	unsigned long parent_rate = 0;
 
 	if (!clk)
-		return -EINVAL;
+		return 0;
 
-	if (!clk->ops->round_rate)
-		return clk->rate;
+	if (!clk->ops->round_rate) {
+		if (clk->flags & CLK_SET_RATE_PARENT)
+			return __clk_round_rate(clk->parent, rate);
+		else
+			return clk->rate;
+	}
 
-	if (clk->flags & CLK_SET_RATE_PARENT)
-		return clk->ops->round_rate(clk->hw, rate, &unused);
-	else
-		return clk->ops->round_rate(clk->hw, rate, NULL);
+	if (clk->parent)
+		parent_rate = clk->parent->rate;
+
+	return clk->ops->round_rate(clk->hw, rate, &parent_rate);
 }
 
 /**
@@ -698,6 +760,34 @@ static void __clk_recalc_rates(struct clk *clk, unsigned long msg)
 }
 
 /**
+ * clk_get_rate - return the rate of clk
+ * @clk: the clk whose rate is being returned
+ *
+ * Simply returns the cached rate of the clk, unless CLK_GET_RATE_NOCACHE flag
+ * is set, which means a recalc_rate will be issued.
+ * If clk is NULL then returns 0.
+ */
+ static struct clk *__clk_init_parent(struct clk *clk);
+unsigned long clk_get_rate(struct clk *clk)
+{
+	unsigned long rate;
+
+	mutex_lock(&prepare_lock);
+
+	if (clk && (clk->flags & CLK_GET_RATE_NOCACHE))
+        {
+            clk->parent = __clk_init_parent(clk);
+            __clk_recalc_rates(clk, 0);
+        }
+
+	rate = __clk_get_rate(clk);
+	mutex_unlock(&prepare_lock);
+
+	return rate;
+}
+EXPORT_SYMBOL_GPL(clk_get_rate);
+
+/**
  * __clk_speculate_rates
  * @clk: first clk in the subtree
  * @parent_rate: the "future" rate of clk's parent
@@ -765,25 +855,41 @@ static void clk_calc_subtree(struct clk *clk, unsigned long new_rate)
 static struct clk *clk_calc_new_rates(struct clk *clk, unsigned long rate)
 {
 	struct clk *top = clk;
-	unsigned long best_parent_rate = clk->parent->rate;
+	unsigned long best_parent_rate = 0;
 	unsigned long new_rate;
 
-	if (!clk->ops->round_rate && !(clk->flags & CLK_SET_RATE_PARENT)) {
-		clk->new_rate = clk->rate;
+	/* sanity */
+	if (IS_ERR_OR_NULL(clk))
+		return NULL;
+
+	/* save parent rate, if it exists */
+	if (clk->parent)
+		best_parent_rate = clk->parent->rate;
+
+	/* never propagate up to the parent */
+	if (!(clk->flags & CLK_SET_RATE_PARENT)) {
+		if (!clk->ops->round_rate) {
+			clk->new_rate = clk->rate;
+			return NULL;
+		}
+		new_rate = clk->ops->round_rate(clk->hw, rate, &best_parent_rate);
+		goto out;
+	}
+
+	/* need clk->parent from here on out */
+	if (!clk->parent) {
+		pr_debug("%s: %s has NULL parent\n", __func__, clk->name);
 		return NULL;
 	}
 
-	if (!clk->ops->round_rate && (clk->flags & CLK_SET_RATE_PARENT)) {
+	if (!clk->ops->round_rate) {
 		top = clk_calc_new_rates(clk->parent, rate);
-		new_rate = clk->new_rate = clk->parent->new_rate;
+		new_rate = clk->parent->new_rate;
 
 		goto out;
 	}
 
-	if (clk->flags & CLK_SET_RATE_PARENT)
-		new_rate = clk->ops->round_rate(clk->hw, rate, &best_parent_rate);
-	else
-		new_rate = clk->ops->round_rate(clk->hw, rate, NULL);
+	new_rate = clk->ops->round_rate(clk->hw, rate, &best_parent_rate);
 
 	if (best_parent_rate != clk->parent->rate) {
 		top = clk_calc_new_rates(clk->parent, best_parent_rate);
@@ -843,7 +949,7 @@ static void clk_change_rate(struct clk *clk)
 		best_parent_rate = clk->parent->rate;
 
 	if (clk->ops->set_rate)
-		clk->ops->set_rate(clk->hw, clk->new_rate);
+		clk->ops->set_rate(clk->hw, clk->new_rate, best_parent_rate);
 
 	if (clk->ops->recalc_rate)
 		clk->rate = clk->ops->recalc_rate(clk->hw, best_parent_rate);
@@ -906,8 +1012,13 @@ int clk_set_rate(struct clk *clk, unsigned long rate)
 	mutex_lock(&prepare_lock);
 
 	/* bail early if nothing to do */
-	if (rate == clk->rate)
+	if (rate == clk->rate && !(clk->flags & CLK_GET_RATE_NOCACHE))
 		goto out;
+
+	if ((clk->flags & CLK_SET_RATE_GATE) && clk->prepare_count) {
+		ret = -EBUSY;
+		goto out;
+	}
 
 	/* calculate new rates and get the topmost changed clock */
 	top = clk_calc_new_rates(clk, rate);
@@ -1201,20 +1312,39 @@ EXPORT_SYMBOL_GPL(clk_set_parent);
  * a clock's .ops; as such any statically initialized clock data MUST be in a
  * separate C file from the logic that implements it's operations.
  */
-void __clk_init(struct device *dev, struct clk *clk)
+int __clk_init(struct device *dev, struct clk *clk)
 {
-	int i;
+	int i, ret = 0;
 	struct clk *orphan;
 	struct hlist_node *tmp, *tmp2;
 
 	if (!clk)
-		return;
+		return -EINVAL;
 
 	mutex_lock(&prepare_lock);
 
 	/* check to see if a clock with this name is already registered */
-	if (__clk_lookup(clk->name))
+	if (__clk_lookup(clk->name)) {
+		pr_debug("%s: clk %s already initialized\n",
+				__func__, clk->name);
+		ret = -EEXIST;
 		goto out;
+	}
+	/* check that clk_ops are sane.  See Documentation/clk.txt */
+	if (clk->ops->set_rate &&
+			!(clk->ops->round_rate && clk->ops->recalc_rate)) {
+		pr_warning("%s: %s must implement .round_rate & .recalc_rate\n",
+				__func__, clk->name);
+		ret = -EINVAL;
+		goto out;
+	}
+
+	if (clk->ops->set_parent && !clk->ops->get_parent) {
+		pr_warning("%s: %s must implement .get_parent & .set_parent\n",
+				__func__, clk->name);
+		ret = -EINVAL;
+		goto out;
+	}
 
 	/* throw a WARN if any entries in parent_names are NULL */
 	for (i = 0; i < clk->num_parents; i++)
@@ -1232,8 +1362,8 @@ void __clk_init(struct device *dev, struct clk *clk)
 	 * If clk->parents is not NULL we skip this entire block.  This allows
 	 * for clock drivers to statically initialize clk->parents.
 	 */
-	if (clk->num_parents && !clk->parents) {
-		clk->parents = kmalloc((sizeof(struct clk*) * clk->num_parents),
+	if (clk->num_parents > 1 && !clk->parents) {
+		clk->parents = kzalloc((sizeof(struct clk*) * clk->num_parents),
 				GFP_KERNEL);
 		/*
 		 * __clk_lookup returns NULL for parents that have not been
@@ -1285,12 +1415,20 @@ void __clk_init(struct device *dev, struct clk *clk)
 	 * walk the list of orphan clocks and reparent any that are children of
 	 * this clock
 	 */
-	hlist_for_each_entry_safe(orphan, tmp, tmp2, &clk_orphan_list, child_node)
+	hlist_for_each_entry_safe(orphan, tmp, tmp2, &clk_orphan_list, child_node) {
+		if (orphan->ops->get_parent) {
+			i = orphan->ops->get_parent(orphan->hw);
+			if (!strcmp(clk->name, orphan->parent_names[i]))
+				__clk_reparent(orphan, clk);
+			continue;
+		}
+
 		for (i = 0; i < orphan->num_parents; i++)
 			if (!strcmp(clk->name, orphan->parent_names[i])) {
 				__clk_reparent(orphan, clk);
 				break;
 			}
+	 }
 
 	/*
 	 * optional platform-specific magic
@@ -1308,45 +1446,46 @@ void __clk_init(struct device *dev, struct clk *clk)
 out:
 	mutex_unlock(&prepare_lock);
 
-	return;
+	return ret;
 }
 
 /**
  * clk_register - allocate a new clock, register it and return an opaque cookie
  * @dev: device that is registering this clock
- * @name: clock name
- * @ops: operations this clock supports
  * @hw: link to hardware-specific clock data
- * @parent_names: array of string names for all possible parents
- * @num_parents: number of possible parents
- * @flags: framework-level hints and quirks
  *
  * clk_register is the primary interface for populating the clock tree with new
  * clock nodes.  It returns a pointer to the newly allocated struct clk which
  * cannot be dereferenced by driver code but may be used in conjuction with the
- * rest of the clock API.
+ * rest of the clock API.  In the event of an error clk_register will return an
+ * error code; drivers must test for an error code after calling clk_register.
  */
-struct clk *clk_register(struct device *dev, const char *name,
-		const struct clk_ops *ops, struct clk_hw *hw,
-		char **parent_names, u8 num_parents, unsigned long flags)
+struct clk *clk_register(struct device *dev, struct clk_hw *hw)
 {
+	int ret;
 	struct clk *clk;
 
 	clk = kzalloc(sizeof(*clk), GFP_KERNEL);
-	if (!clk)
-		return NULL;
-
-	clk->name = name;
-	clk->ops = ops;
+	if (!clk) {
+		pr_err("%s: could not allocate clk\n", __func__);
+		ret = -ENOMEM;
+		goto fail_out;
+	}
+	clk->name = hw->init->name;
+	clk->ops = hw->init->ops;
 	clk->hw = hw;
-	clk->flags = flags;
-	clk->parent_names = parent_names;
-	clk->num_parents = num_parents;
+	clk->flags = hw->init->flags;
+	clk->parent_names = hw->init->parent_names;
+	clk->num_parents = hw->init->num_parents;
 	hw->clk = clk;
 
-	__clk_init(dev, clk);
+	ret = __clk_init(dev, clk);
+	if (!ret)
+        return clk;
 
-	return clk;
+	kfree(clk);
+fail_out:
+	return ERR_PTR(ret);
 }
 EXPORT_SYMBOL_GPL(clk_register);
 

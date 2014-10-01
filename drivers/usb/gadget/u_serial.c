@@ -132,7 +132,7 @@ static unsigned	n_ports;
 
 #define GS_CLOSE_TIMEOUT		15		/* seconds */
 
-
+#undef pr_vdebug  //kill warning 2014/1/20
 
 #ifdef VERBOSE_DEBUG
 #define pr_vdebug(fmt, arg...) \
