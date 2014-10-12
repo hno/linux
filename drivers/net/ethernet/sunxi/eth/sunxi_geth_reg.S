@@ -3,10 +3,10 @@ int sunxi_mac_reset(void *iobase, void (*mdelay)(int), int n);
        0:	e1a0c00d 	mov	ip, sp
        4:	e92dd830 	push	{r4, r5, fp, ip, lr, pc}
        8:	e24cb004 	sub	fp, ip, #4
-       c:	e3a04a01 	mov	r4, #4096	; 0x1000
+       c:	e3a04a01 	mov	r4, #4096	; 0x1000 = GDMA_BUS_MODE
       10:	e1a05000 	mov	r5, r0
       14:	e7903004 	ldr	r3, [r0, r4]
-      18:	e3833001 	orr	r3, r3, #1
+      18:	e3833001 	orr	r3, r3, #1	; SOFT_RESET
       1c:	e7803004 	str	r3, [r0, r4]
       20:	e1a00002 	mov	r0, r2
       24:	e12fff31 	blx	r1
@@ -14,7 +14,8 @@ int sunxi_mac_reset(void *iobase, void (*mdelay)(int), int n);
       2c:	e2000001 	and	r0, r0, #1
       30:	e89da830 	ldm	sp, {r4, r5, fp, sp, pc}
 
-int sunxi_mac_init(void *, int txmode, int rxmode);
+int sunxi_mac_init(void *iobase, int txmode, int rxmode);
+looks like same as dma_oper_mode() in A20 driver
 00000034 <mac_init_v1>:
       34:	e1a0c00d 	mov	ip, sp
       38:	e92dd878 	push	{r3, r4, r5, r6, fp, ip, lr, pc}
@@ -26,17 +27,17 @@ int sunxi_mac_init(void *, int txmode, int rxmode);
       50:	e5933008 	ldr	r3, [r3, #8]
       54:	e5933064 	ldr	r3, [r3, #100]	; 0x64 =dma_init
       58:	e12fff33 	blx	r3
-      5c:	e5942000 	ldr	r2, [r4]
+      5c:	e5942000 	ldr	r2, [r4]	; =GMAC_CONTROL
       60:	e3550001 	cmp	r5, #1
       64:	e59f309c 	ldr	r3, [pc, #156]	; 108 <mac_init_v1+0xd4>
       68:	e1823003 	orr	r3, r2, r3
-      6c:	e3012018 	movw	r2, #4120	; 0x1018
-      70:	e5843000 	str	r3, [r4]
+      6c:	e3012018 	movw	r2, #4120	; 0x1018 =
+      70:	e5843000 	str	r3, [r4]	; =GMAC_CONTROL
       74:	e3003207 	movw	r3, #519	; 0x207
-      78:	e584303c 	str	r3, [r4, #60]	; 0x3c
+      78:	e584303c 	str	r3, [r4, #60]	; 0x3c = GMAC_INT_MASK
       7c:	e3a03010 	mov	r3, #16
-      80:	e5843010 	str	r3, [r4, #16]
-      84:	e7943002 	ldr	r3, [r4, r2]
+      80:	e5843010 	str	r3, [r4, #16]	; =GMAC_GMII_ADDR
+      84:	e7943002 	ldr	r3, [r4, r2]	; =GMAX_DMA_OP_MODE
       88:	03833602 	orreq	r3, r3, #2097152	; 0x200000
       8c:	03833004 	orreq	r3, r3, #4
       90:	0a00000b 	beq	c4 <mac_init_v1+0x90>
@@ -65,7 +66,7 @@ int sunxi_mac_init(void *, int txmode, int rxmode);
       ec:	e3560060 	cmp	r6, #96	; 0x60
       f0:	d3833010 	orrle	r3, r3, #16
       f4:	c3833018 	orrgt	r3, r3, #24
-      f8:	e7843002 	str	r3, [r4, r2]
+      f8:	e7843002 	str	r3, [r4, r2]	; =GMAC_DMA_OP_MODE
       fc:	e3a00000 	mov	r0, #0
      100:	e89da878 	ldm	sp, {r3, r4, r5, r6, fp, sp, pc}
      104:	00000000
@@ -77,8 +78,8 @@ void sunxi_hash_filter(void *iobase, unsigned long low, unsigned long high);
      10c:	e1a0c00d 	mov	ip, sp
      110:	e92dd800 	push	{fp, ip, lr, pc}
      114:	e24cb004 	sub	fp, ip, #4
-     118:	e5802008 	str	r2, [r0, #8]
-     11c:	e580100c 	str	r1, [r0, #12]
+     118:	e5802008 	str	r2, [r0, #8]	; GMAC_HASH_HIGH
+     11c:	e580100c 	str	r1, [r0, #12]	; GMAC_HASH_LOW
      120:	e89da800 	ldm	sp, {fp, sp, pc}
 
 void sunxi_set_filter(void *iobase, unsigned long flags);
@@ -86,10 +87,10 @@ void sunxi_set_filter(void *iobase, unsigned long flags);
      124:	e1a0c00d 	mov	ip, sp
      128:	e92dd800 	push	{fp, ip, lr, pc}
      12c:	e24cb004 	sub	fp, ip, #4
-     130:	e5801004 	str	r1, [r0, #4]
+     130:	e5801004 	str	r1, [r0, #4]	; GMAC_FRAME_FILTER
      134:	e89da800 	ldm	sp, {fp, sp, pc}
 
-void sunxi_set_umac(void *, unsigned char *, int);
+void sunxi_set_umac(void *iobase, unsigned char *mac, int reg /* 0-7 */);
 00000138 <set_umac_v1>:
      138:	e1a0c00d 	mov	ip, sp
      13c:	e92dd800 	push	{fp, ip, lr, pc}
@@ -98,8 +99,8 @@ void sunxi_set_umac(void *, unsigned char *, int);
      148:	e1a02182 	lsl	r2, r2, #3
      14c:	e5d13004 	ldrb	r3, [r1, #4]
      150:	e183340c 	orr	r3, r3, ip, lsl #8
-     154:	e282c040 	add	ip, r2, #64	; 0x40
-     158:	e2822044 	add	r2, r2, #68	; 0x44
+     154:	e282c040 	add	ip, r2, #64	; 0x40	= GMAC_ADDR_HI
+     158:	e2822044 	add	r2, r2, #68	; 0x44  = GMAC_ADDR_LO
      15c:	e780300c 	str	r3, [r0, ip]
      160:	e5d13002 	ldrb	r3, [r1, #2]
      164:	e5d1c003 	ldrb	ip, [r1, #3]
@@ -117,8 +118,8 @@ void sunxi_set_umac(void *, unsigned char *, int);
      18c:	e92dd800 	push	{fp, ip, lr, pc}
      190:	e24cb004 	sub	fp, ip, #4
      194:	e1a02182 	lsl	r2, r2, #3
-     198:	e2823040 	add	r3, r2, #64	; 0x40
-     19c:	e2822044 	add	r2, r2, #68	; 0x44
+     198:	e2823040 	add	r3, r2, #64	; 0x40 = GMAC_ADDR_HI
+     19c:	e2822044 	add	r2, r2, #68	; 0x44 = FMAC_ADDR_LO
      1a0:	e790c003 	ldr	ip, [r0, r3]
      1a4:	e7903002 	ldr	r3, [r0, r2]
      1a8:	e5c1c004 	strb	ip, [r1, #4]
@@ -133,12 +134,12 @@ void sunxi_set_umac(void *, unsigned char *, int);
      1cc:	e5c13003 	strb	r3, [r1, #3]
      1d0:	e89da800 	ldm	sp, {fp, sp, pc}
 
-int sunxi_mdio_read(void *,  int, int);
+int sunxi_mdio_read(void *iobase,  int phyaddr, int phyreg);
 000001d4 <mdio_read_v1>:
      1d4:	e1a0c00d 	mov	ip, sp
      1d8:	e92dd800 	push	{fp, ip, lr, pc}
      1dc:	e24cb004 	sub	fp, ip, #4
-     1e0:	e5903010 	ldr	r3, [r0, #16]
+     1e0:	e5903010 	ldr	r3, [r0, #16] 	; =GMAC_GMII_ADDR
      1e4:	e1a01581 	lsl	r1, r1, #11
      1e8:	e1a02302 	lsl	r2, r2, #6
      1ec:	e3811001 	orr	r1, r1, #1
@@ -148,17 +149,17 @@ int sunxi_mdio_read(void *,  int, int);
      1fc:	e1833002 	orr	r3, r3, r2
      200:	e6ff3073 	uxth	r3, r3
      204:	e6ff3073 	uxth	r3, r3
-     208:	e5902010 	ldr	r2, [r0, #16]
+     208:	e5902010 	ldr	r2, [r0, #16]	; =GMAC_MII_ADDR
      20c:	e3120001 	tst	r2, #1
      210:	1afffffc 	bne	208 <mdio_read_v1+0x34>
-     214:	e5803010 	str	r3, [r0, #16]
-     218:	e5903010 	ldr	r3, [r0, #16]
+     214:	e5803010 	str	r3, [r0, #16]	; =GMAC_MII_ADDR
+     218:	e5903010 	ldr	r3, [r0, #16]	; =GMAC_MII_ADDR
      21c:	e3130001 	tst	r3, #1
      220:	1afffffc 	bne	218 <mdio_read_v1+0x44>
-     224:	e5900014 	ldr	r0, [r0, #20]
+     224:	e5900014 	ldr	r0, [r0, #20]	; =GMAC_MII_DATA
      228:	e89da800 	ldm	sp, {fp, sp, pc}
 
-int sunxi_mdio_write(void *, int, int, unsigned short);
+int sunxi_mdio_write(void *ioreg, int phyaddr, int phyreg, unsigned short data);
 0000022c <mdio_write_v1>:
      22c:	e1a0c00d 	mov	ip, sp
      230:	e92dd800 	push	{fp, ip, lr, pc}
@@ -166,7 +167,7 @@ int sunxi_mdio_write(void *, int, int, unsigned short);
      238:	e1a0c000 	mov	ip, r0
      23c:	e1a01581 	lsl	r1, r1, #11
      240:	e1a02302 	lsl	r2, r2, #6
-     244:	e5900010 	ldr	r0, [r0, #16]
+     244:	e5900010 	ldr	r0, [r0, #16]	; =GMAC_GMII_ADDR
      248:	e3811003 	orr	r1, r1, #3
      24c:	e2022d1f 	and	r2, r2, #1984	; 0x7c0
      250:	e200001c 	and	r0, r0, #28
@@ -174,23 +175,23 @@ int sunxi_mdio_write(void *, int, int, unsigned short);
      258:	e1800002 	orr	r0, r0, r2
      25c:	e6ff0070 	uxth	r0, r0
      260:	e6ff0070 	uxth	r0, r0
-     264:	e59c2010 	ldr	r2, [ip, #16]
+     264:	e59c2010 	ldr	r2, [ip, #16]	; =GMAC_GMII_ADDR
      268:	e3120001 	tst	r2, #1
      26c:	1afffffc 	bne	264 <mdio_write_v1+0x38>
-     270:	e58c3014 	str	r3, [ip, #20]
-     274:	e58c0010 	str	r0, [ip, #16]
-     278:	e59c0010 	ldr	r0, [ip, #16]
+     270:	e58c3014 	str	r3, [ip, #20]	; =GMAC_GMII_DATA
+     274:	e58c0010 	str	r0, [ip, #16]	; =GMAC_GMII_ADDR
+     278:	e59c0010 	ldr	r0, [ip, #16]	; =GMAC_GMII_ADDR
      27c:	e2100001 	ands	r0, r0, #1
      280:	1afffffc 	bne	278 <mdio_write_v1+0x4c>
      284:	e89da800 	ldm	sp, {fp, sp, pc}
 
-int sunxi_mdio_reset(void *);
+int sunxi_mdio_reset(void *ioaddr);
 00000288 <mdio_reset_v1>:
      288:	e1a0c00d 	mov	ip, sp
      28c:	e92dd800 	push	{fp, ip, lr, pc}
      290:	e24cb004 	sub	fp, ip, #4
-     294:	e3a03010 	mov	r3, #16
-     298:	e5803010 	str	r3, [r0, #16]
+     294:	e3a03010 	mov	r3, #16		; NOTE: A20 uses 0 here
+     298:	e5803010 	str	r3, [r0, #16]	; =GMAC_MII_ADDR
      29c:	e3a00000 	mov	r0, #0
      2a0:	e89da800 	ldm	sp, {fp, sp, pc}
 
@@ -199,10 +200,10 @@ void sunxi_mac_loopback(void *iobase, int enable);
      2a4:	e1a0c00d 	mov	ip, sp
      2a8:	e92dd800 	push	{fp, ip, lr, pc}
      2ac:	e24cb004 	sub	fp, ip, #4
-     2b0:	e5903000 	ldr	r3, [r0]
+     2b0:	e5903000 	ldr	r3, [r0]	; =GMAC_CONTROL
      2b4:	e3510000 	cmp	r1, #0
-     2b8:	13833a01 	orrne	r3, r3, #4096	; 0x1000
-     2bc:	03c33a01 	biceq	r3, r3, #4096	; 0x1000
+     2b8:	13833a01 	orrne	r3, r3, #4096	; 0x1000 = GMAC_CTL_LM
+     2bc:	03c33a01 	biceq	r3, r3, #4096	; 0x1000 = GMAC_CTL_LM
      2c0:	e5803000 	str	r3, [r0]
      2c4:	e89da800 	ldm	sp, {fp, sp, pc}
 
@@ -211,18 +212,18 @@ void sunxi_set_link_mode(void *iobase, int duplex, int speed);
      2c8:	e1a0c00d 	mov	ip, sp
      2cc:	e92dd800 	push	{fp, ip, lr, pc}
      2d0:	e24cb004 	sub	fp, ip, #4
-     2d4:	e5903000 	ldr	r3, [r0]
+     2d4:	e5903000 	ldr	r3, [r0]	; =GMAC_CONTROL
      2d8:	e3510000 	cmp	r1, #0
-     2dc:	03c33b02 	biceq	r3, r3, #2048	; 0x800
-     2e0:	13833b02 	orrne	r3, r3, #2048	; 0x800
-     2e4:	e3520ffa 	cmp	r2, #1000	; 0x3e8
-     2e8:	03c33902 	biceq	r3, r3, #32768	; 0x8000
+     2dc:	03c33b02 	biceq	r3, r3, #2048	; 0x800 =GMAC_CTL_DM
+     2e0:	13833b02 	orrne	r3, r3, #2048	; 0x800 =GMAC_CTL_DM
+     2e4:	e3520ffa 	cmp	r2, #1000	; 0x3e8 = 1Gbps
+     2e8:	03c33902 	biceq	r3, r3, #32768	; 0x8000 =FMAC_CTL_PS
      2ec:	0a000003 	beq	300 <set_link_mode_v1+0x38>
-     2f0:	e3831902 	orr	r1, r3, #32768	; 0x8000
-     2f4:	e3520064 	cmp	r2, #100	; 0x64
-     2f8:	03833903 	orreq	r3, r3, #49152	; 0xc000
-     2fc:	13c13901 	bicne	r3, r1, #16384	; 0x4000
-     300:	e5803000 	str	r3, [r0]
+     2f0:	e3831902 	orr	r1, r3, #32768	; 0x8000 =GMAC_CTL_PS
+     2f4:	e3520064 	cmp	r2, #100	; 0x64 = 100Mbps
+     2f8:	03833903 	orreq	r3, r3, #49152	; 0xc000 = GMAC_CTL_PS|FES
+     2fc:	13c13901 	bicne	r3, r1, #16384	; 0x4000 = GMAC_CTL_FES
+     300:	e5803000 	str	r3, [r0]	; =GMAC_CONTROL
      304:	e89da800 	ldm	sp, {fp, sp, pc}
 
 void sunxi_flow_ctrl(void *iobase, int duplex, int fc, int pause);
@@ -236,25 +237,25 @@ void sunxi_flow_ctrl(void *iobase, int duplex, int fc, int pause);
      320:	138cc002 	orrne	ip, ip, #2
      324:	e3510000 	cmp	r1, #0
      328:	118cc803 	orrne	ip, ip, r3, lsl #16
-     32c:	e580c018 	str	ip, [r0, #24]
+     32c:	e580c018 	str	ip, [r0, #24]	; =GMAC_FLOW_CONTROL
      330:	e89da800 	ldm	sp, {fp, sp, pc}
 
 00000334 <rx_tx_en_v1>:
      334:	e1a0c00d 	mov	ip, sp
      338:	e92dd800 	push	{fp, ip, lr, pc}
      33c:	e24cb004 	sub	fp, ip, #4
-     340:	e5903000 	ldr	r3, [r0]
+     340:	e5903000 	ldr	r3, [r0]	; =GMAC_CONTROL
      344:	e383300c 	orr	r3, r3, #12
-     348:	e5803000 	str	r3, [r0]
+     348:	e5803000 	str	r3, [r0]	; =GMAC_CONTROL
      34c:	e89da800 	ldm	sp, {fp, sp, pc}
 
 00000350 <rx_tx_dis_v1>:
      350:	e1a0c00d 	mov	ip, sp
      354:	e92dd800 	push	{fp, ip, lr, pc}
      358:	e24cb004 	sub	fp, ip, #4
-     35c:	e5903000 	ldr	r3, [r0]
+     35c:	e5903000 	ldr	r3, [r0]	; =GMAC_CONTROL
      360:	e3c3300c 	bic	r3, r3, #12
-     364:	e5803000 	str	r3, [r0]
+     364:	e5803000 	str	r3, [r0]	; =GMAC_CONTROL
      368:	e89da800 	ldm	sp, {fp, sp, pc}
 
 void desc_buf_set(struct dma_desc *p, unsigned long paddr, int size);
@@ -262,7 +263,7 @@ void desc_buf_set(struct dma_desc *p, unsigned long paddr, int size);
      36c:	e1a0c00d 	mov	ip, sp
      370:	e92dd800 	push	{fp, ip, lr, pc}
      374:	e24cb004 	sub	fp, ip, #4
-     378:	e5903004 	ldr	r3, [r0, #4]
+     378:	e5903004 	ldr	r3, [r0, #4]	; =
      37c:	e1a02a82 	lsl	r2, r2, #21
      380:	e5801008 	str	r1, [r0, #8]
      384:	e3c33e7f 	bic	r3, r3, #2032	; 0x7f0
@@ -437,26 +438,27 @@ int desc_get_tx_ls(struct dma_desc *desc);
      5ac:	e7802003 	str	r2, [r0, r3]
      5b0:	e89da800 	ldm	sp, {fp, sp, pc}
 
+void sunxi_int_enable(void *iobase);
 000005b4 <dma_int_en_v1>:
      5b4:	e1a0c00d 	mov	ip, sp
      5b8:	e92dd800 	push	{fp, ip, lr, pc}
      5bc:	e24cb004 	sub	fp, ip, #4
      5c0:	e59f2008 	ldr	r2, [pc, #8]	; 5d0 <dma_int_en_v1+0x1c>
      5c4:	e301301c 	movw	r3, #4124	; 0x101c
-     5c8:	e7802003 	str	r2, [r0, r3]
+     5c8:	e7802003 	str	r2, [r0, r3]	; =GDMA_INTR_ENA
      5cc:	e89da800 	ldm	sp, {fp, sp, pc}
      5d0:	0001a061 	andeq	sl, r1, r1, rrx
 
-int sunxi_int_status(void *, void *x);
+int sunxi_int_status(void *iobase, void *xstats);
 000005d4 <int_status_v1>:
      5d4:	e1a0c00d 	mov	ip, sp
      5d8:	e92dd800 	push	{fp, ip, lr, pc}
      5dc:	e24cb004 	sub	fp, ip, #4
-     5e0:	e59020d8 	ldr	r2, [r0, #216]	; 0xd8
+     5e0:	e59020d8 	ldr	r2, [r0, #216]	; 0xd8 =GMAC_RGMII_STATUS
      5e4:	e1a03000 	mov	r3, r0
      5e8:	e3120001 	tst	r2, #1
-     5ec:	159020d8 	ldrne	r2, [r0, #216]	; 0xd8
-     5f0:	e3012014 	movw	r2, #4116	; 0x1014
+     5ec:	159020d8 	ldrne	r2, [r0, #216]	; 0xd8 =GMAC_RGMII_STATUS
+     5f0:	e3012014 	movw	r2, #4116	; 0x1014 =GDMA_STATUS
      5f4:	e7902002 	ldr	r2, [r0, r2]
      5f8:	e2120902 	ands	r0, r2, #32768	; 0x8000
      5fc:	0a000026 	beq	69c <int_status_v1+0xc8>
@@ -507,22 +509,22 @@ int sunxi_int_status(void *, void *x);
      6b0:	e28cc001 	add	ip, ip, #1
      6b4:	e581c0a4 	str	ip, [r1, #164]	; 0xa4
      6b8:	e3c224ff 	bic	r2, r2, #-16777216	; 0xff000000
-     6bc:	e3011014 	movw	r1, #4116	; 0x1014
+     6bc:	e3011014 	movw	r1, #4116	; 0x1014 =GDMA_STATUS
      6c0:	e3c228fe 	bic	r2, r2, #16646144	; 0xfe0000
      6c4:	e7832001 	str	r2, [r3, r1]
      6c8:	e89da800 	ldm	sp, {fp, sp, pc}
 
-void sunxi_start_tx(void *, unsigned long);
+void sunxi_start_tx(void *iobase, unsigned long);
 000006cc <start_tx_v1>:
      6cc:	e1a0c00d 	mov	ip, sp
      6d0:	e92dd800 	push	{fp, ip, lr, pc}
      6d4:	e24cb004 	sub	fp, ip, #4
-     6d8:	e3013010 	movw	r3, #4112	; 0x1010
+     6d8:	e3013010 	movw	r3, #4112	; 0x1010 =GDMA_XMT_LIST
      6dc:	e7801003 	str	r1, [r0, r3]
      6e0:	e2833008 	add	r3, r3, #8
-     6e4:	e7902003 	ldr	r2, [r0, r3]
-     6e8:	e3822a02 	orr	r2, r2, #8192	; 0x2000
-     6ec:	e7802003 	str	r2, [r0, r3]
+     6e4:	e7902003 	ldr	r2, [r0, r3]	; =GDMA_OPMODE
+     6e8:	e3822a02 	orr	r2, r2, #8192	; 0x2000 =OP_MODE_ST
+     6ec:	e7802003 	str	r2, [r0, r3]	; =GDMA_OP_MODE
      6f0:	e89da800 	ldm	sp, {fp, sp, pc}
 
 void sunxi_stop_tx(void *);
@@ -530,9 +532,9 @@ void sunxi_stop_tx(void *);
      6f4:	e1a0c00d 	mov	ip, sp
      6f8:	e92dd800 	push	{fp, ip, lr, pc}
      6fc:	e24cb004 	sub	fp, ip, #4
-     700:	e3013018 	movw	r3, #4120	; 0x1018
+     700:	e3013018 	movw	r3, #4120	; 0x1018 =GDMA_OP_MODE
      704:	e7902003 	ldr	r2, [r0, r3]
-     708:	e3c22a02 	bic	r2, r2, #8192	; 0x2000
+     708:	e3c22a02 	bic	r2, r2, #8192	; 0x2000 =OP_MODE_ST
      70c:	e7802003 	str	r2, [r0, r3]
      710:	e89da800 	ldm	sp, {fp, sp, pc}
 
@@ -541,7 +543,7 @@ void sunxi_stop_tx(void *);
      718:	e92dd800 	push	{fp, ip, lr, pc}
      71c:	e24cb004 	sub	fp, ip, #4
      720:	e3a02001 	mov	r2, #1
-     724:	e3013004 	movw	r3, #4100	; 0x1004
+     724:	e3013004 	movw	r3, #4100	; 0x1004 =GDMA_XMT_POLL
      728:	e7802003 	str	r2, [r0, r3]
      72c:	e89da800 	ldm	sp, {fp, sp, pc}
 
@@ -550,11 +552,11 @@ void sunxi_start_rx(void *, unsigned long);
      730:	e1a0c00d 	mov	ip, sp
      734:	e92dd800 	push	{fp, ip, lr, pc}
      738:	e24cb004 	sub	fp, ip, #4
-     73c:	e301300c 	movw	r3, #4108	; 0x100c
+     73c:	e301300c 	movw	r3, #4108	; 0x100c =GDMA_RCV_LIST
      740:	e7801003 	str	r1, [r0, r3]
-     744:	e283300c 	add	r3, r3, #12
+     744:	e283300c 	add	r3, r3, #12	; 0x1018 = GDMA_OP_MODE
      748:	e7902003 	ldr	r2, [r0, r3]
-     74c:	e3822002 	orr	r2, r2, #2
+     74c:	e3822002 	orr	r2, r2, #2	; OP_MODE_SR
      750:	e7802003 	str	r2, [r0, r3]
      754:	e89da800 	ldm	sp, {fp, sp, pc}
 
@@ -563,9 +565,9 @@ void sunxi_stop_rx(void *);
      758:	e1a0c00d 	mov	ip, sp
      75c:	e92dd800 	push	{fp, ip, lr, pc}
      760:	e24cb004 	sub	fp, ip, #4
-     764:	e3013018 	movw	r3, #4120	; 0x1018
+     764:	e3013018 	movw	r3, #4120	; 0x1018 =GDMA_OP_MODE
      768:	e7902003 	ldr	r2, [r0, r3]
-     76c:	e3c22002 	bic	r2, r2, #2
+     76c:	e3c22002 	bic	r2, r2, #2	; =OP_MODE_SR
      770:	e7802003 	str	r2, [r0, r3]
      774:	e89da800 	ldm	sp, {fp, sp, pc}
 
@@ -574,11 +576,11 @@ void sunxi_stop_rx(void *);
      77c:	e92dd800 	push	{fp, ip, lr, pc}
      780:	e24cb004 	sub	fp, ip, #4
      784:	e3a02001 	mov	r2, #1
-     788:	e3013008 	movw	r3, #4104	; 0x1008
+     788:	e3013008 	movw	r3, #4104	; 0x1008 =GDMA_RCV_POLL
      78c:	e7802003 	str	r2, [r0, r3]
      790:	e89da800 	ldm	sp, {fp, sp, pc}
 
-int sunxi_mac_reset(void *iobase, void (*mdelay)(int), int n);
+int sunxi_mac_reset(void *iobase, void (*mdelay)(int n), int n);
 00000794 <mac_reset_v2>:
      794:	e1a0c00d 	mov	ip, sp
      798:	e92dd818 	push	{r3, r4, fp, ip, lr, pc}
@@ -1024,6 +1026,7 @@ int desc_get_tx_ls(struct dma_desc *desc);
      d5c:	e580300c 	str	r3, [r0, #12]
      d60:	e89da800 	ldm	sp, {fp, sp, pc}
 
+void sunxi_int_enable(void *iobase);
 00000d64 <dma_int_en_v2>:
      d64:	e1a0c00d 	mov	ip, sp
      d68:	e92dd800 	push	{fp, ip, lr, pc}
@@ -1395,7 +1398,7 @@ void sunxi_flow_ctrl(void *iobase, int duplex, int fc, int pause);
     1254:	00000000
 			1254: R_ARM_ABS32	.bss
 
-int sunxi_int_status(void *, void *x);
+int sunxi_int_status(void *iobase, void *xstats);
 00001258 <sunxi_int_status>:
     1258:	e1a0c00d 	mov	ip, sp
     125c:	e92dd800 	push	{fp, ip, lr, pc}
