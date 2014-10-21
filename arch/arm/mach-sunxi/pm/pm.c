@@ -39,6 +39,14 @@
 
 #include <mach/sys_config.h>
 #include <linux/power/scenelock.h>
+#include <linux/kobject.h>
+#include <linux/ctype.h>
+#include <linux/regulator/consumer.h>
+#include <linux/power/axp_depend.h>
+#include <linux/power/scenelock.h>
+#include "../../../../kernel/power/power.h"
+
+static struct kobject *aw_pm_kobj;
 
 //#define CROSS_MAPPING_STANDBY
 
@@ -75,7 +83,7 @@
 /* define major number for power manager */
 #define AW_PMU_MAJOR    267
 
-int debug_mask = PM_STANDBY_TEST; //PM_STANDBY_PRINT_STANDBY | PM_STANDBY_PRINT_RESUME| PM_STANDBY_ENABLE_JTAG;
+__u32 debug_mask = PM_STANDBY_TEST; //PM_STANDBY_PRINT_STANDBY | PM_STANDBY_PRINT_RESUME| PM_STANDBY_ENABLE_JTAG;
 static int suspend_freq = SUSPEND_FREQ;
 static int suspend_delay_ms = SUSPEND_DELAY_MS;
 static unsigned long time_to_wakeup = 0;
@@ -93,6 +101,7 @@ extern char *resume1_bin_end;
 /*mem_cpu_asm.S*/
 extern int mem_arch_suspend(void);
 extern int mem_arch_resume(void);
+extern int disable_prefetch(void);
 extern asmlinkage int mem_clear_runtime_context(void);
 extern void save_runtime_context(__u32 *addr);
 extern void clear_reg_context(void);
@@ -167,9 +176,212 @@ EXPORT_SYMBOL(standby_level);
 static int standby_mode = 0;
 static int suspend_status_flag = 0;
 
-#ifdef	CONFIG_AW_AXP22
+#ifdef	CONFIG_AW_AXP
 extern void axp_powerkey_set(int value);
 #endif
+
+#define pm_printk(mask, format, args... )   do	{   \
+    if(unlikely(debug_mask&mask)){		    \
+	printk(KERN_INFO format, ##args);   \
+    }					    \
+}while(0)
+
+static char *parse_debug_mask(unsigned int bitmap, char *s, char *end)
+{
+    int i = 0;
+    int counted = 0;
+    int count = 0;
+    unsigned int bit_event = 0;
+    
+    for(i=0; i<32; i++){
+	bit_event = (1<<i & bitmap);
+	switch(bit_event){
+	    case 0				  : break;
+	    case PM_STANDBY_PRINT_STANDBY	  : s += scnprintf(s, end-s, "%-34s bit 0x%x\t", "PM_STANDBY_PRINT_STANDBY         ", PM_STANDBY_PRINT_STANDBY	  ); count++; break;  	 
+	    case PM_STANDBY_PRINT_RESUME	  : s += scnprintf(s, end-s, "%-34s bit 0x%x\t", "PM_STANDBY_PRINT_RESUME          ", PM_STANDBY_PRINT_RESUME	  ); count++; break; 
+    	    case PM_STANDBY_ENABLE_JTAG		  : s += scnprintf(s, end-s, "%-34s bit 0x%x\t", "PM_STANDBY_ENABLE_JTAG           ", PM_STANDBY_ENABLE_JTAG	  ); count++; break; 	
+    	    case PM_STANDBY_PRINT_PORT		  : s += scnprintf(s, end-s, "%-34s bit 0x%x\t", "PM_STANDBY_PRINT_PORT            ", PM_STANDBY_PRINT_PORT	  ); count++; break;    
+    	    case PM_STANDBY_PRINT_IO_STATUS 	  : s += scnprintf(s, end-s, "%-34s bit 0x%x\t", "PM_STANDBY_PRINT_IO_STATUS       ", PM_STANDBY_PRINT_IO_STATUS  ); count++; break; 
+    	    case PM_STANDBY_PRINT_CACHE_TLB_MISS  : s += scnprintf(s, end-s, "%-34s bit 0x%x\t", "PM_STANDBY_PRINT_CACHE_TLB_MISS  ", PM_STANDBY_PRINT_CACHE_TLB_MISS); count++; break;  
+    	    case PM_STANDBY_PRINT_CCU_STATUS 	  : s += scnprintf(s, end-s, "%-34s bit 0x%x\t", "PM_STANDBY_PRINT_CCU_STATUS      ", PM_STANDBY_PRINT_CCU_STATUS  ); count++; break;   
+    	    case PM_STANDBY_PRINT_PWR_STATUS 	  : s += scnprintf(s, end-s, "%-34s bit 0x%x\t", "PM_STANDBY_PRINT_PWR_STATUS      ", PM_STANDBY_PRINT_PWR_STATUS  ); count++; break;   
+    	    case PM_STANDBY_PRINT_CPUS_IO_STATUS  : s += scnprintf(s, end-s, "%-34s bit 0x%x\t", "PM_STANDBY_PRINT_CPUS_IO_STATUS  ", PM_STANDBY_PRINT_CPUS_IO_STATUS); count++; break; 
+    	    case PM_STANDBY_PRINT_CCI400_REG	  : s += scnprintf(s, end-s, "%-34s bit 0x%x\t", "PM_STANDBY_PRINT_CCI400_REG      ", PM_STANDBY_PRINT_CCI400_REG   ); count++; break;
+	    case PM_STANDBY_PRINT_GTBUS_REG	  : s += scnprintf(s, end-s, "%-34s bit 0x%x\t", "PM_STANDBY_PRINT_GTBUS_REG       ", PM_STANDBY_PRINT_GTBUS_REG  ); count++; break;
+    	    case PM_STANDBY_TEST		  : s += scnprintf(s, end-s, "%-34s bit 0x%x\t", "PM_STANDBY_TEST                  ", PM_STANDBY_TEST		  ); count++; break;     
+    	    case PM_STANDBY_PRINT_RESUME_IO_STATUS: s += scnprintf(s, end-s, "%-34s bit 0x%x\t", "PM_STANDBY_PRINT_RESUME_IO_STATUS", PM_STANDBY_PRINT_RESUME_IO_STATUS); count++; break;
+	    default				  : break;
+	
+	}
+	if(counted != count && 0 == count%2){
+	    counted = count;
+	    s += scnprintf(s, end-s,"\n");
+	}
+    }
+    
+    s += scnprintf(s, end-s,"\n");
+
+    return s;
+}
+static ssize_t debug_mask_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	char *s = buf;
+	char *end = buf + PAGE_SIZE;
+	
+	s += sprintf(buf, "0x%x\n", debug_mask);
+	s = parse_debug_mask(debug_mask, s, end);
+
+	s += sprintf(s, "%s\n", "debug_mask usage help info:");
+	s += sprintf(s, "%s\n", "target: for enable checking the io, ccu... suspended status.");
+	s += sprintf(s, "%s\n", "bitmap: each bit corresponding one module, as follow:");
+	s = parse_debug_mask(0xffff, s, end);
+
+	return (s-buf);
+}
+
+#define TMPBUFLEN 22
+static int get_long(const char **buf, size_t *size, unsigned long *val, bool *neg)
+{
+	int len;
+	char *p, tmp[TMPBUFLEN];
+
+	if (!*size)
+		return -EINVAL;
+
+	len = *size;
+	if (len > TMPBUFLEN - 1)
+		len = TMPBUFLEN - 1;
+
+	memcpy(tmp, *buf, len);
+
+	tmp[len] = 0;
+	p = tmp;
+	if (*p == '-' && *size > 1) {
+		*neg = true;
+		p++;
+	} else
+		*neg = false;
+	if (!isdigit(*p))
+		return -EINVAL;
+
+	*val = simple_strtoul(p, &p, 0);
+
+	len = p - tmp;
+
+	/* We don't know if the next char is whitespace thus we may accept
+	 * invalid integers (e.g. 1234...a) or two integers instead of one
+	 * (e.g. 123...1). So lets not allow such large numbers. */
+	if (len == TMPBUFLEN - 1)
+		return -EINVAL;
+
+	return 0;
+}
+
+
+static ssize_t debug_mask_store(struct device *dev,
+	struct device_attribute *attr,
+	const char *buf, size_t count)
+{
+    unsigned long data = 0;
+    bool neg = false;
+
+    if(!get_long(&buf, &count, &data, &neg)){
+	if(true != neg){
+	    debug_mask = (unsigned int)data;
+	}else{
+	    printk("%s\n", "minus is Illegal. ");
+	    return -EINVAL;
+	}
+    }else{
+	printk("%s\n", "non-digital is Illegal. ");
+	return -EINVAL;
+    }
+
+    return count;
+}
+
+#ifdef CONFIG_ARCH_SUN8IW6P1
+static int check_sys_pwr_dm_status(char *pwr_dm)
+{
+    char  ldo_name[20] = "\0";
+    char  enable_id[20] = "\0";
+    int ret  = 0;
+    int i = 0;
+
+    ret = get_ldo_name(pwr_dm, ldo_name);
+    if(ret < 0){
+	printk(KERN_ERR "%s call %s failed. ret = %d \n", pwr_dm, __func__, ret);
+	return -1;
+    }
+    ret = get_enable_id_count(ldo_name);
+    if(0 == ret){
+	pm_printk(PM_STANDBY_PRINT_PWR_STATUS, KERN_INFO "%s: no child, use by %s, property: sys.\n", ldo_name, pwr_dm);
+    }else{
+	for(i = 0; i < ret; i++){
+	    get_enable_id(ldo_name, i, (char *)enable_id);
+	    printk(KERN_INFO "%s: active child id %d is: %s. ",  ldo_name,  i, enable_id);
+	    //need to check all enabled id is belong to sys_pwr_dm.
+	    if(is_sys_pwr_dm_id(enable_id)){
+		pm_printk(PM_STANDBY_PRINT_PWR_STATUS, KERN_INFO "property: sys \n");
+	    }else{
+		pm_printk(PM_STANDBY_PRINT_PWR_STATUS, KERN_INFO "property: module \n");
+		del_sys_pwr_dm(pwr_dm);
+		break;
+	    }
+	}
+    }
+    return 0;
+
+}
+
+static int check_pwr_status(void)
+{
+    check_sys_pwr_dm_status("vdd-cpua");
+    check_sys_pwr_dm_status("vdd-cpub");
+    check_sys_pwr_dm_status("vcc-dram");
+    check_sys_pwr_dm_status("vdd-gpu");
+    check_sys_pwr_dm_status("vdd-sys");
+    check_sys_pwr_dm_status("vdd-vpu");
+    check_sys_pwr_dm_status("vdd-cpus");
+    check_sys_pwr_dm_status("vdd-drampll");
+    check_sys_pwr_dm_status("vcc-adc");
+    check_sys_pwr_dm_status("vcc-pl");
+    check_sys_pwr_dm_status("vcc-pm");
+    check_sys_pwr_dm_status("vcc-io");
+    check_sys_pwr_dm_status("vcc-cpvdd");
+    check_sys_pwr_dm_status("vcc-ldoin");
+    check_sys_pwr_dm_status("vcc-pll");
+
+    return 0;
+}
+
+static int init_sys_pwr_dm(void)
+{
+    unsigned int sys_mask = 0;
+
+    add_sys_pwr_dm("vdd-cpua");
+    //add_sys_pwr_dm("vdd-cpub");
+    add_sys_pwr_dm("vcc-dram");
+    //add_sys_pwr_dm("vdd-gpu");
+    add_sys_pwr_dm("vdd-sys");
+    //add_sys_pwr_dm("vdd-vpu");
+    add_sys_pwr_dm("vdd-cpus");
+    add_sys_pwr_dm("vdd-drampll");
+    add_sys_pwr_dm("vcc-adc");
+    add_sys_pwr_dm("vcc-pl");
+    //add_sys_pwr_dm("vcc-pm");
+    add_sys_pwr_dm("vcc-io");
+    //add_sys_pwr_dm("vcc-cpvdd");
+    add_sys_pwr_dm("vcc-ldoin");
+    add_sys_pwr_dm("vcc-pll");
+    
+    sys_mask = get_sys_pwr_dm_mask();
+    printk(KERN_INFO "after inited: sys_mask config = 0x%x. \n", sys_mask);
+
+    return 0;
+}
+#endif 
 
 /*
 *********************************************************************************************************
@@ -263,10 +475,9 @@ static int aw_pm_begin(suspend_state_t state)
 	static bool backup_console_suspend_enabled = 0;
 	static bool backup_initcall_debug = 0; 
 	static int backup_console_loglevel = 0;
-	static int backup_debug_mask = 0;
+	static __u32 backup_debug_mask = 0;
 
 	PM_DBG("%d state begin\n", state);
-
 	//set freq max
 #ifdef CONFIG_CPU_FREQ_USR_EVNT_NOTIFY
 	//cpufreq_user_event_notify();
@@ -280,6 +491,7 @@ static int aw_pm_begin(suspend_state_t state)
 
 	//check rtc status, if err happened, do sth to fix it.
 	suspend_status = get_mem_status(); 
+	suspend_status = FIRST_BOOT_FLAG; 
 	if( (FIRST_BOOT_FLAG)!= suspend_status && (RESUME_COMPLETE_FLAG) != suspend_status){
 	    suspend_result = -1;
 	    printk("suspend_err, rtc gpr as follow: \n");
@@ -296,7 +508,7 @@ static int aw_pm_begin(suspend_state_t state)
 	    console_loglevel = 8;
 	    //change debug_mask to 0xff
 	    backup_debug_mask = debug_mask;
-	    debug_mask = 0x03;
+	    debug_mask |= 0x07;
 	}else{
 	    if(-1 == suspend_result){
 		//restore console suspend.
@@ -335,7 +547,7 @@ static int aw_pm_begin(suspend_state_t state)
 static int aw_pm_prepare(void)
 {
     PM_DBG("prepare\n");
-	save_mem_status(BEFORE_EARLY_SUSPEND |0x2);
+	save_mem_status(BEFORE_EARLY_SUSPEND |0x3);
 
     return 0;
 }
@@ -369,7 +581,7 @@ static int aw_pm_prepare_late(void)
 	
     cpufreq_driver_target(&policy, suspend_freq, CPUFREQ_RELATION_L);
 #endif
-    save_mem_status(BEFORE_EARLY_SUSPEND |0xd);
+    save_mem_status(BEFORE_EARLY_SUSPEND |0x5);
     return 0;
 
 #ifdef CONFIG_CPU_FREQ	
@@ -382,6 +594,8 @@ static int aw_suspend_cpu_die(void)
 {
 	unsigned long actlr;
 	
+    disable_prefetch();
+    
     /* step1: disable cache */
     asm("mrc    p15, 0, %0, c1, c0, 0" : "=r" (actlr) );
     actlr &= ~(1<<2);
@@ -397,6 +611,8 @@ static int aw_suspend_cpu_die(void)
     asm("mrc    p15, 0, %0, c1, c0, 1" : "=r" (actlr) );
     actlr &= ~(1<<6);
     asm("mcr    p15, 0, %0, c1, c0, 1\n" : : "r" (actlr));
+
+    writel(0x0, 0xf1794000);
 
     /* step5: execute an ISB instruction */
     isb();
@@ -424,6 +640,7 @@ static int aw_suspend_cpu_die(void)
 static int aw_early_suspend(void)
 {
 
+	save_mem_status(BEFORE_EARLY_SUSPEND |0x9);
 #define MAX_RETRY_TIMES (5)
 	//backup device state
 	mem_ccu_save(&(saved_ccm_state));
@@ -514,7 +731,7 @@ static int aw_early_suspend(void)
 		super_standby_para_info.cpux_gpiog_bitmap = extended_standby_manager_id->wakeup_gpio_group;
 	}
 	if ((super_standby_para_info.event & (CPUS_WAKEUP_DESCEND | CPUS_WAKEUP_ASCEND)) == 0) {
-#ifdef	CONFIG_AW_AXP22
+#ifdef	CONFIG_AW_AXP
 		axp_powerkey_set(1);
 #endif
 	}
@@ -533,25 +750,30 @@ static int aw_early_suspend(void)
 		super_standby_para_info.event |= CPUS_WAKEUP_TIMEOUT;
 	}
 	
+	save_mem_status(BEFORE_EARLY_SUSPEND |0xb);
 	if(unlikely(debug_mask&PM_STANDBY_PRINT_STANDBY)){
+		pr_info("standby info: \n");
 		pr_info("resume1_bin_start = 0x%x, resume1_bin_end = 0x%x. \n", (int)&resume1_bin_start, (int)&resume1_bin_end);
 		pr_info("resume_code_src = 0x%lx, resume_code_length = %ld. resume_code_length = %lx \n", \
 			super_standby_para_info.resume_code_src, \
 			super_standby_para_info.resume_code_length, \
 			super_standby_para_info.resume_code_length);
 
-		pr_info("standby wakeup src config: 0x%lx. \n", super_standby_para_info.event);
+		pr_info("total(def & dynamic config) standby wakeup src config: 0x%lx.\n", super_standby_para_info.event);
+		parse_wakeup_event(NULL, 0, super_standby_para_info.event);
 	}
 
 #if 1
 	//disable int to make sure the cpu0 into wfi state.
 	mem_int_init();
+	save_mem_status(BEFORE_EARLY_SUSPEND |0xd);
 #ifdef CONFIG_SUNXI_ARISC
 	arisc_standby_super((struct super_standby_para *)(&super_standby_para_info), NULL, NULL);
 #else
 	#warning "ARISC driver is not enabled!!!!!!!!!"
 #endif
 	
+	save_mem_status(BEFORE_EARLY_SUSPEND |0xf);
 	aw_suspend_cpu_die();
 #endif
 	pr_info("standby suspend failed\n");
@@ -604,6 +826,7 @@ static int verify_restore(void *src, void *dest, int count)
 */
 static void aw_late_resume(void)
 {
+	int i = 0;
 	memcpy((void *)&mem_para_info, (void *)phys_to_virt(DRAM_MEM_PARA_INFO_PA), sizeof(mem_para_info));
 	mem_para_info.mem_flag = 0;
 	
@@ -614,21 +837,32 @@ static void aw_late_resume(void)
 	//restore device state
 	mem_clk_restore(&(saved_clk_state));
 	save_mem_status(LATE_RESUME_START |0x1);
-	mem_gpio_restore(&(saved_gpio_state));
+	mem_ccu_restore(&(saved_ccm_state));
 	save_mem_status(LATE_RESUME_START |0x2);
+	
+	if(unlikely(debug_mask&PM_STANDBY_PRINT_RESUME_IO_STATUS)){
+		printk("before io_resume. \n");
+		printk(KERN_INFO "IO status as follow:");
+		for(i=0; i<(GPIO_REG_LENGTH); i++){
+			printk(KERN_INFO "ADDR = %x, value = %x .\n", \
+				(volatile __u32)(IO_ADDRESS(AW_PIO_BASE) + i*0x04), *(volatile __u32 *)(IO_ADDRESS(AW_PIO_BASE) + i*0x04));
+		}
+	}
+	
+	mem_gpio_restore(&(saved_gpio_state));
+	
+	save_mem_status(LATE_RESUME_START |0x3);
 	mem_twi_restore(&(saved_twi_state));
 	mem_tmr_restore(&(saved_tmr_state));
-	save_mem_status(LATE_RESUME_START |0x3);
+	save_mem_status(LATE_RESUME_START |0x4);
 	//mem_int_restore(&(saved_gic_state));
 	mem_sram_restore(&(saved_sram_state));
-	save_mem_status(LATE_RESUME_START |0x4);
+	save_mem_status(LATE_RESUME_START |0x5);
 #ifdef CONFIG_ARCH_SUN9IW1P1	
 	mem_gtbus_restore(&(saved_gtbus_state));
-	save_mem_status(LATE_RESUME_START |0x5);
+	save_mem_status(LATE_RESUME_START |0x6);
 //	mem_cci400_restore(&(saved_cci400_state));
 #endif
-	mem_ccu_restore(&(saved_ccm_state));
-	save_mem_status(LATE_RESUME_START |0x6);
 
 	return;
 }
@@ -647,7 +881,6 @@ static void aw_late_resume(void)
 static int aw_super_standby(suspend_state_t state)
 {
 	int result = 0;
-	int i = 0;
 	suspend_status_flag = 0;
 
 mem_enter:
@@ -703,15 +936,6 @@ mem_enter:
 	}
 
 resume:
-	if(unlikely(debug_mask&PM_STANDBY_PRINT_RESUME_IO_STATUS)){
-		printk("before aw_late_resume. \n");
-		printk(KERN_INFO "IO status as follow:");
-		for(i=0; i<(GPIO_REG_LENGTH); i++){
-			printk(KERN_INFO "ADDR = %x, value = %x .\n", \
-				(volatile __u32)(IO_ADDRESS(AW_PIO_BASE) + i*0x04), *(volatile __u32 *)(IO_ADDRESS(AW_PIO_BASE) + i*0x04));
-		}
-	}
-	
 	aw_late_resume();
 	save_mem_status(LATE_RESUME_START |0x7);
 	//have been disable dcache in resume1
@@ -731,6 +955,7 @@ suspend_err:
 	return 0;
 
 }
+
 
 /*
 *********************************************************************************************************
@@ -755,20 +980,18 @@ static int aw_pm_enter(suspend_state_t state)
 	int sram_backup = 0;
 #endif
 	PM_DBG("enter state %d\n", state);
-	save_mem_status(BEFORE_EARLY_SUSPEND |0xf);
-
+	save_mem_status(BEFORE_EARLY_SUSPEND |0x7);
 	if(unlikely(0 == console_suspend_enabled)){
 			debug_mask |= (PM_STANDBY_PRINT_RESUME | PM_STANDBY_PRINT_STANDBY);
 		}else{
 			debug_mask &= ~(PM_STANDBY_PRINT_RESUME | PM_STANDBY_PRINT_STANDBY);
 	}
-
 #ifdef CONFIG_ARCH_SUN8IW3P1
 //#if 0
-	val = readl(SRAM_CTRL_REG1_ADDR_VA);
+	val = readl((const volatile void __iomem *)SRAM_CTRL_REG1_ADDR_VA);
 	sram_backup = val;
 	val |= 0x1000000;
-	writel(val,SRAM_CTRL_REG1_ADDR_VA);
+	writel(val, (volatile void __iomem *)SRAM_CTRL_REG1_ADDR_VA);
 #endif
 
 	if(unlikely(debug_mask&PM_STANDBY_PRINT_IO_STATUS)){
@@ -794,6 +1017,15 @@ static int aw_pm_enter(suspend_state_t state)
 				(volatile __u32)(IO_ADDRESS(AW_CCM_BASE) + i*0x04), *(volatile __u32 *)(IO_ADDRESS(AW_CCM_BASE) + i*0x04));
 		}
 	}
+
+#ifdef CONFIG_ARCH_SUN8IW6P1
+	if(unlikely(debug_mask&PM_STANDBY_PRINT_PWR_STATUS)){
+		printk(KERN_INFO "power status as follow:");
+		axp_regulator_dump();	
+	}
+	
+	check_pwr_status();
+#endif
 
 	extended_standby_manager_id = get_extended_standby_manager();
 	extended_standby_show_state();
@@ -840,6 +1072,10 @@ static int aw_pm_enter(suspend_state_t state)
 
 		PM_DBG("platform wakeup, normal standby cpu0 wakesource is:0x%x\n, normal standby cpus wakesource is:0x%x. \n", \
 			standby_info.standby_para.event, standby_info.standby_para.axp_event);
+		
+		parse_wakeup_event(NULL, 0, standby_info.standby_para.event);
+		parse_wakeup_event(NULL, 0, standby_info.standby_para.axp_event);
+
 		save_mem_status(BEFORE_LATE_RESUME | 0x2);
 
 	}else if(SUPER_STANDBY == standby_type){
@@ -852,11 +1088,12 @@ static int aw_pm_enter(suspend_state_t state)
 		#warning "ARISC driver is not enabled!!!!!!!!!"
 #endif
 		if (mem_para_info.axp_event & (CPUS_WAKEUP_LONG_KEY)) {
-#ifdef	CONFIG_AW_AXP22
+#ifdef	CONFIG_AW_AXP
 			axp_powerkey_set(0);
 #endif
 		}
 		PM_DBG("platform wakeup, super standby wakesource is:0x%x\n", mem_para_info.axp_event);	
+		parse_wakeup_event(NULL, 0, mem_para_info.axp_event);
 		if(unlikely(debug_mask&PM_STANDBY_PRINT_IO_STATUS)){
 		    printk(KERN_INFO "IO status as follow:");
 		    for(i=0; i<(GPIO_REG_LENGTH); i++){
@@ -884,9 +1121,8 @@ static int aw_pm_enter(suspend_state_t state)
 	
 #ifdef CONFIG_ARCH_SUN8IW3P1	
 //#if 0
-	writel(sram_backup,SRAM_CTRL_REG1_ADDR_VA);
+	writel(sram_backup,(volatile void __iomem *)SRAM_CTRL_REG1_ADDR_VA);
 #endif
-
 	return 0;
 }
 
@@ -1015,6 +1251,113 @@ static struct platform_suspend_ops aw_pm_ops = {
     .recover = aw_pm_recover,
 };
 
+static DEVICE_ATTR(debug_mask, S_IRUGO|S_IWUSR|S_IWGRP,
+		debug_mask_show, debug_mask_store);
+
+static struct attribute * g[] = {
+	&dev_attr_debug_mask.attr,
+	NULL,
+};
+static struct attribute_group attr_group = {
+	.attrs = g,
+};
+
+#ifdef CONFIG_ARCH_SUN8IW6P1
+static int config_dynamic_standby(void)
+{
+    script_item_u item;
+    aw_power_scene_e type = SCENE_DYNAMIC_STANDBY;
+    scene_extended_standby_t *local_standby;
+    int enable = 0;
+    int dram_selfresh_flag = 1;
+    int i = 0;
+
+    //get customer customized dynamic_standby config
+    if(SCIRPT_ITEM_VALUE_TYPE_INT != script_get_item("dynamic_standby_para", "enable", &item)){
+	pr_err("%s: script_parser_fetch err. \n", __func__);
+	enable = 0;
+    }else{
+	enable = item.val;
+    }
+    printk(KERN_INFO "dynamic_standby enalbe = 0x%x. \n", enable);
+    if(1 == enable){
+	for (i = 0; i < extended_standby_cnt; i++) {
+	    if (type == extended_standby[i].scene_type) {
+		//config dram_selfresh flag;
+		local_standby = &(extended_standby[i]);
+		if(SCIRPT_ITEM_VALUE_TYPE_INT != script_get_item("dynamic_standby_para", "dram_selfresh_flag", &item)){
+		    pr_err("%s: script_parser_fetch err. \n", __func__);
+		    dram_selfresh_flag = 1;
+		}else{
+		    dram_selfresh_flag = item.val;
+		}
+		printk(KERN_INFO "dynamic_standby dram selfresh flag = 0x%x. \n", dram_selfresh_flag);
+		if(0 == dram_selfresh_flag){
+		    local_standby->soc_pwr_dep.soc_dram_state.selfresh_flag     = dram_selfresh_flag;
+		    local_standby->soc_pwr_dep.soc_pwr_dm_state.state |= BITMAP(VDD_SYS_BIT);
+		    local_standby->soc_pwr_dep.cpux_clk_state.osc_en         |= 0xf;	// mean all osc is on.
+		    //mean pll5 is shutdowned & open by dram driver. 
+		    //hsic can't closed.  
+		    //periph is needed.
+		    local_standby->soc_pwr_dep.cpux_clk_state.init_pll_dis   |= (BITMAP(PM_PLL_HSIC) | BITMAP(PM_PLL_PERIPH) | BITMAP(PM_PLL_DRAM));
+		}
+
+		//config other flag?
+	    }
+
+	    //config other extended_standby?
+	}
+	printk(KERN_INFO "enable dynamic_standby by customer.\n");
+	scene_lock_store(NULL, NULL, "dynamic_standby", 0);
+    }
+
+    return 0;
+}
+
+static int config_sys_pwr_dm(char *pwr_dm)
+{
+    script_item_u item;
+    if(SCIRPT_ITEM_VALUE_TYPE_INT != script_get_item("sys_pwr_dm_para", pwr_dm , &item)){
+	//pr_info("%s: script_parser_fetch err. not change. \n", __func__);
+    }else{
+	printk("%s: value: %d. \n", pwr_dm, item.val);
+	if(0 == item.val) {
+	    del_sys_pwr_dm(pwr_dm);	
+	}else{
+	    add_sys_pwr_dm(pwr_dm);	
+	}
+
+    }
+
+    return 0;
+}
+
+static int config_sys_pwr(void)
+{
+    unsigned int sys_mask = 0;
+    
+    config_sys_pwr_dm("vdd-cpua");
+    config_sys_pwr_dm("vdd-cpub");
+    config_sys_pwr_dm("vcc-dram");
+    config_sys_pwr_dm("vdd-gpu");
+    config_sys_pwr_dm("vdd-sys");
+    config_sys_pwr_dm("vdd-vpu");
+    config_sys_pwr_dm("vdd-cpus");
+    config_sys_pwr_dm("vdd-drampll");
+    config_sys_pwr_dm("vcc-adc");
+    config_sys_pwr_dm("vcc-pl");
+    config_sys_pwr_dm("vcc-pm");
+    config_sys_pwr_dm("vcc-io");
+    config_sys_pwr_dm("vcc-cpvdd");
+    config_sys_pwr_dm("vcc-ldoin");
+    config_sys_pwr_dm("vcc-pll");
+
+    sys_mask = get_sys_pwr_dm_mask();
+    printk(KERN_INFO "after customized: sys_mask config = 0x%x. \n", sys_mask);
+
+    return 0;
+}
+#endif
 
 /*
 *********************************************************************************************************
@@ -1037,6 +1380,7 @@ static int __init aw_pm_init(void)
 	int wakeup_src_cnt = 0;
 	unsigned gpio = 0;
 	int i = 0;
+	int error = 0;
 	
 	PM_DBG("aw_pm_init!\n");
 
@@ -1066,6 +1410,7 @@ static int __init aw_pm_init(void)
 		}
 	}
 
+
 	/*init debug state*/
 	mem_status_init(); 
 	
@@ -1073,9 +1418,21 @@ static int __init aw_pm_init(void)
 	//*(volatile __u32 *)(STANDBY_STATUS_REG  + 0x08) = BOOT_UPGRAGE_FLAG;
 	suspend_set_ops(&aw_pm_ops);
 
-	return 0;
-}
+#ifdef CONFIG_ARCH_SUN8IW6P1
+	config_dynamic_standby();
+	/*init sys_pwr_dm*/
+	init_sys_pwr_dm();
+	//config sys_pwr_dm
+	config_sys_pwr();
+#endif
 
+	aw_pm_kobj = kobject_create_and_add("aw_pm", power_kobj);
+	if (!aw_pm_kobj)
+		return -ENOMEM;
+	error = sysfs_create_group(aw_pm_kobj, &attr_group);
+	
+	return error ? error : 0;
+}
 
 /*
 *********************************************************************************************************
@@ -1097,7 +1454,6 @@ static void __exit aw_pm_exit(void)
 	suspend_set_ops(NULL);
 }
 
-module_param_named(debug_mask, debug_mask, int, S_IRUGO | S_IWUSR);
 module_param_named(suspend_freq, suspend_freq, int, S_IRUGO | S_IWUSR);
 module_param_named(suspend_delay_ms, suspend_delay_ms, int, S_IRUGO | S_IWUSR);
 module_param_named(standby_mode, standby_mode, int, S_IRUGO | S_IWUSR);

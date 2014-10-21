@@ -41,6 +41,7 @@
 #define SUNXI_PL_BASE	352
 #define SUNXI_PM_BASE	384
 #define SUNXI_PN_BASE	416
+#define SUNXI_PO_BASE	448
 #define AXP_PIN_BASE	1024
 
 #define SUNXI_PIN_NAME_MAX_LEN	8
@@ -60,11 +61,13 @@
 #define GPIOL(n)	(SUNXI_PL_BASE + (n))
 #define GPIOM(n)	(SUNXI_PM_BASE + (n))
 #define GPION(n)	(SUNXI_PN_BASE + (n))
+#define GPIOO(n)	(SUNXI_PO_BASE + (n))
 #define GPIO_AXP(n)	(AXP_PIN_BASE  + (n))
 
 /* sunxi specific input/output/eint functions */
 #define SUNXI_PIN_INPUT_FUNC	(0)
 #define SUNXI_PIN_OUTPUT_FUNC	(1)
+#define SUNXI_PIN_IO_DISABLE	(7)
 
 /* axp group base number name space,
  * axp pinctrl number space coherent to sunxi-pinctrl.

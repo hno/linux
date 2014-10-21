@@ -639,11 +639,11 @@ static int axp_pinconf_get(struct pinctrl_dev *pctldev,
 	case SUNXI_PINCFG_TYPE_DAT:
 		data = axp_gpio_get_data(pin);
 		*config = SUNXI_PINCFG_PACK(SUNXI_PINCFG_TYPE_DAT, data);
-	        pr_warn("axp pconf get pin [%s] data [%d]\n", 
+               pr_debug("axp pconf get pin [%s] data [%d]\n",
 		         pin_get_name(pctl->pctl_dev, pin), data); 
 		break;
 	default:
-		pr_warn("invalid axp pconf type for get\n");
+               pr_debug("invalid axp pconf type for get\n");
 		return -EINVAL;      
 	}
 	return 0;
@@ -660,11 +660,11 @@ static int axp_pinconf_set(struct pinctrl_dev *pctldev,
 	case SUNXI_PINCFG_TYPE_DAT:
 		data = SUNXI_PINCFG_UNPACK_VALUE(config);
 		axp_gpio_set_data(pin, data);
-	        pr_warn("axp pconf set pin [%s] data to [%d]\n", 
+               pr_debug("axp pconf set pin [%s] data to [%d]\n",
 		         pin_get_name(pctl->pctl_dev, pin), data);
 		break;
 	default:
-		pr_warn("invalid axp pconf type for set\n");
+               pr_debug("invalid axp pconf type for set\n");
 		return -EINVAL;      
 	}
 	return 0;
@@ -905,7 +905,7 @@ static int axp_pinctrl_parse_pin_cfg(struct platform_device *pdev)
 	
 	/* get main key count */
 	mainkey_count = script_get_main_key_count();
-	pr_warn("mainkey total count : %d\n", mainkey_count);
+       pr_debug("mainkey total count : %d\n", mainkey_count);
 	for (mainkey_idx = 0; mainkey_idx < mainkey_count; mainkey_idx++) {
 		char           *mainkey_name;
 		script_item_u  *pin_list;
@@ -918,13 +918,13 @@ static int axp_pinctrl_parse_pin_cfg(struct platform_device *pdev)
 		mainkey_name = script_get_main_key_name(mainkey_idx);
 		if (!mainkey_name) {
 			/* get mainkey name failed */
-			pr_warn("get mainkey [%s] name failed\n", mainkey_name);
+                       pr_debug("get mainkey [%s] name failed\n", mainkey_name);
 			continue;
 		}
 		
 		/* get main-key(device) pin configuration */
 		pin_count = script_get_pio_list(mainkey_name, &pin_list);
-		pr_warn("mainkey name : %s, pin count : %d\n", mainkey_name, pin_count);
+               pr_debug("mainkey name : %s, pin count : %d\n", mainkey_name, pin_count);
 		if (pin_count == 0) {
 			/* the mainkey have no pin configuration */
 			continue;
@@ -948,7 +948,7 @@ static int axp_pinctrl_parse_pin_cfg(struct platform_device *pdev)
 		}
 		if (map_index) {
 			/* register maps to pinctrl */
-			pr_warn("map mainkey [%s] to pinctrl, map number [%d]\n", 
+                       pr_debug("map mainkey [%s] to pinctrl, map number [%d]\n",
 			        mainkey_name, map_index);
 			pinctrl_register_mappings(maps, map_index);
 		}
@@ -969,7 +969,6 @@ static int axp_pinctrl_probe(struct platform_device *pdev)
 	int    i, rc;
 	
 	/* allocate and initialize axp-pinctrl */
-	pr_warn("axp_pinctrl_probe enter...\n");
 	pctl = devm_kzalloc(dev, sizeof(*pctl), GFP_KERNEL);
 	if (!pctl) {
 		dev_err(dev, "allocate memory for axp-pinctrl structure failed\n");
@@ -1030,7 +1029,6 @@ static int axp_pinctrl_probe(struct platform_device *pdev)
 	
 	axp_pinctrl_parse_pin_cfg(pdev);
 	
-	pr_warn("axp pinctrl driver probe ok\n");
 	return 0;
 }
 
@@ -1066,12 +1064,12 @@ static int __init axp_pinctrl_init(void)
 	int ret;
 	ret = platform_device_register(&axp_pinctrl_device);
 	if (IS_ERR_VALUE(ret)) {
-		pr_warn("register axp platform device failed, errno %d\n", ret);
+               pr_err("register axp platform device failed, errno %d\n", ret);
 		return -EINVAL;
 	}
 	ret = platform_driver_register(&axp_pinctrl_driver);
 	if (IS_ERR_VALUE(ret)) {
-		pr_warn("register axp platform driver failed, errno %d\n", ret);
+               pr_err("register axp platform driver failed, errno %d\n", ret);
 		return -EINVAL;
 	}
 	return 0;

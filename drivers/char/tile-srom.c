@@ -148,7 +148,7 @@ static int srom_open(struct inode *inode, struct file *filp)
 static int srom_release(struct inode *inode, struct file *filp)
 {
 	struct srom_dev *srom = filp->private_data;
-	char dummy;
+	char dummy = 0;
 
 	/* Make sure we've flushed anything written to the ROM. */
 	mutex_lock(&srom->lock);

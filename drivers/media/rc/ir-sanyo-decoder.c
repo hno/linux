@@ -187,7 +187,7 @@ static int __init ir_sanyo_decode_init(void)
 {
 	ir_raw_handler_register(&sanyo_handler);
 
-	printk(KERN_INFO "IR SANYO protocol handler initialized\n");
+	pr_debug("IR SANYO protocol handler initialized\n");
 	return 0;
 }
 

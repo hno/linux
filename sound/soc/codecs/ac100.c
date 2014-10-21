@@ -38,6 +38,7 @@
 #include <linux/arisc/arisc.h>
 #include <linux/power/scenelock.h>
 //#include <linux/scenelock.h>
+#include <linux/mfd/ac100-mfd.h>
 #include <mach/gpio.h>
 #include "ac100.h"
 #ifdef CONFIG_ARCH_SUN9IW1
@@ -47,7 +48,6 @@
 #if defined(CONFIG_ARCH_SUN9IW1) \
 	|| defined(CONFIG_ARCH_SUN8IW6)
 	#define AUDIO_RSB_BUS
-	static unsigned int twi_id = 0;
 #else
 	static unsigned int twi_id = 2;
 #endif
@@ -67,8 +67,13 @@ static int KEY_VOLUME_FLAG = 0;
 #define HEADSET_CHECKCOUNT_SUM  (2)
 
 static struct regulator *aif3_cldo3 = NULL;
+static struct regulator *bt_aldo2_vol = NULL;
+static struct regulator *pa_sw0_vol = NULL;
 static script_item_u 	aif3_voltage;
-
+static script_item_u 	aldo2_voltage;
+static script_item_u 	sw0_voltage;
+static int homlet_flag = 0;
+static int audio_pa_used = 0;
 
 #define sndvir_audio_RATES  (SNDRV_PCM_RATE_8000_192000|SNDRV_PCM_RATE_KNOT)
 #define sndvir_audio_FORMATS (SNDRV_PCM_FMTBIT_S8 | SNDRV_PCM_FMTBIT_S16_LE | \
@@ -129,6 +134,13 @@ static int headset_val = 0x3a;
 static bool speaker_double_used = true;
 static int double_speaker_val = 0x1b;
 static int single_speaker_val = 0x19;
+static int agc_used 		= 0;
+static int drc_used 		= 0;
+
+struct ac100_priv {
+	struct ac100 *ac100;
+	struct snd_soc_codec *codec;
+};
 
 /*
 *	codec_lineinin_en == 1, open the linein in.
@@ -235,14 +247,16 @@ static int codec_set_speakerout_lntor(struct snd_kcontrol *kcontrol,
 		reg_val = snd_soc_read(codec, SPKOUT_CTRL);
 		reg_val |= (0x1<<LSPK_EN);
 		snd_soc_write(codec, SPKOUT_CTRL, reg_val);
-
-		gpio_set_value(item.gpio.gpio, 1);
+		if (audio_pa_used) {
+			gpio_set_value(item.gpio.gpio, 1);
+		}
 		codec_headphoneout_en = 0;
 		codec_earpieceout_en = 0;
 	} else {
-		gpio_set_value(item.gpio.gpio, 0);
-		usleep_range(2000, 3000);
-
+		if (audio_pa_used) {
+			gpio_set_value(item.gpio.gpio, 0);
+			usleep_range(2000, 3000);
+		}
 		/*disable l/r spk*/
 		reg_val = snd_soc_read(codec, SPKOUT_CTRL);
 		reg_val &= ~((0x1<<RSPK_EN)|(0x1<<LSPK_EN));
@@ -309,8 +323,10 @@ static int codec_set_speakerout(struct snd_kcontrol *kcontrol,
 		reg_val |= (0x1<<RSPKINVEN)|(0x1<<LSPKINVEN);
 		snd_soc_write(codec, SPKOUT_CTRL, reg_val);
 		usleep_range(2000, 3000);
-		gpio_set_value(item.gpio.gpio, 1);
-		msleep(62);
+		if (audio_pa_used) {
+			gpio_set_value(item.gpio.gpio, 1);
+			msleep(62);
+		}
 		for (i = 1; i < 25; i = i + 1) {
 			/*set  volume*/
 			reg_val = snd_soc_read(codec, SPKOUT_CTRL);
@@ -339,8 +355,10 @@ static int codec_set_speakerout(struct snd_kcontrol *kcontrol,
 		reg_val = snd_soc_read(codec, SPKOUT_CTRL);
 		reg_val &= ~(0x1f<<SPK_VOL);
 		snd_soc_write(codec, SPKOUT_CTRL, reg_val);
-		gpio_set_value(item.gpio.gpio, 0);
-		msleep(62);
+		if (audio_pa_used) {
+			gpio_set_value(item.gpio.gpio, 0);
+			msleep(62);
+		}
 		/*disable l/r spk*/
 		reg_val = snd_soc_read(codec, SPKOUT_CTRL);
 		reg_val &= ~((0x1<<RSPK_EN)|(0x1<<LSPK_EN));
@@ -367,7 +385,7 @@ static int codec_set_headphoneout(struct snd_kcontrol *kcontrol,
 	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
 	codec_headphoneout_en = ucontrol->value.integer.value[0];
 	if (codec_headphoneout_en) {
-		printk("%s,line:%d\n",__func__,__LINE__);
+		pr_debug("%s,line:%d\n",__func__,__LINE__);
 		/*zero cross*/
 		reg_val = snd_soc_read(codec, ADDA_TUNE1);
 		reg_val &= ~(0x1<<8);
@@ -858,9 +876,10 @@ static int codec_set_endcall(struct snd_kcontrol *kcontrol,
 	reg_val = snd_soc_read(codec, HPOUT_CTRL);
 	reg_val &= ~((0x1<<RHPPA_MUTE)|(0x1<<LHPPA_MUTE));
 	snd_soc_write(codec, HPOUT_CTRL, reg_val);
-	gpio_set_value(item.gpio.gpio, 0);
-	usleep_range(2000, 3000);
-
+	if (audio_pa_used) {
+		gpio_set_value(item.gpio.gpio, 0);
+		usleep_range(2000, 3000);
+	}
 	/*zero cross*/
 	reg_val = snd_soc_read(codec, ADDA_TUNE1);
 	reg_val |= (0x1<<8);
@@ -1419,7 +1438,7 @@ static int codec_set_digital_bb_clk_format(struct snd_kcontrol *kcontrol,
 	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
 	codec_digital_bb_clk_format_init = ucontrol->value.integer.value[0];
 	if (codec_digital_bb_clk_format_init) {
-		printk("%s,line:%d\n",__func__,__LINE__);
+		pr_debug("%s,line:%d\n",__func__,__LINE__);
 		/*enble pll2*/
 		reg_val = 0x0;
 		reg_val |= (0x1<<PLL_EN);
@@ -1563,7 +1582,6 @@ static int codec_set_digital_bb_clk_format(struct snd_kcontrol *kcontrol,
 			reg_val |= (0x1<<SRC1_ENA);
 			snd_soc_write(codec, AIF_SR_CTRL, reg_val);
 		}
-
 	} else {
 		reg_val = 0x0141;
 		snd_soc_write(codec, PLL_CTRL1,reg_val);
@@ -1610,11 +1628,12 @@ static int codec_set_bt_clk_format(struct snd_kcontrol *kcontrol,
 		/*a80+70:cldo3:config voltage for aif3*/
 		aif3_cldo3 = regulator_get(NULL, aif3_voltage.str);
 		if (!aif3_cldo3) {
-			printk("get audio aif3_cldo3 failed\n");
+			pr_err("get audio aif3_cldo3 failed\n");
 			return -EFAULT;
 		}
 		regulator_set_voltage(aif3_cldo3, 3000000, 3000000);
 		regulator_enable(aif3_cldo3);
+
 #ifdef CONFIG_ARCH_SUN9IW1
 		/*config sysclk 24.576M*/
 		sunxi_daudio_set_rate(24576000);
@@ -1889,11 +1908,12 @@ static int codec_set_digital_bb_bt_clk_format(struct snd_kcontrol *kcontrol,
 		/*a80+70:cldo3:config voltage for aif3*/
 		aif3_cldo3 = regulator_get(NULL,aif3_voltage.str);
 		if (!aif3_cldo3) {
-			printk("get audio aif3_cldo3 failed\n");
+			pr_err("get audio aif3_cldo3 failed\n");
 			return -EFAULT;
 		}
 		regulator_set_voltage(aif3_cldo3, 3000000, 3000000);
 		regulator_enable(aif3_cldo3);
+
 		/* enable  aif3 module clk*/
 		reg_val = snd_soc_read(codec, MOD_CLK_ENA);
 		reg_val |= (0x1<<MOD_CLK_AIF3);
@@ -2168,6 +2188,7 @@ static int codec_analog_dacphoneout_reduced_open(struct snd_soc_codec *codec)
 static int codec_system_btout_open(struct snd_soc_codec *codec)
 {
 	int reg_val;
+
 #ifdef CONFIG_ARCH_SUN9IW1
 	/*config sysclk 24.576M*/
 	sunxi_daudio_set_rate(24576000);
@@ -2267,6 +2288,19 @@ static int codec_system_btout_open(struct snd_soc_codec *codec)
 static int codec_spk_play_open(struct snd_soc_codec *codec)
 {
 	int reg_val;
+	if(drc_used){
+		snd_soc_write(codec, 0xb5, 0x80);
+		reg_val = snd_soc_read(codec, MOD_CLK_ENA);
+		reg_val |= (0x1<<6);
+		snd_soc_write(codec, MOD_CLK_ENA, reg_val);
+		reg_val = snd_soc_read(codec, MOD_RST_CTRL);
+		reg_val |= (0x1<<6);
+		snd_soc_write(codec, MOD_RST_CTRL, reg_val);
+
+		reg_val = snd_soc_read(codec, 0xa0);
+		reg_val |= (0x7<<0);
+		snd_soc_write(codec, 0xa0, reg_val);
+	}
 	/*open aif1 DAC channel slot0 switch*/
 	reg_val = snd_soc_read(codec, AIF1_DACDAT_CTRL);
 	reg_val |= (0x1<<AIF1_DA0L_ENA)|(0x1<<AIF1_DA0R_ENA);
@@ -2342,8 +2376,10 @@ static int codec_spk_play_open(struct snd_soc_codec *codec)
 
 	usleep_range(2000, 3000);
 	if (play_running) {
-		gpio_set_value(item.gpio.gpio, 1);
-		//msleep(62);
+		if (audio_pa_used) {
+			gpio_set_value(item.gpio.gpio, 1);
+			//msleep(62);
+		}
 	}
 	return 0;
 }
@@ -2353,8 +2389,23 @@ static int codec_spk_play_open(struct snd_soc_codec *codec)
 static int codec_headphone_play_open(struct snd_soc_codec *codec)
 {
 	int reg_val;
-	/*disable pa_ctrl*/
-	gpio_set_value(item.gpio.gpio, 0);
+	if (audio_pa_used) {
+		/*disable pa_ctrl*/
+		gpio_set_value(item.gpio.gpio, 0);
+	}
+	if(drc_used){
+		snd_soc_write(codec, 0xb5, 0x0);
+		reg_val = snd_soc_read(codec, MOD_CLK_ENA);
+		reg_val &= ~(0x1<<6);
+		snd_soc_write(codec, MOD_CLK_ENA, reg_val);
+		reg_val = snd_soc_read(codec, MOD_RST_CTRL);
+		reg_val &= ~(0x1<<6);
+		snd_soc_write(codec, MOD_RST_CTRL, reg_val);
+
+		reg_val = snd_soc_read(codec, 0xa0);
+		reg_val &= ~(0x7<<0);
+		snd_soc_write(codec, 0xa0, reg_val);
+	}
 	msleep(62);
 	/*disable speaker*/
 	reg_val = snd_soc_read(codec, SPKOUT_CTRL);
@@ -2505,9 +2556,10 @@ static int codec_spk_headset_play_open(struct snd_soc_codec *codec)
 	usleep_range(2000, 3000);
 	if (play_running) {
 		/*config gpio info of audio_pa_ctrl open*/
-		gpio_set_value(item.gpio.gpio, 1);
-		//msleep(62);
-
+		if (audio_pa_used) {
+			gpio_set_value(item.gpio.gpio, 1);
+			//msleep(62);
+		}
 	}
 	return 0;
 }
@@ -2591,7 +2643,7 @@ static int codec_earpiece_play_open(struct snd_soc_codec *codec)
 static int codec_bt_play_open(struct snd_soc_codec *codec)
 {
 	int reg_val;
-	printk("%s,line:%d\n",__func__,__LINE__);
+	pr_debug("%s,line:%d\n",__func__,__LINE__);
 	/*open aif1 DAC channel slot0 switch*/
 	reg_val = snd_soc_read(codec, AIF1_DACDAT_CTRL);
 	reg_val |= (0x1<<AIF1_DA0R_ENA);
@@ -3231,8 +3283,10 @@ static int sndvir_audio_mute(struct snd_soc_dai *codec_dai, int mute)
 				break;
 			case 1:
 				msleep(100);
-				gpio_set_value(item.gpio.gpio, 1);
-				msleep(62);
+				if (audio_pa_used) {
+					gpio_set_value(item.gpio.gpio, 1);
+					msleep(62);
+				}
 				break;
 			case 2:
 				reg_val = snd_soc_read(codec, SPKOUT_CTRL);
@@ -3246,8 +3300,10 @@ static int sndvir_audio_mute(struct snd_soc_dai *codec_dai, int mute)
 				reg_val = snd_soc_read(codec, HPOUT_CTRL);
 				reg_val |= (0x1<<HPPA_EN);
 				snd_soc_write(codec, HPOUT_CTRL, reg_val);
-				gpio_set_value(item.gpio.gpio, 1);
-				msleep(10);
+				if (audio_pa_used) {
+					gpio_set_value(item.gpio.gpio, 1);
+					msleep(10);
+				}
 				/*unmute l/r headphone pa*/
 				reg_val = snd_soc_read(codec, HPOUT_CTRL);
 				reg_val |= (0x1<<RHPPA_MUTE)|(0x1<<LHPPA_MUTE);
@@ -3365,8 +3421,10 @@ static void sndvir_audio_shutdown(struct snd_pcm_substream *substream,
 				reg_val = snd_soc_read(codec, HPOUT_CTRL);
 				reg_val &= ~((0x1<<RHPS)|(0x1<<LHPS));
 				snd_soc_write(codec, HPOUT_CTRL, reg_val);
-				gpio_set_value(item.gpio.gpio, 0);
-				msleep(62);
+				if (audio_pa_used) {
+					gpio_set_value(item.gpio.gpio, 0);
+					msleep(62);
+				}
 				/*disable speaker*/
 				reg_val = snd_soc_read(codec, SPKOUT_CTRL);
 				reg_val &= ~((0x1<<RSPK_EN)|(0x1<<LSPK_EN));
@@ -3377,10 +3435,11 @@ static void sndvir_audio_shutdown(struct snd_pcm_substream *substream,
 				reg_val = snd_soc_read(codec, SPKOUT_CTRL);
 				reg_val &= ~(0x1f<<SPK_VOL);
 				snd_soc_write(codec, SPKOUT_CTRL, reg_val);
-
-				/*disable pa_ctrl*/
-				gpio_set_value(item.gpio.gpio, 0);
-				msleep(62);
+				if (audio_pa_used) {
+					/*disable pa_ctrl*/
+					gpio_set_value(item.gpio.gpio, 0);
+					msleep(62);
+				}
 				/*disable speaker*/
 				reg_val = snd_soc_read(codec, SPKOUT_CTRL);
 				reg_val &= ~((0x1<<RSPK_EN)|(0x1<<LSPK_EN));
@@ -3416,10 +3475,11 @@ static void sndvir_audio_shutdown(struct snd_pcm_substream *substream,
 				reg_val = snd_soc_read(codec, SPKOUT_CTRL);
 				reg_val &= ~(0x1f<<SPK_VOL);
 				snd_soc_write(codec, SPKOUT_CTRL, reg_val);
-
-				/*disable pa_ctrl*/
-				gpio_set_value(item.gpio.gpio, 0);
-				msleep(62);
+				if (audio_pa_used) {
+					/*disable pa_ctrl*/
+					gpio_set_value(item.gpio.gpio, 0);
+					msleep(62);
+				}
 				/*disable speaker*/
 				reg_val = snd_soc_read(codec, SPKOUT_CTRL);
 				reg_val &= ~((0x1<<RSPK_EN)|(0x1<<LSPK_EN));
@@ -3479,7 +3539,7 @@ static void sndvir_audio_shutdown(struct snd_pcm_substream *substream,
 
 			/*diable clk parts*/
 			if (1 == cap_running ) {
-				printk("capturing is running!!!!\n");
+				pr_debug("capturing is running!!!!\n");
 			} else {
 				/*disable module AIF1,DAC*/
 				reg_val = snd_soc_read(codec, MOD_CLK_ENA);
@@ -3518,6 +3578,19 @@ static void sndvir_audio_shutdown(struct snd_pcm_substream *substream,
 			reg_val = snd_soc_read(codec, DAC_MXR_SRC);
 			reg_val &= ~((0x1<<DACL_MXR_AIF1_DA0L)|(0x1<<DACR_MXR_AIF1_DA0R));
 			snd_soc_write(codec, DAC_MXR_SRC, reg_val);
+			if(drc_used){
+				snd_soc_write(codec, 0xb5, 0x0);
+				reg_val = snd_soc_read(codec, MOD_CLK_ENA);
+				reg_val &= ~(0x1<<6);
+				snd_soc_write(codec, MOD_CLK_ENA, reg_val);
+				reg_val = snd_soc_read(codec, MOD_RST_CTRL);
+				reg_val &= ~(0x1<<6);
+				snd_soc_write(codec, MOD_RST_CTRL, reg_val);
+
+				reg_val = snd_soc_read(codec, 0xa0);
+				reg_val &= ~(0x7<<0);
+				snd_soc_write(codec, 0xa0, reg_val);
+			}
 		}
 		play_running = 0;
 	} else {
@@ -3558,7 +3631,7 @@ static void sndvir_audio_shutdown(struct snd_pcm_substream *substream,
 			snd_soc_write(codec, ADC_DIG_CTRL, reg_val);
 
 			if (play_running == 1 ) {
-				printk("play is running!!!!\n");
+				pr_debug("play is running!!!!\n");
 			} else {
 				/*disable module AIF1*/
 				reg_val = snd_soc_read(codec, MOD_CLK_ENA);
@@ -3598,6 +3671,28 @@ static void sndvir_audio_shutdown(struct snd_pcm_substream *substream,
 
 		/*disable rx fifo*/
 		r_i2s_rx_disable();
+		if(agc_used){
+			reg_val = snd_soc_read(codec, MOD_CLK_ENA);
+			reg_val &= ~(0x1<<7);
+			snd_soc_write(codec, MOD_CLK_ENA, reg_val);
+			reg_val = snd_soc_read(codec, MOD_RST_CTRL);
+			reg_val &= ~(0x1<<7);
+			snd_soc_write(codec, MOD_RST_CTRL, reg_val);
+
+			reg_val = snd_soc_read(codec, 0x82);
+			reg_val &= ~(0xf<<0);
+			//reg_val |= (0x6<<0);
+			reg_val &= ~(0x7<<12);
+			//reg_val |= (0x7<<12);
+			snd_soc_write(codec, 0x82, reg_val);
+
+			reg_val = snd_soc_read(codec, 0x83);
+			reg_val &= ~(0xf<<0);
+			//reg_val |= (0x6<<0);
+			reg_val &= ~(0x7<<12);
+			//reg_val |= (0x7<<12);
+			snd_soc_write(codec, 0x83, reg_val);
+	}
 
 		cap_running = 0;
 	}
@@ -3663,7 +3758,30 @@ static int codec_capture_open(struct snd_soc_codec *codec)
 		reg_val |= (0x1<<MBIASEN);
 		snd_soc_write(codec, ADC_APC_CTRL, reg_val);
 	}
+	if(agc_used){
+		reg_val = snd_soc_read(codec, MOD_CLK_ENA);
+		reg_val |= (0x1<<7);
+		snd_soc_write(codec, MOD_CLK_ENA, reg_val);
+		reg_val = snd_soc_read(codec, MOD_RST_CTRL);
+		reg_val |= (0x1<<7);
+		snd_soc_write(codec, MOD_RST_CTRL, reg_val);
 
+		reg_val = snd_soc_read(codec, 0x82);
+		reg_val &= ~(0xf<<0);
+		reg_val |= (0x6<<0);
+
+		reg_val &= ~(0x7<<12);
+		reg_val |= (0x7<<12);
+		snd_soc_write(codec, 0x82, reg_val);
+
+		reg_val = snd_soc_read(codec, 0x83);
+		reg_val &= ~(0xf<<0);
+		reg_val |= (0x6<<0);
+
+		reg_val &= ~(0x7<<12);
+		reg_val |= (0x7<<12);
+		snd_soc_write(codec, 0x83, reg_val);
+	}
 	/*enable ADC Digital part & ENBLE Analog ADC mode */
 	reg_val = snd_soc_read(codec, ADC_DIG_CTRL);
 	reg_val &= ~((0x1<<ENAD)|(0x1<<ENDM));
@@ -3687,6 +3805,7 @@ static int codec_capture_open(struct snd_soc_codec *codec)
 static int codec_system_bt_capture_open(struct snd_soc_codec *codec)
 {
 	int reg_val;
+
 #ifdef CONFIG_ARCH_SUN9IW1
 	/*config sysclk 24.576M*/
 	sunxi_daudio_set_rate(24576000);
@@ -3896,7 +4015,7 @@ static int sndvir_audio_prepare(struct snd_pcm_substream *substream,
 	struct snd_soc_codec *codec = codec_dai->codec;
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 		if(substream->runtime->status->state == SNDRV_PCM_STATE_XRUN){
-			printk("%s,SNDRV_PCM_STATE_XRUN:playback xrun,line:%d\n",__func__,__LINE__);
+			pr_debug("%s,SNDRV_PCM_STATE_XRUN:playback xrun,line:%d\n",__func__,__LINE__);
 			if( !(codec_speakerout_en || codec_headphoneout_en || codec_earpieceout_en ||
 					codec_lineinin_en || codec_voice_record_en || codec_bt_clk_format || codec_digital_bb_bt_clk_format) ){
 				if (codec_speaker_headset_earpiece_en == 1) {
@@ -3920,7 +4039,7 @@ static int sndvir_audio_prepare(struct snd_pcm_substream *substream,
 
 	} else {
 		if(substream->runtime->status->state == SNDRV_PCM_STATE_XRUN){
-			printk("%s,SNDRV_PCM_STATE_XRUN:capure xrun,line:%d\n",__func__,__LINE__);
+			pr_debug("%s,SNDRV_PCM_STATE_XRUN:capure xrun,line:%d\n",__func__,__LINE__);
 		}
 		if (codec_voice_record_en && (codec_digital_mainmic_en ||codec_digital_headsetmic_en)) {
 			codec_digital_voice_mic_bb_capture_open(codec);
@@ -4196,7 +4315,7 @@ static int sndvir_audio_set_dai_fmt(struct snd_soc_dai *codec_dai,
 			reg_val |= (0x1<<AIF1_MSTR_MOD);
 			break;
 		default:
-			printk("unknwon master/slave format\n");
+			pr_err("unknwon master/slave format\n");
 			return -EINVAL;
 	}
 	snd_soc_write(codec, AIF1_CLK_CTRL, reg_val);
@@ -4218,7 +4337,7 @@ static int sndvir_audio_set_dai_fmt(struct snd_soc_dai *codec_dai,
 			reg_val |= (0x3<<AIF1_DATA_FMT);
 			break;
 		default:
-			printk("%s, line:%d\n", __func__, __LINE__);
+			pr_err("%s, line:%d\n", __func__, __LINE__);
 			return -EINVAL;
 	}
 	snd_soc_write(codec, AIF1_CLK_CTRL, reg_val);
@@ -4341,7 +4460,7 @@ static ssize_t print_headset_name(struct switch_dev *sdev, char *buf)
 static void switch_status_update(struct headset_data *para)
 {
 	struct headset_data *hs_data = para;
-	printk("%s,line:%d,hs_data->state:%d\n",__func__, __LINE__, hs_data->state);
+	pr_debug("%s,line:%d,hs_data->state:%d\n",__func__, __LINE__, hs_data->state);
 	down(&hs_data->sem);
 	switch_set_state(&hs_data->sdev, hs_data->state);
 	up(&hs_data->sem);
@@ -4359,7 +4478,7 @@ static void clear_codec_irq_work(struct work_struct *work)
 	reg_val = snd_soc_read(codec, HMIC_STS);
 	if ((0x1<<4)&reg_val) {
 		reset_flag++;
-		printk("---///----reset_flag:%d--------//\n",reset_flag);
+		pr_debug("---///----reset_flag:%d--------//\n",reset_flag);
 	}
 	reg_val |= (0x1f<<0);
 	snd_soc_write(codec, HMIC_STS, reg_val);
@@ -4375,7 +4494,7 @@ static void clear_codec_irq_work(struct work_struct *work)
 
 	if (0 == queue_work(switch_detect_queue, &hs_data->work)) {
 		irq_flag--;
-		printk("[clear_codec_irq_work]add work struct failed!\n");
+		pr_err("[clear_codec_irq_work]add work struct failed!\n");
 	}
 }
 
@@ -4410,7 +4529,7 @@ static void earphone_switch_work(struct work_struct *work)
 			if(((tmp<0xb && tmp>=0x1) || tmp>=0x19)&&(reset_flag == 0)){
 				input_report_key(hs_data->key, KEY_HEADSETHOOK, 1);
 				input_sync(hs_data->key);
-				printk("%s,line:%d,KEY_HEADSETHOOK1\n",__func__,__LINE__);
+				pr_debug("%s,line:%d,KEY_HEADSETHOOK1\n",__func__,__LINE__);
 				if(hook_flag1 != hook_flag2){
 					hook_flag1 = hook_flag2 = 0;
 				}
@@ -4429,7 +4548,7 @@ static void earphone_switch_work(struct work_struct *work)
 				input_sync(hs_data->key);
 				input_report_key(hs_data->key, KEY_VOLUMEUP, 0);
 				input_sync(hs_data->key);
-				printk("%s,line:%d,tmp:%d,KEY_VOLUMEUP\n",__func__,__LINE__,tmp);
+				pr_debug("%s,line:%d,tmp:%d,KEY_VOLUMEUP\n",__func__,__LINE__,tmp);
 			}
 			if(reset_flag)
 				reset_flag--;
@@ -4444,7 +4563,7 @@ static void earphone_switch_work(struct work_struct *work)
 				input_sync(hs_data->key);
 				input_report_key(hs_data->key, KEY_VOLUMEDOWN, 0);
 				input_sync(hs_data->key);
-				printk("%s,line:%d,KEY_VOLUMEDOWN\n",__func__,__LINE__);
+				pr_debug("%s,line:%d,KEY_VOLUMEDOWN\n",__func__,__LINE__);
 			}
 			if(reset_flag)
 				reset_flag--;
@@ -4462,7 +4581,7 @@ static void earphone_switch_work(struct work_struct *work)
 				hook_flag1 = hook_flag2 = 0;
 				input_report_key(hs_data->key, KEY_HEADSETHOOK, 0);
 				input_sync(hs_data->key);
-				printk("%s,line:%d,KEY_HEADSETHOOK0\n",__func__,__LINE__);
+				pr_debug("%s,line:%d,KEY_HEADSETHOOK0\n",__func__,__LINE__);
 			}
 		}
 	} else {
@@ -4537,13 +4656,13 @@ static irqreturn_t audio_hmic_irq(int irq, void *para)
 	writel((0x1<<7), ((void __iomem *)0xf8002c00+0x214));
 #endif
 	if(codec_irq_queue == NULL)
-		printk("------------codec_irq_queue is null!!----------");
+		pr_err("------------codec_irq_queue is null!!----------");
 	if(&hs_data->clear_codec_irq == NULL)
-		printk("------------hs_data->clear_codec_irq is null!!----------");
+		pr_err("------------hs_data->clear_codec_irq is null!!----------");
 
 	if(0 == queue_work(codec_irq_queue, &hs_data->clear_codec_irq)){
 		//irq_flag--;
-		printk("[audio_hmic_irq]add work struct failed!\n");
+		pr_err("[audio_hmic_irq]add work struct failed!\n");
 	}
 	return 0;
 }
@@ -4622,6 +4741,120 @@ static void codec_resume_work(struct work_struct *work)
 	reg_val |= (0x1<<OSCEN);
 	snd_soc_write(codec, ADDA_TUNE3, reg_val);
 	switch_hw_config(codec);
+	if(agc_used){
+		reg_val = snd_soc_read(codec, 0xb4);
+		reg_val |= (0x3<<6);
+		snd_soc_write(codec, 0xb4, reg_val);
+
+		reg_val = snd_soc_read(codec, 0x84);
+		reg_val &= ~(0x3f<<8);
+		reg_val |= (0x31<<8);
+		snd_soc_write(codec, 0x84, reg_val);
+
+		reg_val = snd_soc_read(codec, 0x84);
+		reg_val &= ~(0xff<<0);
+		reg_val |= (0x28<<0);
+		snd_soc_write(codec, 0x84, reg_val);
+
+		reg_val = snd_soc_read(codec, 0x85);
+		reg_val &= ~(0x3f<<8);
+		reg_val |= (0x31<<8);
+		snd_soc_write(codec, 0x85, reg_val);
+
+		reg_val = snd_soc_read(codec, 0x85);
+		reg_val &= ~(0xff<<0);
+		reg_val |= (0x28<<0);
+		snd_soc_write(codec, 0x85, reg_val);
+
+		reg_val = snd_soc_read(codec, 0x8a);
+		reg_val &= ~(0x7fff<<0);
+		reg_val |= (0x24<<0);
+		snd_soc_write(codec, 0x8a, reg_val);
+
+		reg_val = snd_soc_read(codec, 0x8b);
+		reg_val &= ~(0x7fff<<0);
+		reg_val |= (0x2<<0);
+		snd_soc_write(codec, 0x8b, reg_val);
+
+		reg_val = snd_soc_read(codec, 0x8c);
+		reg_val &= ~(0x7fff<<0);
+		reg_val |= (0x24<<0);
+		snd_soc_write(codec, 0x8c, reg_val);
+
+		reg_val = snd_soc_read(codec, 0x8d);
+		reg_val &= ~(0x7fff<<0);
+		reg_val |= (0x2<<0);
+		snd_soc_write(codec, 0x8d, reg_val);
+
+		reg_val = snd_soc_read(codec, 0x8e);
+		reg_val &= ~(0x1f<<8);
+		reg_val |= (0xf<<8);
+		reg_val &= ~(0x1f<<0);
+		reg_val |= (0xf<<0);
+		snd_soc_write(codec, 0x8e, reg_val);
+
+		reg_val = snd_soc_read(codec, 0x93);
+		reg_val &= ~(0x7ff<<0);
+		reg_val |= (0xfc<<0);
+		snd_soc_write(codec, 0x93, reg_val);
+		snd_soc_write(codec, 0x94, 0xabb3);
+	}
+	if(drc_used){
+		reg_val = snd_soc_read(codec, 0xa3);
+		reg_val &= ~(0x7ff<<0);
+		reg_val |= 1<<0;
+		snd_soc_write(codec, 0xa3, reg_val);
+		//snd_soc_write(codec, 0xa4, 0x1fb6);
+		snd_soc_write(codec, 0xa4, 0x2baf);
+
+		reg_val = snd_soc_read(codec, 0xa5);
+		reg_val &= ~(0x7ff<<0);
+		reg_val |= 1<<0;
+		snd_soc_write(codec, 0xa5, reg_val);
+		snd_soc_write(codec, 0xa6, 0x2baf);
+
+		reg_val = snd_soc_read(codec, 0xa7);
+		reg_val &= ~(0x7ff<<0);
+		snd_soc_write(codec, 0xa7, reg_val);
+		snd_soc_write(codec, 0xa8, 0x44a);
+
+		reg_val = snd_soc_read(codec, 0xa9);
+		reg_val &= ~(0x7ff<<0);
+		snd_soc_write(codec, 0xa9, reg_val);
+		snd_soc_write(codec, 0xaa, 0x1e06);
+
+		reg_val = snd_soc_read(codec, 0xab);
+		reg_val &= ~(0x7ff<<0);
+		//reg_val |= (0x27d<<0);
+		reg_val |= (0x352<<0);
+		snd_soc_write(codec, 0xab, reg_val);
+		//snd_soc_write(codec, 0xac, 0xcf68);
+		snd_soc_write(codec, 0xac, 0x6910);
+
+		reg_val = snd_soc_read(codec, 0xad);
+		reg_val &= ~(0x7ff<<0);
+		reg_val |= (0x77a<<0);
+		snd_soc_write(codec, 0xad, reg_val);
+		snd_soc_write(codec, 0xae, 0xaaaa);
+
+		reg_val = snd_soc_read(codec, 0xaf);
+		reg_val &= ~(0x7ff<<0);
+		//reg_val |= (0x1fe<<0);
+		reg_val |= (0x2de<<0);
+		snd_soc_write(codec, 0xaf, reg_val);
+		snd_soc_write(codec, 0xb0, 0xc982);
+
+		snd_soc_write(codec, 0x16, 0x9f9f);
+	}
+	msleep(200);
+	reg_val = snd_soc_read(codec, HMIC_STS);
+	reg_val = (reg_val>>HMIC_DATA);
+	reg_val &= 0x1f;
+	if (reg_val < 1) {
+		hs_data->state		= 0;
+		switch_status_update(hs_data);
+	}
+
 }
 #ifdef AC100_DEBUG
 static void debug_switch_work(struct work_struct *work)
@@ -4630,7 +4863,7 @@ static void debug_switch_work(struct work_struct *work)
 	reg_val = snd_soc_read(codec_switch, HMIC_STS);
 	reg_val &= (0x1f<<8);
 	reg_val = (reg_val>>8);
-	printk("%s, line:%d, reg_val:%x\n", __func__, __LINE__, reg_val);
+	pr_debug("%s, line:%d, reg_val:%x\n", __func__, __LINE__, reg_val);
 }
 
 static void earphone_switch_timer_poll(unsigned long data)
@@ -4649,6 +4882,7 @@ static int sndvir_audio_soc_probe(struct snd_soc_codec *codec)
 {
 	int ret = 0;
 	int reg_val1 = 0;
+	int reg_val = 0;
 	script_item_value_type_e  type;
 	script_item_u val;
 	struct headset_data *hs_data;
@@ -4663,10 +4897,6 @@ static int sndvir_audio_soc_probe(struct snd_soc_codec *codec)
 	}
 	pr_debug("AUDIO_I2C_BUS:%s, line:%d\n", __func__, __LINE__);
 #else
-       if (arisc_rsb_set_rtsaddr(RSB_DEVICE_SADDR7, RSB_RTSADDR_AC100)) {
-               dev_err(codec->dev, "AUDIO config codec failed\n");
-       }
-
 #endif
 
 	codec_switch = codec;
@@ -4702,7 +4932,7 @@ static int sndvir_audio_soc_probe(struct snd_soc_codec *codec)
 	/********************create input device************************/
 	hs_data->key = input_allocate_device();
 	if (!hs_data->key) {
-	     printk(KERN_ERR "input_allocate_device: not enough memory for input device\n");
+	     pr_err("input_allocate_device: not enough memory for input device\n");
 	     ret = -ENOMEM;
 	     goto err_input_allocate_device;
 	}
@@ -4722,29 +4952,64 @@ static int sndvir_audio_soc_probe(struct snd_soc_codec *codec)
 
 	ret = input_register_device(hs_data->key);
 	if (ret) {
-	    printk(KERN_ERR "input_register_device: input_register_device failed\n");
+	    pr_err("input_register_device: input_register_device failed\n");
 	    goto err_input_register_device;
 	}
 
 	sema_init(&hs_data->sem, 1);
 	headphone_state = 0;
 	hs_data->mode = HEADPHONE_IDLE;
-
-	if(script_get_item("audio0", "aif3_voltage", &aif3_voltage) != SCIRPT_ITEM_VALUE_TYPE_STR){
-		printk("[aif3_voltage]script_get_item return type err!!!!!!!!!!!!\n");
+ 	if (!homlet_flag) {
+		if(script_get_item("audio0", "aif3_voltage", &aif3_voltage) != SCIRPT_ITEM_VALUE_TYPE_STR){
+			pr_err("[aif3_voltage]script_get_item return type err!!!!!!!!!!!!\n");
+			return -EFAULT;
+		}
+ 	}
+	if(script_get_item("audio0", "aldo2_voltage", &aldo2_voltage) != SCIRPT_ITEM_VALUE_TYPE_STR){
+		pr_err("[aldo2_voltage]script_get_item return type err!!!!!!!!!!!!\n");
 		return -EFAULT;
 	}
+	if(script_get_item("audio0", "sw0_voltage", &sw0_voltage) != SCIRPT_ITEM_VALUE_TYPE_STR){
+		pr_err("[sw0_voltage]script_get_item return type err!!!!!!!!!!!!\n");
+		return -EFAULT;
+	}
+	type = script_get_item("audio0", "audio_pa_used", &val);
+	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
+		pr_err("[CODEC] audio_pa_used type err!\n");
+	}
+	audio_pa_used = val.val;
+	type = script_get_item("audio0", "homlet_flag", &val);
+	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
+		pr_err("[CODEC] homlet_flag type err!\n");
+	}
+	homlet_flag = val.val;
+	if (homlet_flag) {
+		pa_sw0_vol = regulator_get(NULL, sw0_voltage.str);
+		if (!pa_sw0_vol) {
+			pr_err("get audio pa_sw0_vol failed\n");
+			return -EFAULT;
+		}
+		regulator_set_voltage(pa_sw0_vol, 3300000, 3300000);
+		regulator_enable(pa_sw0_vol);
 
+		bt_aldo2_vol = regulator_get(NULL, aldo2_voltage.str);
+		if (!bt_aldo2_vol) {
+			pr_err("get audio bt_aldo2_vol failed\n");
+			return -EFAULT;
+		}
+		regulator_set_voltage(bt_aldo2_vol, 1800000, 1800000);
+		regulator_enable(bt_aldo2_vol);
+	}
 	type = script_get_item("audio0", "audio_int_ctrl", &item_eint);
 	if (SCIRPT_ITEM_VALUE_TYPE_PIO != type) {
-		printk("script_get_item return type err\n");
+		pr_err("script_get_item return type err\n");
 		return -EFAULT;
 	}
 	codec_irq_queue = create_singlethread_workqueue("codec_irq");
 
 	switch_detect_queue = create_singlethread_workqueue("codec_resume");
 	if (switch_detect_queue == NULL) {
-		printk("[53-codec] try to create workqueue for codec failed!\n");
+		pr_err("[53-codec] try to create workqueue for codec failed!\n");
 		ret = -ENOMEM;
 		goto err_switch_work_queue;
 	}
@@ -4788,54 +5053,171 @@ static int sndvir_audio_soc_probe(struct snd_soc_codec *codec)
 	reg_val1 = snd_soc_read(codec, ADDA_TUNE3);
 	reg_val1 |= (0x1<<OSCEN);
 	snd_soc_write(codec, ADDA_TUNE3, reg_val1);
-
-	/*get the default pa val(close)*/
-	type = script_get_item("audio0", "audio_pa_ctrl", &item);
-	if (SCIRPT_ITEM_VALUE_TYPE_PIO != type) {
-		printk("script_get_item return type err\n");
-		return -EFAULT;
+	if (audio_pa_used) {
+		/*get the default pa val(close)*/
+		type = script_get_item("audio0", "audio_pa_ctrl", &item);
+		if (SCIRPT_ITEM_VALUE_TYPE_PIO != type) {
+			pr_err("script_get_item return type err\n");
+			return -EFAULT;
+		}
+	
+		/*request pa gpio*/
+		req_status = gpio_request(item.gpio.gpio, NULL);
+		if (0 != req_status) {
+			pr_err("request gpio failed!\n");
+		}
+		/*
+		* config gpio info of audio_pa_ctrl, the default pa config is close(check pa sys_config1.fex)
+		*/
+		gpio_direction_output(item.gpio.gpio, 1);
+		gpio_set_value(item.gpio.gpio, 0);
 	}
-
-	/*request pa gpio*/
-	req_status = gpio_request(item.gpio.gpio, NULL);
-	if (0 != req_status) {
-		printk("request gpio failed!\n");
-	}
-	/*
-	* config gpio info of audio_pa_ctrl, the default pa config is close(check pa sys_config1.fex)
-	*/
-	gpio_direction_output(item.gpio.gpio, 1);
-	gpio_set_value(item.gpio.gpio, 0);
-
 	type = script_get_item("audio0", "Digital_bb_cap_keytone_used", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-		printk("[CODEC] Digital_bb_cap_keytone_used type err!\n");
+		pr_err("[CODEC] Digital_bb_cap_keytone_used type err!\n");
     	}
 	digital_bb_cap_keytone_used = val.val;
 
 	type = script_get_item("audio0", "speaker_double_used", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-		printk("[CODEC] speaker_double_used type err!\n");
+		pr_err("[CODEC] speaker_double_used type err!\n");
 	}
 	speaker_double_used = val.val;
 
 	type = script_get_item("audio0", "double_speaker_val", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-		printk("[CODEC] double_speaker_val type err!\n");
+		pr_err("[CODEC] double_speaker_val type err!\n");
 	}
 	double_speaker_val = val.val;
 
 	type = script_get_item("audio0", "single_speaker_val", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-		printk("[CODEC] single_speaker_val type err!\n");
+		pr_err("[CODEC] single_speaker_val type err!\n");
 	}
 	single_speaker_val = val.val;
 
 	type = script_get_item("audio0", "headset_val", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-		printk("[CODEC] headset_val type err!\n");
+		pr_err("[CODEC] headset_val type err!\n");
 	}
 	headset_val = val.val;
+	type = script_get_item("audio0", "agc_used", &val);
+	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
+		pr_err("[audiocodec] agc_used type err!\n");
+	} else {
+		agc_used = val.val;
+	}
+	type = script_get_item("audio0", "drc_used", &val);
+	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
+		pr_err("[audiocodec] drc_used type err!\n");
+	} else {
+		drc_used = val.val;
+	}
+	if(agc_used){
+		reg_val = snd_soc_read(codec, 0xb4);
+		reg_val |= (0x3<<6);
+		snd_soc_write(codec, 0xb4, reg_val);
+
+		reg_val = snd_soc_read(codec, 0x84);
+		reg_val &= ~(0x3f<<8);
+		reg_val |= (0x31<<8);
+		snd_soc_write(codec, 0x84, reg_val);
+
+		reg_val = snd_soc_read(codec, 0x84);
+		reg_val &= ~(0xff<<0);
+		reg_val |= (0x28<<0);
+		snd_soc_write(codec, 0x84, reg_val);
+
+		reg_val = snd_soc_read(codec, 0x85);
+		reg_val &= ~(0x3f<<8);
+		reg_val |= (0x31<<8);
+		snd_soc_write(codec, 0x85, reg_val);
+
+		reg_val = snd_soc_read(codec, 0x85);
+		reg_val &= ~(0xff<<0);
+		reg_val |= (0x28<<0);
+		snd_soc_write(codec, 0x85, reg_val);
+
+		reg_val = snd_soc_read(codec, 0x8a);
+		reg_val &= ~(0x7fff<<0);
+		reg_val |= (0x24<<0);
+		snd_soc_write(codec, 0x8a, reg_val);
+
+		reg_val = snd_soc_read(codec, 0x8b);
+		reg_val &= ~(0x7fff<<0);
+		reg_val |= (0x2<<0);
+		snd_soc_write(codec, 0x8b, reg_val);
+
+		reg_val = snd_soc_read(codec, 0x8c);
+		reg_val &= ~(0x7fff<<0);
+		reg_val |= (0x24<<0);
+		snd_soc_write(codec, 0x8c, reg_val);
+
+		reg_val = snd_soc_read(codec, 0x8d);
+		reg_val &= ~(0x7fff<<0);
+		reg_val |= (0x2<<0);
+		snd_soc_write(codec, 0x8d, reg_val);
+
+		reg_val = snd_soc_read(codec, 0x8e);
+		reg_val &= ~(0x1f<<8);
+		reg_val |= (0xf<<8);
+		reg_val &= ~(0x1f<<0);
+		reg_val |= (0xf<<0);
+		snd_soc_write(codec, 0x8e, reg_val);
+
+		reg_val = snd_soc_read(codec, 0x93);
+		reg_val &= ~(0x7ff<<0);
+		reg_val |= (0xfc<<0);
+		snd_soc_write(codec, 0x93, reg_val);
+		snd_soc_write(codec, 0x94, 0xabb3);
+	}
+	if(drc_used){
+		reg_val = snd_soc_read(codec, 0xa3);
+		reg_val &= ~(0x7ff<<0);
+		reg_val |= 1<<0;
+		snd_soc_write(codec, 0xa3, reg_val);
+		//snd_soc_write(codec, 0xa4, 0x1fb6);
+		snd_soc_write(codec, 0xa4, 0x2baf);
+
+		reg_val = snd_soc_read(codec, 0xa5);
+		reg_val &= ~(0x7ff<<0);
+		reg_val |= 1<<0;
+		snd_soc_write(codec, 0xa5, reg_val);
+		snd_soc_write(codec, 0xa6, 0x2baf);
+
+		reg_val = snd_soc_read(codec, 0xa7);
+		reg_val &= ~(0x7ff<<0);
+		snd_soc_write(codec, 0xa7, reg_val);
+		snd_soc_write(codec, 0xa8, 0x44a);
+
+		reg_val = snd_soc_read(codec, 0xa9);
+		reg_val &= ~(0x7ff<<0);
+		snd_soc_write(codec, 0xa9, reg_val);
+		snd_soc_write(codec, 0xaa, 0x1e06);
+
+		reg_val = snd_soc_read(codec, 0xab);
+		reg_val &= ~(0x7ff<<0);
+		//reg_val |= (0x27d<<0);
+		reg_val |= (0x352<<0);
+		snd_soc_write(codec, 0xab, reg_val);
+		//snd_soc_write(codec, 0xac, 0xcf68);
+		snd_soc_write(codec, 0xac, 0x6910);
+
+		reg_val = snd_soc_read(codec, 0xad);
+		reg_val &= ~(0x7ff<<0);
+		reg_val |= (0x77a<<0);
+		snd_soc_write(codec, 0xad, reg_val);
+		snd_soc_write(codec, 0xae, 0xaaaa);
+
+		reg_val = snd_soc_read(codec, 0xaf);
+		reg_val &= ~(0x7ff<<0);
+		//reg_val |= (0x1fe<<0);
+		reg_val |= (0x2de<<0);
+		snd_soc_write(codec, 0xaf, reg_val);
+		snd_soc_write(codec, 0xb0, 0xc982);
+
+		snd_soc_write(codec, 0x16, 0x9f9f);
+	}
 #ifdef AC100_DEBUG
 	init_timer(&hs_data->timer);
 	hs_data->timer.function = earphone_switch_timer_poll;
@@ -4881,10 +5263,10 @@ static int sndvir_audio_suspend(struct snd_soc_codec *codec)
 {
 	int reg_val;
 
-	printk("[codec]:suspend\n");
+	pr_debug("[codec]:suspend\n");
 	/* check if called in talking standby */
 	if (check_scene_locked(SCENE_TALKING_STANDBY) == 0) {
-		printk("In talking standby, audio codec do not suspend!!\n");
+		pr_debug("In talking standby, audio codec do not suspend!!\n");
 		return 0;
 	}
 	/*Headset microphone BIAS Enable*/
@@ -4896,11 +5278,11 @@ static int sndvir_audio_suspend(struct snd_soc_codec *codec)
 	reg_val = snd_soc_read(codec, ADC_APC_CTRL);
 	reg_val &= ~(0x1<<HBIASADCEN);
 	snd_soc_write(codec, ADC_APC_CTRL, reg_val);
-
-	/*disable pa_ctrl*/
-	gpio_set_value(item.gpio.gpio, 0);
-	msleep(20);
-
+	if (audio_pa_used) {
+		/*disable pa_ctrl*/
+		gpio_set_value(item.gpio.gpio, 0);
+		msleep(20);
+	}
 	/*disable pa*/
 	reg_val = snd_soc_read(codec, HPOUT_CTRL);
 	reg_val &= ~(0x1<<HPPA_EN);
@@ -4921,16 +5303,44 @@ static int sndvir_audio_suspend(struct snd_soc_codec *codec)
 	reg_val = snd_soc_read(codec, ADDA_TUNE3);
 	reg_val &= ~(0x1<<OSCEN);
 	snd_soc_write(codec, ADDA_TUNE3, reg_val);
+	
+	if (pa_sw0_vol) {
+		regulator_disable(pa_sw0_vol);
+		regulator_put(pa_sw0_vol);
+		pa_sw0_vol = NULL;
+	}
+	if (bt_aldo2_vol) {
+		regulator_disable(bt_aldo2_vol);
+		regulator_put(bt_aldo2_vol);
+		bt_aldo2_vol = NULL;
+	}
 	return 0;
 }
 
 static int sndvir_audio_resume(struct snd_soc_codec *codec)
 {
 	struct headset_data *hs_data = snd_soc_codec_get_drvdata(codec);
-	printk("[codec]:resume");
+	pr_debug("[codec]:resume");
 	hs_data->mode = HEADPHONE_IDLE;
 	headphone_state = 0;
-	hs_data->state	= 0;
+	hs_data->state	= -1;
+	if (homlet_flag) {
+		pa_sw0_vol = regulator_get(NULL, sw0_voltage.str);
+		if (!pa_sw0_vol) {
+			pr_err("get audio pa_sw0_vol failed\n");
+			return -EFAULT;
+		}
+		regulator_set_voltage(pa_sw0_vol, 3300000, 3300000);
+		regulator_enable(pa_sw0_vol);
+
+		bt_aldo2_vol = regulator_get(NULL, aldo2_voltage.str);
+		if (!bt_aldo2_vol) {
+			pr_err("get audio bt_aldo2_vol failed\n");
+			return -EFAULT;
+		}
+		regulator_set_voltage(bt_aldo2_vol, 1800000, 1800000);
+		regulator_enable(bt_aldo2_vol);
+	}
 	/*process for normal standby*/
 	if (NORMAL_STANDBY == standby_type) {
 	/*process for super standby*/
@@ -4946,51 +5356,23 @@ static int sndvir_audio_resume(struct snd_soc_codec *codec)
 static unsigned int sndvir_audio_read(struct snd_soc_codec *codec,
 					  unsigned int reg)
 {
-	int	ret;
-	arisc_rsb_block_cfg_t rsb_data;
-	unsigned char addr;
 	unsigned int data;
+	struct ac100_priv *ac100 = snd_soc_codec_get_drvdata(codec);
+	struct ac100 *ac100_dev = ac100->ac100;
+	/* Device I/O API */
+	data = ac100_reg_read(ac100_dev, reg);
 
-	addr = (unsigned char)reg;
-	rsb_data.len = 1;
-	rsb_data.datatype = RSB_DATA_TYPE_HWORD;
-	rsb_data.msgattr = ARISC_MESSAGE_ATTR_SOFTSYN;
-	rsb_data.devaddr = RSB_RTSADDR_AC100;
-	rsb_data.regaddr = &addr;
-	rsb_data.data = &data;
-
-	/* read axp registers */
-	ret = arisc_rsb_read_block_data(&rsb_data);
-	if (ret != 0) {
-		printk("failed reads to 0x%02x\n", reg);
-		return ret;
-	}
 	return data;
 }
 
 static int sndvir_audio_write(struct snd_soc_codec *codec,
 				  unsigned int reg, unsigned int value)
 {
-	int	ret;
-	arisc_rsb_block_cfg_t rsb_data;
-	unsigned char addr;
-	unsigned int data;
+	int ret = 0;
+	struct ac100_priv *ac100 = snd_soc_codec_get_drvdata(codec);
+	struct ac100 *ac100_dev = ac100->ac100;
+	ret = ac100_reg_write(ac100_dev, reg, value);
 
-	addr = (unsigned char)reg;
-	data = value;
-	rsb_data.len = 1;
-	rsb_data.datatype = RSB_DATA_TYPE_HWORD;
-	rsb_data.msgattr = ARISC_MESSAGE_ATTR_SOFTSYN;
-	rsb_data.devaddr = RSB_RTSADDR_AC100;
-	rsb_data.regaddr = &addr;
-	rsb_data.data = &data;
-
-	/* read axp registers */
-	ret = arisc_rsb_write_block_data(&rsb_data);
-	if (ret != 0) {
-		printk("failed reads to 0x%02x\n", reg);
-		return ret;
-	}
 	return 0;
 }
 #endif
@@ -5006,49 +5388,6 @@ static struct snd_soc_codec_driver soc_codec_dev_sndvir_audio = {
 #endif
 	.controls 	= 	sndvir_audio_controls,
 	.num_controls = ARRAY_SIZE(sndvir_audio_controls),
-};
-
-static int sunxi_codec_detect(struct i2c_client *client, struct i2c_board_info *info)
-{
-	struct i2c_adapter *adapter = client->adapter;
-
-	if (twi_id == adapter->nr) {
-		strlcpy(info->type, SUNXI_CODEC_NAME, I2C_NAME_SIZE);
-		return 0;
-	} else {
-		return -ENODEV;
-	}
-}
-
-static int __init sndvir_audio_codec_probe(struct i2c_client *i2c,
-				      const struct i2c_device_id *id)
-{
-	return snd_soc_register_codec(&i2c->dev, &soc_codec_dev_sndvir_audio, &sndvir_audio_dai, 1);
-}
-
-static int __exit sndvir_audio_codec_remove(struct platform_device *pdev)
-{
-	snd_soc_unregister_codec(&pdev->dev);
-	return 0;
-}
-
-static const unsigned short normal_i2c[] = {0x1a, I2C_CLIENT_END};
-
-static const struct i2c_device_id sunxi_codec_id[] = {
-	{"vir_audio-codec", 0},
-	{}
-};
-
-static struct i2c_driver sunxi_codec_driver = {
-	.class 		= I2C_CLASS_HWMON,
-	.id_table 	= sunxi_codec_id,
-	.probe 		= sndvir_audio_codec_probe,
-	.remove 	= __exit_p(sndvir_audio_codec_remove),
-	.driver 	= {
-		.owner 	= THIS_MODULE,
-		.name 	= "vir_audio-codec",
-	},
-	.address_list = normal_i2c,
 };
 
 static ssize_t ac100_store(struct device *dev,
@@ -5095,31 +5434,80 @@ static int ac100_init(void)
 	dev_set_name(&ac100_device, "ac100");
 
 	if (device_register(&ac100_device))
-                printk("error device_register()\n");
+		pr_err("error device_register()\n");
 
 	ret = device_create_file(&ac100_device, &dev_attr_ac100);
 	if (ret)
-                printk("device_create_file error\n");
+		pr_err("device_create_file error\n");
 
-	printk("axp device register ok and device_create_file ok\n");
+	pr_debug("axp device register ok and device_create_file ok\n");
         return 0;
 }
 
-static int __init sndvir_audio_codec_init(void)
+static int __devinit ac100_probe(struct platform_device *pdev)
 {
-	int ret;
-        ac100_init();
-	sunxi_codec_driver.detect = sunxi_codec_detect;
-	ret = i2c_add_driver(&sunxi_codec_driver);
-	return ret;
-}
-module_init(sndvir_audio_codec_init);
+	struct ac100_priv *ac100;
+	pr_debug("%s,line:%d\n", __func__, __LINE__);
+	ac100 = devm_kzalloc(&pdev->dev, sizeof(struct ac100_priv),
+			      GFP_KERNEL);
+	if (ac100 == NULL)
+		return -ENOMEM;
+	platform_set_drvdata(pdev, ac100);
 
-static void __exit sndvir_audio_codec_exit(void)
-{
-	i2c_del_driver(&sunxi_codec_driver);
+	ac100->ac100 = dev_get_drvdata(pdev->dev.parent);
+
+	ac100_init();
+	return snd_soc_register_codec(&pdev->dev, &soc_codec_dev_sndvir_audio, &sndvir_audio_dai, 1);
 }
-module_exit(sndvir_audio_codec_exit);
+static void ac100_shutdown(struct platform_device *pdev)
+{
+	int reg_val;
+	//struct ac100_priv *ac100 = platform_get_drvdata(pdev);
+	struct snd_soc_codec *codec = codec_switch;
+	/*set headphone volume to 0*/
+	reg_val = snd_soc_read(codec, HPOUT_CTRL);
+	reg_val &= ~(0x3f<<HP_VOL);
+	snd_soc_write(codec, HPOUT_CTRL, reg_val);
+
+	/*disable pa*/
+	reg_val = snd_soc_read(codec, HPOUT_CTRL);
+	reg_val &= ~(0x1<<HPPA_EN);
+	snd_soc_write(codec, HPOUT_CTRL, reg_val);
+
+	/*hardware xzh support*/
+	reg_val = snd_soc_read(codec, OMIXER_DACA_CTRL);
+	reg_val &= ~(0xf<<HPOUTPUTENABLE);
+	snd_soc_write(codec, OMIXER_DACA_CTRL, reg_val);
+
+	/*unmute l/r headphone pa*/
+	reg_val = snd_soc_read(codec, HPOUT_CTRL);
+	reg_val &= ~((0x1<<RHPPA_MUTE)|(0x1<<LHPPA_MUTE));
+	snd_soc_write(codec, HPOUT_CTRL, reg_val);
+
+	if (audio_pa_used) {
+		/*disable pa_ctrl*/
+		gpio_set_value(item.gpio.gpio, 0);
+		//msleep(62);
+	}
+
+}
+static int __devexit ac100_remove(struct platform_device *pdev)
+{
+	snd_soc_unregister_codec(&pdev->dev);
+	return 0;
+}
+
+static struct platform_driver ac100_codec_driver = {
+	.driver = {
+		.name = "ac100-codec",
+		.owner = THIS_MODULE,
+	},
+	.probe = ac100_probe,
+	.remove = __devexit_p(ac100_remove),
+	.shutdown = ac100_shutdown,
+};
+
+module_platform_driver(ac100_codec_driver);
 
 MODULE_DESCRIPTION("SNDVIR_AUDIO ALSA soc codec driver");
 MODULE_AUTHOR("huangxin");

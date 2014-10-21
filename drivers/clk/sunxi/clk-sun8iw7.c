@@ -74,7 +74,7 @@ SUNXI_CLK_FACTORS(pll_cpu,    8,  5,  4,  2,  0,  2,  16, 2,  0,   0,   0,   0, 
 SUNXI_CLK_FACTORS(pll_audio,  8,  7,  0,  0,  0,  5,  16, 4,  0,   0,   0,   0,    0,    0,   0,     31,    0,     0,       0,        0);
 SUNXI_CLK_FACTORS(pll_video,  8,  7,  0,  0,  0,  4,  0,  0,  0,   0,   0,   0,    1,    25,  24,    31,   24,     0,       PLL_VIDEOPAT,0xd1303333);
 SUNXI_CLK_FACTORS(pll_ve,     8,  7,  0,  0,  0,  4,  0,  0,  0,   0,   0,   0,    1,    25,  24,    31,    0,     0,       0,        0);
-SUNXI_CLK_FACTORS(pll_ddr,    8,  5,  4,  2,  0,  2,  0,  0,  0,   0,   0,   0,    0,    0,   0,     31,    0,     0,       0,        0);
+SUNXI_CLK_FACTORS_UPDATE(pll_ddr,    8,  5,  4,  2,  0,  2,  0,  0,  0,   0,   0,   0,    0,    0,   0,     31,    0,     0,       0,        0 , 20);
 SUNXI_CLK_FACTORS(pll_periph0,8,  5,  4,  2,  0,  0,  0,  0,  0,   0,   0,   0,    0,    0,   0,     31,    0,     0,       0,        0);
 SUNXI_CLK_FACTORS(pll_gpu,    8,  7,  0,  0,  0,  4,  0,  0,  0,   0,   0,   0,    1,    25,  24,    31,    0,     0,       0,        0);
 SUNXI_CLK_FACTORS(pll_periph1,8,  5,  4,  2,  0,  0,  0,  0,  0,   0,   0,   0,    0,    0,   0,     31,    0,     0,       0,        0);
@@ -509,56 +509,45 @@ static struct periph_init_data sunxi_periphs_cpus_init[] = {
     {"cpurcir",CLK_GET_RATE_NOCACHE,    cpurdev_parents,ARRAY_SIZE(cpurdev_parents),    &sunxi_clk_periph_cpurcir},
 };
 
-static unsigned int ths_m_factor[]={1};
+
 static unsigned int ths_n_factor[]={1,2,4,6};
 static unsigned long sunxi_ths_recalc_rate(struct clk_hw *hw, unsigned long parent_rate)
 {
     unsigned long reg;
     struct sunxi_clk_periph *periph = to_clk_periph(hw);
     struct sunxi_clk_periph_div *divider = &periph->divider;
-    unsigned long div, div_m = 0, div_n = 0;
+    unsigned long div, div_n = 0;
     u64 rate = parent_rate;
     if(!divider->reg)
         return parent_rate;
 
     reg = periph_readl(periph,divider->reg);
-    if(divider->mwidth)
-        div_m = GET_BITS(divider->mshift, divider->mwidth, reg);
     if(divider->nwidth)
         div_n = GET_BITS(divider->nshift, divider->nwidth, reg);
-    if(reg & 0x100)
-        div = ths_m_factor[div_m]*ths_n_factor[div_n];
-    else
-        div = ths_n_factor[div_n];
+    div = ths_n_factor[div_n];
     do_div(rate, div);
     return rate;
 }
 static long sunxi_ths_round_rate(struct clk_hw *hw, unsigned long rate, unsigned long *prate)
 {
-    int i,j,m_max;
-    int m=0,n=0;
+    int j;
+    int n=0;
     unsigned long cur_rate=0,new_rate=0;
     unsigned long cur_delta,new_delta;
     u32 parent_rate = *prate;
-    if(*prate == 4000000)
-        m_max =1;
-    else
-        m_max = 8;
 
-    for(i=0;i<m_max;i++)
-        for(j=0;j<8;j++)
+    for(j=0;j<4;j++)
+    {
+        new_rate = parent_rate/ths_n_factor[j];
+        new_delta = (new_rate >rate)?(new_rate-rate):(rate-new_rate);
+        cur_delta = (cur_rate >rate)?(cur_rate-rate):(rate-cur_rate);
+        if(new_delta < cur_delta)
         {
-            new_rate = parent_rate/(ths_m_factor[i]*ths_n_factor[j]);
-            new_delta = (new_rate >rate)?(new_rate-rate):(rate-new_rate);
-            cur_delta = (cur_rate >rate)?(cur_rate-rate):(rate-cur_rate);
-            if(new_delta < cur_delta)
-            {
-                cur_rate = new_rate;
-                m =i;
-                n = j;
-            }
+            cur_rate = new_rate;
+            n = j;
         }
-       return cur_rate;
+    }
+    return cur_rate;
 }
 struct clk_ops ths_ops;
 void __init sunxi_init_clocks(void)

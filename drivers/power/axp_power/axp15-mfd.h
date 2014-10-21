@@ -65,10 +65,10 @@ static int  axp15_init_chip(struct axp_dev *chip)
 	/*read chip id*/	//???which int should enable must check with SD4
 	err =  __axp_read(&devaddr, chip->client, AXP15_IC_TYPE, &chip_id, false);
 	if (err) {
-	    printk("[AXP15-MFD] try to read chip id failed!\n");
+		printk("[AXP15-MFD] try to read chip id failed!\n");
 		return err;
 	}
-	dev_info(chip->dev, "AXP (CHIP ID: 0x%02x) detected\n", chip_id);
+
 	if(((chip_id & 0xc0) == 0x40) && ((chip_id & 0x0f) == 0x00))
 		chip->type = AXP15;
 	else
@@ -110,10 +110,14 @@ static ssize_t axp15_reg_store(struct device *dev,
 static ssize_t axp15_regs_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	uint8_t val[2];
+	uint8_t val[20];
+	int count = 0, i = 0;
 
-	axp_reads(dev,axp_reg_addr,2,val);
-	return sprintf(buf,"REG[0x%x]=0x%x,REG[0x%x]=0x%x\n",axp_reg_addr,val[0],axp_reg_addr+1,val[1]);
+	axp_reads(dev,axp_reg_addr,20,val);
+	for (i=0;i<20;i++) {
+		count += sprintf(buf+count,"REG[0x%x]=0x%x\n",axp_reg_addr+i,val[i]);
+	}
+	return count;
 }
 
 static ssize_t axp15_regs_store(struct device *dev,

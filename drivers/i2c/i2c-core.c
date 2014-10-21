@@ -718,7 +718,7 @@ i2c_sysfs_delete_device(struct device *dev, struct device_attribute *attr,
 	int res;
 
 	/* Parse parameters, reject extra parameters */
-	res = sscanf(buf, "%hi%c", &addr, &end);
+	res = sscanf(buf, "%hu%c", &addr, &end);
 	if (res < 1) {
 		dev_err(dev, "%s: Can't parse I2C address\n", "delete_device");
 		return -EINVAL;

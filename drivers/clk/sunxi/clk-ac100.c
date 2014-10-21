@@ -18,7 +18,12 @@
 #include "clk-sunxi.h"
 #include "clk-factors.h"
 #include "clk-periph.h"
+#ifdef CONFIG_ARCH_SUN9IW1
 #include "clk-sun9iw1.h"
+#endif
+#ifdef CONFIG_ARCH_SUN8IW6
+#include "clk-sun8iw6.h"
+#endif
 #include <linux/arisc/arisc.h>
 
 #define CK32K_OUT_CTRL1  0xC1
@@ -148,11 +153,11 @@ static u32 ac100_readl(void __iomem * reg)
     rsb_data.data = &val;
     /* read registers */
     if (arisc_rsb_read_block_data(&rsb_data))
-        pr_err("%s(%d) err: read reg-0x%x failed", __func__, __LINE__, (unsigned int)reg);
+        pr_err("%s(%d) err: read reg-0x%x failed", __func__, __LINE__, (unsigned int __force)reg);
     return val;
 }
 
-static u32 ac100_writel(u32 val,void __iomem * reg)
+static void ac100_writel(u32 val,void __iomem * reg)
 {
     arisc_rsb_block_cfg_t rsb_data;
     u16 data = (u16)val;
@@ -165,19 +170,19 @@ static u32 ac100_writel(u32 val,void __iomem * reg)
     rsb_data.data = (unsigned int *)&data;
 
 #ifdef CONFIG_ARCH_SUN9IW1
-    if(((unsigned int)reg == 0xc1) && (!(val&0x01)))
+    if(((unsigned int __force)reg == 0xc1) && (!(val&0x01)))
     {
-        pr_err("Warning!!! %s skip write %x to reg %x\n", __func__,val,(unsigned int)reg);
-        return 0;
+        pr_err("Warning!!! %s skip write %x to reg %x\n", __func__,val,(unsigned int __force)reg);
+        return;
     }
 #endif
     /* write registers */
     if (arisc_rsb_write_block_data(&rsb_data))
-        pr_err("%s(%d) err: write reg-0x%x failed", __func__, __LINE__, (unsigned int)reg);
-    return 0;
+        pr_err("%s(%d) err: write reg-0x%x failed", __func__, __LINE__, (unsigned int __force)reg);
+    return;
 }
-struct clk_ops ac100_clkops;
-struct sunxi_reg_ops ac100_regops;
+static struct clk_ops ac100_clkops;
+static struct sunxi_reg_ops ac100_regops;
 extern void sunxi_clk_get_periph_ops(struct clk_ops* ops);
 
 static int __init sunxi_init_ac100_clocks(void)
@@ -215,7 +220,7 @@ static int __init sunxi_init_ac100_clocks(void)
         periph->periph->priv_clkops = &ac100_clkops;
         periph->periph->priv_regops = &ac100_regops;
         clk = sunxi_clk_register_periph(periph->name, periph->parent_names,
-                        periph->num_parents,periph->flags, 0, periph->periph);
+                        periph->num_parents,periph->flags, NULL, periph->periph);
         clk_register_clkdev(clk, periph->name, NULL);
     }
 
@@ -242,6 +247,6 @@ static int __init sunxi_init_ac100_clocks(void)
     }
     return 0;
 }
-late_initcall(sunxi_init_ac100_clocks);
+subsys_initcall_sync(sunxi_init_ac100_clocks);
 
 

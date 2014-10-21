@@ -79,12 +79,11 @@
 #define SUNXI_IRQ_TWI0                    (SUNXI_GIC_START + 6)  /* 38 */
 #define SUNXI_IRQ_TWI1                    (SUNXI_GIC_START + 7)  /* 39 */
 #define SUNXI_IRQ_TWI2                    (SUNXI_GIC_START + 8)  /* 40 */
-#define SUNXI_IRQ_EINTB                   (SUNXI_GIC_START + 11)  /* 43 */
 #define SUNXI_IRQ_SPDIF                   (SUNXI_GIC_START + 12)  /* 44 */
 #define SUNXI_IRQ_IIS0                    (SUNXI_GIC_START + 13)  /* 45 */
 #define SUNXI_IRQ_IIS1                    (SUNXI_GIC_START + 14)  /* 46 */
-#define SUNXI_IRQ_EINTG                   (SUNXI_GIC_START + 15)  /* 47 */
-#define SUNXI_IRQ_EINTH                   (SUNXI_GIC_START + 17)  /* 49 */
+#define SUNXI_IRQ_EINTB                   (SUNXI_GIC_START + 15)  /* 47 */
+#define SUNXI_IRQ_EINTG                   (SUNXI_GIC_START + 17)  /* 49 */
 #define SUNXI_IRQ_TIMER0                  (SUNXI_GIC_START + 18)  /* 50 */
 #define SUNXI_IRQ_TIMER1                  (SUNXI_GIC_START + 19)  /* 51 */
 #define SUNXI_IRQ_WATCHDOG                (SUNXI_GIC_START + 25)  /* 57 */
@@ -96,7 +95,7 @@
 #define SUNXI_IRQ_RUART                   (SUNXI_GIC_START + 38)  /* 70 */
 #define SUNXI_IRQ_RSB                     (SUNXI_GIC_START + 39)  /* 71 */
 #define SUNXI_IRQ_RTH                     (SUNXI_GIC_START + 41)  /* 73 */
-#define SUNXI_IRQ_RLRADC                  (SUNXI_GIC_START + 42)  /* 74 */
+#define SUNXI_IRQ_LRADC                   (SUNXI_GIC_START + 42)  /* 74 */
 #define SUNXI_IRQ_RTWI                    (SUNXI_GIC_START + 44)  /* 76 */
 #define SUNXI_IRQ_EINTL                   (SUNXI_GIC_START + 45)  /* 77 */
 #define SUNXI_IRQ_RTWD                    (SUNXI_GIC_START + 46)  /* 78 */
@@ -129,6 +128,7 @@
 #define SUNXI_IRQ_GPU                     (SUNXI_GIC_START + 97)  /* 129 */
 #define SUNXI_IRQ_TDM                     (SUNXI_GIC_START + 98)  /* 130 */
 #define SUNXI_IRQ_IIS2                    (SUNXI_GIC_START + 99)  /* 131 */
+#define SUNXI_IRQ_EINTH                   (SUNXI_GIC_START + 100)  /* 132 */
 #define SUNXI_IRQ_C0CTI0                  (SUNXI_GIC_START + 128)  /* 160 */
 #define SUNXI_IRQ_C0CTI1                  (SUNXI_GIC_START + 129)  /* 161 */
 #define SUNXI_IRQ_C0CTI2                  (SUNXI_GIC_START + 130)  /* 162 */

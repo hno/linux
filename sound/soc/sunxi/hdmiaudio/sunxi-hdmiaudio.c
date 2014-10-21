@@ -30,7 +30,7 @@
 #include <asm/dma.h>
 
 #include "sunxi-hdmipcm.h"
-#ifdef CONFIG_ARCH_SUN9I
+#if defined CONFIG_ARCH_SUN9I  || CONFIG_ARCH_SUN8IW6
 struct sunxi_i2s1_info sunxi_i2s1;
 
 static int regsave[8];
@@ -48,13 +48,14 @@ static struct clk *i2s1_moduleclk	= NULL;
 
 static struct sunxi_dma_params sunxi_hdmiaudio_pcm_stereo_out = {
 	.name 			= "hdmiaudio_play",
-	#ifndef CONFIG_ARCH_SUN9I
+	#ifdef CONFIG_ARCH_SUN8IW1
 	.dma_addr 		= SUNXI_HDMIBASE + SUNXI_HDMIAUDIO_TX,
-	#else
+	#endif
+	#if defined CONFIG_ARCH_SUN9I || CONFIG_ARCH_SUN8IW6
 	.dma_addr 		= SUNXI_I2S1BASE + SUNXI_I2S1TXFIFO,
 	#endif
 };
-#ifdef CONFIG_ARCH_SUN9I
+#if defined CONFIG_ARCH_SUN9I || CONFIG_ARCH_SUN8IW6
 static void sunxi_snd_txctrl_i2s1(struct snd_pcm_substream *substream, int on)
 {
 	u32 reg_val;
@@ -68,6 +69,8 @@ static void sunxi_snd_txctrl_i2s1(struct snd_pcm_substream *substream, int on)
 	reg_val = 0;
 	if(substream->runtime->channels == 1) {
 		reg_val = 0x76543200;
+	} else if (substream->runtime->channels == 8) {
+		reg_val = 0x54762310;
 	} else {
 		reg_val = 0x76543210;
 	}
@@ -100,14 +103,6 @@ static void sunxi_snd_txctrl_i2s1(struct snd_pcm_substream *substream, int on)
 			break;
 	}
 	writel(reg_val, sunxi_i2s1.regs + SUNXI_I2S1CTL);
-
-	/*flush TX FIFO*/
-	reg_val = readl(sunxi_i2s1.regs + SUNXI_I2S1FCTL);
-       reg_val |= SUNXI_I2S1FCTL_FTX;
-	writel(reg_val, sunxi_i2s1.regs + SUNXI_I2S1FCTL);
-
-	/*clear TX counter*/
-	writel(0, sunxi_i2s1.regs + SUNXI_I2S1TXCNT);
 
 	if (on) {
 		/* I2S1 TX ENABLE */
@@ -150,15 +145,13 @@ static int sunxi_hdmiaudio_set_fmt(struct snd_soc_dai *cpu_dai, unsigned int fmt
 	reg_val = readl(sunxi_i2s1.regs + SUNXI_I2S1CTL);
 	switch(fmt & SND_SOC_DAIFMT_MASTER_MASK){
 		case SND_SOC_DAIFMT_CBM_CFM:   /* codec clk & frm master, ap is slave*/
-			printk("%s, line:%d\n", __func__, __LINE__);
 			reg_val |= SUNXI_I2S1CTL_MS;
 			break;
 		case SND_SOC_DAIFMT_CBS_CFS:   /* codec clk & frm slave,ap is master*/
-			printk("%s, line:%d\n", __func__, __LINE__);
 			reg_val &= ~SUNXI_I2S1CTL_MS;
 			break;
 		default:
-			printk("unknwon master/slave format\n");
+			pr_err("unknwon master/slave format\n");
 			return -EINVAL;
 	}
 	writel(reg_val, sunxi_i2s1.regs + SUNXI_I2S1CTL);
@@ -232,7 +225,11 @@ static int sunxi_hdmiaudio_hw_params(struct snd_pcm_substream *substream,
 	struct snd_soc_pcm_runtime *rtd 	= NULL;
 	struct sunxi_dma_params *dma_data 	= NULL;
 	u32 reg_val = 0;
-
+#ifdef CONFIG_SND_SUNXI_SOC_SUPPORT_AUDIO_RAW
+	int raw_flag = params_raw(params);
+#else
+	int raw_flag = 1;
+#endif
 	switch (params_format(params))
 	{
 		case SNDRV_PCM_FORMAT_S16_LE:
@@ -250,9 +247,11 @@ static int sunxi_hdmiaudio_hw_params(struct snd_pcm_substream *substream,
 	default:
 		return -EINVAL;
 	}
-
+	if (raw_flag > 1) {
+		sample_resolution = 24;
+	}
 	if (!substream) {
-		printk("error:%s,line:%d\n", __func__, __LINE__);
+		pr_err("error:%s,line:%d\n", __func__, __LINE__);
 		return -EAGAIN;
 	}
 
@@ -277,33 +276,29 @@ static int sunxi_hdmiaudio_hw_params(struct snd_pcm_substream *substream,
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 		dma_data = &sunxi_hdmiaudio_pcm_stereo_out;
 	} else {
-		printk("error:hdmiaudio can't support capture:%s,line:%d\n", __func__, __LINE__);	
+		pr_err("error:hdmiaudio can't support capture:%s,line:%d\n", __func__, __LINE__);	
 	}
 
 	snd_soc_dai_set_dma_data(rtd->cpu_dai, substream, dma_data);
 	
 	return 0;
 }
-#ifdef CONFIG_ARCH_SUN9I
+
+#if defined CONFIG_ARCH_SUN9I || CONFIG_ARCH_SUN8IW6
 static int sunxi_i2s1_trigger(struct snd_pcm_substream *substream,
                               int cmd, struct snd_soc_dai *dai)
 {
 	int ret = 0;
-	u32 reg_val;
 	switch (cmd) {
 		case SNDRV_PCM_TRIGGER_START:
 		case SNDRV_PCM_TRIGGER_RESUME:
 		case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
 			sunxi_snd_txctrl_i2s1(substream, 1);
-			/*Global Enable Digital Audio Interface*/
-			reg_val = readl(sunxi_i2s1.regs + SUNXI_I2S1CTL);
-			reg_val |= SUNXI_I2S1CTL_GEN;
-			writel(reg_val, sunxi_i2s1.regs + SUNXI_I2S1CTL);
 			break;
 		case SNDRV_PCM_TRIGGER_STOP:
 		case SNDRV_PCM_TRIGGER_SUSPEND:
 		case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
-			  	sunxi_snd_txctrl_i2s1(substream, 0);
+			sunxi_snd_txctrl_i2s1(substream, 0);
 			break;
 		default:
 			ret = -EINVAL;
@@ -317,7 +312,7 @@ static int sunxi_i2s1_set_sysclk(struct snd_soc_dai *cpu_dai, int clk_id,
                                  unsigned int freq, int i2s1_pcm_select)
 {
 	if (clk_set_rate(i2s1_pllclk, freq)) {
-		printk("try to set the i2s1_pllclk failed!\n");
+		pr_err("try to set the i2s1_pllclk failed!\n");
 	}
 	return 0;
 }
@@ -573,7 +568,7 @@ static int sunxi_hdmiaudio_dai_remove(struct snd_soc_dai *dai)
 {
 	return 0;
 }
-#ifdef CONFIG_ARCH_SUN9I
+#if defined CONFIG_ARCH_SUN9I || CONFIG_ARCH_SUN8IW6
 static void i2s1regsave(void)
 {
 	regsave[0] = readl(sunxi_i2s1.regs + SUNXI_I2S1CTL);
@@ -601,7 +596,7 @@ static void i2s1regrestore(void)
 static int sunxi_hdmiaudio_suspend(struct snd_soc_dai *cpu_dai)
 {
 	u32 reg_val;
-	printk("[I2S1]Entered %s\n", __func__);
+	pr_debug("[I2S1]Entered %s\n", __func__);
 
 	/*Global disable Digital Audio Interface*/
 	reg_val = readl(sunxi_i2s1.regs + SUNXI_I2S1CTL);
@@ -610,7 +605,7 @@ static int sunxi_hdmiaudio_suspend(struct snd_soc_dai *cpu_dai)
 
 	i2s1regsave();
 	if ((NULL == i2s1_moduleclk) ||(IS_ERR(i2s1_moduleclk))) {
-		printk("i2s1_moduleclk handle is invalid, just return\n");
+		pr_err("i2s1_moduleclk handle is invalid, just return\n");
 		return -EFAULT;
 	} else {
 		/*release the module clock*/
@@ -622,11 +617,11 @@ static int sunxi_hdmiaudio_suspend(struct snd_soc_dai *cpu_dai)
 static int sunxi_hdmiaudio_resume(struct snd_soc_dai *cpu_dai)
 {
 	u32 reg_val;
-	printk("[I2S1]Entered %s\n", __func__);
+	pr_debug("[I2S1]Entered %s\n", __func__);
 
 	/*enable the module clock*/
 	if (clk_enable(i2s1_moduleclk)) {
-		printk("try to enable i2s1_moduleclk output failed!\n");
+		pr_err("try to enable i2s1_moduleclk output failed!\n");
 	}
 
 	i2s1regrestore();
@@ -643,7 +638,7 @@ static int sunxi_hdmiaudio_resume(struct snd_soc_dai *cpu_dai)
 #define SUNXI_I2S_RATES (SNDRV_PCM_RATE_8000_192000 | SNDRV_PCM_RATE_KNOT)
 static struct snd_soc_dai_ops sunxi_hdmiaudio_dai_ops = {
 	.hw_params 		= sunxi_hdmiaudio_hw_params,
-#ifdef CONFIG_ARCH_SUN9I
+#if defined CONFIG_ARCH_SUN9I || CONFIG_ARCH_SUN8IW6
 	.trigger 		= sunxi_i2s1_trigger,
 	.set_fmt 		= sunxi_hdmiaudio_set_fmt,
 	.set_clkdiv 	= sunxi_i2s1_set_clkdiv,
@@ -652,7 +647,7 @@ static struct snd_soc_dai_ops sunxi_hdmiaudio_dai_ops = {
 };
 static struct snd_soc_dai_driver sunxi_hdmiaudio_dai = {
 	.probe 		= sunxi_hdmiaudio_dai_probe,
-#ifdef CONFIG_ARCH_SUN9I
+#if defined CONFIG_ARCH_SUN9I || CONFIG_ARCH_SUN8IW6
 	.suspend 	= sunxi_hdmiaudio_suspend,
 	.resume 	= sunxi_hdmiaudio_resume,
 #endif
@@ -676,32 +671,65 @@ static int __init sunxi_hdmiaudio_dev_probe(struct platform_device *pdev)
 	}
 	i2s1_pllclk = clk_get(NULL, "pll3");
 	if ((!i2s1_pllclk)||(IS_ERR(i2s1_pllclk))) {
-		printk("try to get i2s1_pllclk failed\n");
+		pr_err("try to get i2s1_pllclk failed\n");
 	}
 	if (clk_prepare_enable(i2s1_pllclk)) {
-		printk("enable i2s1_pllclk failed; \n");
+		pr_err("enable i2s1_pllclk failed; \n");
 	}
 	/*i2s1 module clk*/
 	i2s1_moduleclk = clk_get(NULL, "i2s1");
 	if ((!i2s1_moduleclk)||(IS_ERR(i2s1_moduleclk))) {
-		printk("try to get i2s1_moduleclk failed\n");
+		pr_err("try to get i2s1_moduleclk failed\n");
 	}
 	if (clk_set_parent(i2s1_moduleclk, i2s1_pllclk)) {
-		printk("try to set parent of i2s1_moduleclk to i2s1_pll2ck failed! line = %d\n",__LINE__);
+		pr_err("try to set parent of i2s1_moduleclk to i2s1_pll2ck failed! line = %d\n",__LINE__);
 	}
 	if (clk_set_rate(i2s1_moduleclk, 24576000)) {
-		printk("set i2s1_moduleclk clock freq to 24576000 failed! line = %d\n", __LINE__);
+		pr_err("set i2s1_moduleclk clock freq to 24576000 failed! line = %d\n", __LINE__);
 	}
 	if (clk_prepare_enable(i2s1_moduleclk)) {
-		printk("open i2s1_moduleclk failed! line = %d\n", __LINE__);
+		pr_err("open i2s1_moduleclk failed! line = %d\n", __LINE__);
 	}
 
 	reg_val = readl(sunxi_i2s1.regs + SUNXI_I2S1CTL);
 	reg_val |= SUNXI_I2S1CTL_GEN;
 	writel(reg_val, sunxi_i2s1.regs + SUNXI_I2S1CTL);
 #endif
+#ifdef CONFIG_ARCH_SUN8IW6
+	sunxi_i2s1.regs = ioremap(SUNXI_I2S1BASE, 0x100);
+	if (sunxi_i2s1.regs == NULL) {
+		return -ENXIO;
+	}
+	i2s1_pllclk = clk_get(NULL, "pll2");
+
+	if ((!i2s1_pllclk)||(IS_ERR(i2s1_pllclk))) {
+		pr_err("try to get i2s1_pllclk failed\n");
+	}
+	if (clk_prepare_enable(i2s1_pllclk)) {
+		pr_err("enable i2s1_pllclk failed; \n");
+	}
+	/*i2s1 module clk*/
+	i2s1_moduleclk = clk_get(NULL, "i2s2");
+	if ((!i2s1_moduleclk)||(IS_ERR(i2s1_moduleclk))) {
+		pr_err("try to get i2s1_moduleclk failed\n");
+	}
+	if (clk_set_parent(i2s1_moduleclk, i2s1_pllclk)) {
+		pr_err("try to set parent of i2s1_moduleclk to i2s1_pll2ck failed! line = %d\n",__LINE__);
+	}
+	if (clk_set_rate(i2s1_moduleclk, 24576000)) {
+		pr_err("set i2s1_moduleclk clock freq to 24576000 failed! line = %d\n", __LINE__);
+	}
+	if (clk_prepare_enable(i2s1_moduleclk)) {
+		pr_err("open i2s1_moduleclk failed! line = %d\n", __LINE__);
+	}
+
+	reg_val = readl(sunxi_i2s1.regs + SUNXI_I2S1CTL);
+	reg_val |= SUNXI_I2S1CTL_GEN;
+	writel(reg_val, sunxi_i2s1.regs + SUNXI_I2S1CTL);
+#endif
+
 	if (!pdev) {
-		printk("error:%s,line:%d\n", __func__, __LINE__);
+		pr_err("error:%s,line:%d\n", __func__, __LINE__);
 		return -EAGAIN;
 	}
 	ret = snd_soc_register_dai(&pdev->dev, &sunxi_hdmiaudio_dai);
@@ -712,19 +740,19 @@ static int __init sunxi_hdmiaudio_dev_probe(struct platform_device *pdev)
 static int __exit sunxi_hdmiaudio_dev_remove(struct platform_device *pdev)
 {
 	if (!pdev) {
-		printk("error:%s,line:%d\n", __func__, __LINE__);
+		pr_err("error:%s,line:%d\n", __func__, __LINE__);
 		return -EAGAIN;
 	}
 #ifdef CONFIG_ARCH_SUN9I
 	if ((NULL == i2s1_moduleclk) ||(IS_ERR(i2s1_moduleclk))) {
-		printk("i2s1_moduleclk handle is invalid, just return\n");
+		pr_err("i2s1_moduleclk handle is invalid, just return\n");
 		return -EFAULT;
 	} else {
 		/*release the module clock*/
 		clk_disable(i2s1_moduleclk);
 	}
 	if ((NULL == i2s1_pllclk) ||(IS_ERR(i2s1_pllclk))) {
-		printk("i2s1_pllclk handle is invalid, just return\n");
+		pr_err("i2s1_pllclk handle is invalid, just return\n");
 		return -EFAULT;
 	} else {
 		/*release pll3clk*/

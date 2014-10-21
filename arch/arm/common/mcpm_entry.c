@@ -71,19 +71,24 @@ int mcpm_cpu_power_up(unsigned int cpu, unsigned int cluster)
 		    : "cc");				\
 		((__val>>24) & 0x03) + 1;		\
 	})
-
+#ifdef CONFIG_ARCH_SUN9IW1
+extern int sun9i_mcpm_cpu_map_init(void);
+#endif
+#ifdef CONFIG_ARCH_SUN8IW6
+extern int sun8i_mcpm_cpu_map_init(void);
+#endif
 void mcpm_smp_init_cpus(void)
 {
 	unsigned int i, ncores;
 
 	ncores = MAX_NR_CLUSTERS * MAX_CPUS_PER_CLUSTER;
-	early_printk("[%s] ncores=%d\n", __func__, ncores);
+	printk("[%s] ncores=%d\n", __func__, ncores);
 
 	/*
 	 * sanity check, the cr_cpu_ids is configured form CONFIG_NR_CPUS
 	 */
 	if (ncores > nr_cpu_ids) {
-	        early_printk("SMP: %u cores greater than maximum (%u), clipping\n",
+	        printk("SMP: %u cores greater than maximum (%u), clipping\n",
 				ncores, nr_cpu_ids);
 	        ncores = nr_cpu_ids;
 	}
@@ -91,20 +96,14 @@ void mcpm_smp_init_cpus(void)
 	for (i = 0; i < ncores; i++) {
 	    set_cpu_possible(i, true);
 	}
-
-	/* hard-encode by sunny to support sun9i 2big+2little,
-	 * we should use device-tree to config the cluster and cpu topology information.
-	 * but sun9i not support device-tree now, so I just hard-encode for temp debug.
-	 */
-	cpu_logical_map(0) = 0x000;
-	cpu_logical_map(1) = 0x001;
-	cpu_logical_map(2) = 0x002;
-	cpu_logical_map(3) = 0x003;
-	cpu_logical_map(4) = 0x100;
-	cpu_logical_map(5) = 0x101;
-	cpu_logical_map(6) = 0x102;
-	cpu_logical_map(7) = 0x103;
-
+#ifdef CONFIG_ARCH_SUN9IW1
+	/* FIXME: init sun9i mcpm cpu map */
+	sun9i_mcpm_cpu_map_init();
+#endif
+#ifdef CONFIG_ARCH_SUN8IW6
+	/* FIXME: init sun9i mcpm cpu map */
+	sun8i_mcpm_cpu_map_init();
+#endif
 #if defined(CONFIG_ARM_SUNXI_CPUIDLE)
 	set_smp_cross_call(sunxi_raise_softirq);
 #else

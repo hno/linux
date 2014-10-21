@@ -35,25 +35,25 @@
 #ifdef ARISC_DEBUG_ON
 /* debug levels */
 #define DEBUG_LEVEL_INF    ((u32)1 << 0)
-#define DEBUG_LEVEL_WRN    ((u32)1 << 1)
-#define DEBUG_LEVEL_ERR    ((u32)1 << 2)
-#define DEBUG_LEVEL_LOG    ((u32)1 << 3)
+#define DEBUG_LEVEL_LOG    ((u32)1 << 1)
+#define DEBUG_LEVEL_WRN    ((u32)1 << 2)
+#define DEBUG_LEVEL_ERR    ((u32)1 << 3)
 
 #define ARISC_INF(format, args...)                          \
 	if(DEBUG_LEVEL_INF & (0xf0 >> (arisc_debug_level +1)))  \
-	printk(KERN_INFO "[ARISC] :"format,##args);
+		pr_debug("[ARISC] :"format, ##args);
+
+#define ARISC_LOG(format, args...)                                      \
+	if(DEBUG_LEVEL_LOG & (0xf0 >> (arisc_debug_level +1)))	\
+		printk(KERN_NOTICE "[ARISC] :"format, ##args);
 
 #define ARISC_WRN(format, args...)                          \
 	if(DEBUG_LEVEL_WRN & (0xf0 >> (arisc_debug_level +1)))  \
-	printk(KERN_ERR "[ARISC WARING] :"format,##args);
+		printk(KERN_WARNING "[ARISC WARING] :"format, ##args);
 
 #define ARISC_ERR(format, args...)                          \
 	if(DEBUG_LEVEL_ERR & (0xf0 >> (arisc_debug_level +1)))  \
-	printk(KERN_ERR "[ARISC ERROR] :"format,##args);
-
-#define ARISC_LOG(format, args...)                                      \
-	if(DEBUG_LEVEL_LOG & (0xf0 >> (arisc_debug_level +1)))  \
-	printk(KERN_INFO "[ARISC] :"format,##args);
+		printk(KERN_ERR "[ARISC ERROR] :"format, ##args);
 
 #else /* ARISC_DEBUG_ON */
 #define ARISC_INF(...)
@@ -62,5 +62,8 @@
 #define ARISC_LOG(...)
 
 #endif /* ARISC_DEBUG_ON */
+
+/* report error information id */
+#define ERR_NMI_INT_TIMEOUT    (0x1)
 
 #endif /* __ARISC_DBGS_H */

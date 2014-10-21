@@ -21,8 +21,7 @@
 #include <linux/device.h>
 #include <linux/types.h>
 
-#define CPUFREQ_INF(format,args...)   printk("[cpu_freq] INF: "format,##args)
-#define CPUFREQ_DBG(format,args...)   printk("[cpu_freq] DBG: "format,##args)
+#define CPUFREQ_DBG(format,args...)   pr_debug("[cpu_freq] DBG: "format,##args)
 #define CPUFREQ_ERR(format,args...)   printk(KERN_ERR "[cpu_freq] ERR: "format,##args)
 
 /* sun9i platform support two clusters,
@@ -37,9 +36,9 @@
 #ifdef CONFIG_ARCH_SUN9IW1P1
 #define SUNXI_CPUFREQ_C0_CPUVDD        "axp22_dcdc3"
 #define SUNXI_CPUFREQ_C1_CPUVDD        "axp15_dcdc1"
-#elif defined (CONFIG_ARCH_SUN8IW6P1)
-#define SUNXI_CPUFREQ_C0_CPUVDD        "axp28_dcdc2"
-#define SUNXI_CPUFREQ_C1_CPUVDD        "axp28_dcdc3"
+#elif defined(CONFIG_ARCH_SUN8IW6P1) || defined(CONFIG_ARCH_SUN8IW9P1)
+#define SUNXI_CPUFREQ_C0_CPUVDD        "vdd-cpua"
+#define SUNXI_CPUFREQ_C1_CPUVDD        "vdd-cpub"
 #endif
 
 /* the actual and virtual freq convert */
@@ -63,7 +62,11 @@ extern bool bL_switching_enabled;
 
 static inline int cpu_to_cluster(int cpu)
 {
+#ifdef CONFIG_SMP
 	return is_bL_switching_enabled() ? MAX_CLUSTERS : topology_physical_package_id(cpu);
+#else
+	return 0;
+#endif
 }
 
 #endif /* CPUFREQ_SUNXI_IKS_H */

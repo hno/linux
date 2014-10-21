@@ -1,7 +1,7 @@
 /*
- * Battery charger driver for X-POWERS AXP81X
+ * Battery charger driver for allwinnertech AXP81X
  *
- * Copyright (C) 2014 X-POWERS Ltd.
+ * Copyright (C) 2014 ALLWINNERTECH.
  *  Ming Li <liming@allwinnertech.com>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -20,52 +20,15 @@
 #ifdef CONFIG_HAS_EARLYSUSPEND
 #include <linux/earlysuspend.h>
 #endif
-
 #include "../axp-cfg.h"
 #include "axp81x-sply.h"
 
 struct axp_charger *axp_charger;
-static aw_charge_type axp_usbcurflag = CHARGE_AC;
-static aw_charge_type axp_usbvolflag = CHARGE_AC;
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static struct early_suspend axp_early_suspend;
 int early_suspend_flag = 0;
 #endif
-
-static struct task_struct *main_task;
-
-int axp_usbvol(aw_charge_type type)
-{
-	axp_usbvolflag = type;
-	return 0;
-}
-EXPORT_SYMBOL_GPL(axp_usbvol);
-
-int axp_usbcur(aw_charge_type type)
-{
-	axp_usbcurflag = type;
-	power_supply_changed(&axp_charger->ac);
-	power_supply_changed(&axp_charger->usb);
-	return 0;
-}
-EXPORT_SYMBOL_GPL(axp_usbcur);
-
-int axp_usb_det(void)
-{
-	uint8_t ret = 0;
-
-	if(axp_charger == NULL || axp_charger->master == NULL)
-	{
-		return ret;
-	}
-	axp_read(axp_charger->master,AXP81X_CHARGE_STATUS,&ret);
-	if(ret & 0x10)/*usb or usb adapter can be used*/
-		return 1;
-	else/*no usb or usb adapter*/
-		return 0;
-}
-EXPORT_SYMBOL_GPL(axp_usb_det);
 
 static enum power_supply_property axp_battery_props[] = {
 	POWER_SUPPLY_PROP_MODEL_NAME,
@@ -209,17 +172,9 @@ static int axp_ac_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_MODEL_NAME:
 		val->strval = charger->ac.name;break;
 	case POWER_SUPPLY_PROP_PRESENT:
-		if (charger->ac_det && axp_usbcurflag == CHARGE_AC)
-			val->intval = 1;
-		else
-			val->intval = 0;
-		break;
+		val->intval = (charger->ac_valid || charger->usb_adapter_valid);break;
 	case POWER_SUPPLY_PROP_ONLINE:
-		if (charger->ac_valid && axp_usbcurflag == CHARGE_AC)
-			val->intval = 1;
-		else
-			val->intval = 0;
-		break;
+		val->intval = (charger->ac_valid || charger->usb_adapter_valid);break;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
 		val->intval = charger->vac * 1000;break;
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
@@ -243,17 +198,9 @@ static int axp_usb_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_MODEL_NAME:
 		val->strval = charger->usb.name;break;
 	case POWER_SUPPLY_PROP_PRESENT:
-		if (charger->usb_det && axp_usbcurflag != CHARGE_AC)
-			val->intval = 1;
-		else
-			val->intval = 0;
-		break;
+		val->intval = charger->usb_valid;break;
 	case POWER_SUPPLY_PROP_ONLINE:
-		if (charger->usb_valid && axp_usbcurflag != CHARGE_AC)
-			val->intval = 1;
-		else
-			val->intval = 0;
-		break;
+		val->intval = charger->usb_valid;break;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
 		val->intval = charger->vusb * 1000;break;
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
@@ -302,25 +249,15 @@ static void axp_battery_setup_psy(struct axp_charger *charger)
 #if defined CONFIG_HAS_EARLYSUSPEND
 static void axp_earlysuspend(struct early_suspend *h)
 {
-	uint8_t tmp;
-
 	DBG_PSY_MSG(DEBUG_SPLY, "======early suspend=======\n");
 
 #if defined (CONFIG_AXP_CHGCHANGE)
 	early_suspend_flag = 1;
-	if(axp81x_config.pmu_earlysuspend_chgcur == 0)
-		axp_clr_bits(axp_charger->master,AXP81X_CHARGE_CONTROL1,0x80);
-	else
-		axp_set_bits(axp_charger->master,AXP81X_CHARGE_CONTROL1,0x80);
-	if(axp81x_config.pmu_earlysuspend_chgcur >= 300000 && axp81x_config.pmu_earlysuspend_chgcur <= 2550000){
-		tmp = (axp81x_config.pmu_earlysuspend_chgcur -200001)/150000;
-		axp_update(axp_charger->master, AXP81X_CHARGE_CONTROL1, tmp,0x0F);
-	}
 #endif
+	axp81x_chg_current_limit(axp81x_config.pmu_earlysuspend_chgcur);
 }
 static void axp_lateresume(struct early_suspend *h)
 {
-	uint8_t tmp;
 	int value;
 
 	value = axp_powerkey_get();
@@ -330,19 +267,8 @@ static void axp_lateresume(struct early_suspend *h)
 	DBG_PSY_MSG(DEBUG_SPLY, "======late resume=======\n");
 #if defined (CONFIG_AXP_CHGCHANGE)
 	early_suspend_flag = 0;
-	if(axp81x_config.pmu_runtime_chgcur == 0)
-		axp_clr_bits(axp_charger->master,AXP81X_CHARGE_CONTROL1,0x80);
-	else
-		axp_set_bits(axp_charger->master,AXP81X_CHARGE_CONTROL1,0x80);
-	if(axp81x_config.pmu_runtime_chgcur >= 300000 && axp81x_config.pmu_runtime_chgcur <= 2550000){
-		tmp = (axp81x_config.pmu_runtime_chgcur -200001)/150000;
-		axp_update(axp_charger->master, AXP81X_CHARGE_CONTROL1, tmp,0x0F);
-	}else if(axp81x_config.pmu_runtime_chgcur < 300000){
-		axp_clr_bits(axp_charger->master, AXP81X_CHARGE_CONTROL1,0x0F);
-	}else{
-		axp_set_bits(axp_charger->master, AXP81X_CHARGE_CONTROL1,0x0F);
-	}
 #endif
+	axp81x_chg_current_limit(axp81x_config.pmu_runtime_chgcur);
 }
 #endif
 
@@ -421,14 +347,14 @@ static int axp_battery_probe(struct platform_device *pdev)
 
 	if (pdata == NULL)
 		return -EINVAL;
-	if (pdata->chgcur > 2550000 ||
-	pdata->chgvol < 4100000 ||
-	pdata->chgvol > 4350000){
+	if (pdata->chgcur > AXP81X_CHARGE_CURRENT_MAX ||
+	pdata->chgvol < AXP81X_CHARGE_VOLTAGE_LEVEL0 ||
+	pdata->chgvol > AXP81X_CHARGE_VOLTAGE_LEVEL3){
 		printk("charger milliamp is too high or target voltage is over range\n");
 		return -EINVAL;
 	}
-	if (pdata->chgpretime < 40 || pdata->chgpretime >70 ||
-	pdata->chgcsttime < 360 || pdata->chgcsttime > 720){
+	if (pdata->chgpretime < AXP81X_CHARGE_PRETIME_MIN || pdata->chgpretime >AXP81X_CHARGE_PRETIME_MAX ||
+	pdata->chgcsttime < AXP81X_CHARGE_FASTTIME_MIN || pdata->chgcsttime > AXP81X_CHARGE_FASTTIME_MAX){
 		printk("prechaging time or constant current charging time is over range\n");
 		return -EINVAL;
 	}
@@ -451,6 +377,8 @@ static int axp_battery_probe(struct platform_device *pdev)
 	charger->disvbat	= 0;
 	charger->disibat	= 0;
 	spin_unlock(&charger->charger_lock);
+
+	axp_charger = charger;
 
 	ret = axp81x_init(charger);
 	if (ret) {
@@ -486,7 +414,7 @@ static int axp_battery_probe(struct platform_device *pdev)
 	spin_lock(&charger->charger_lock);
 	charger->rest_vol = (int) (val & 0x7F);
 	spin_unlock(&charger->charger_lock);
-	printk("now_rest_vol = %d\n",(val & 0x7F));
+	DBG_PSY_MSG(DEBUG_SPLY, "now_rest_vol = %d\n",(val & 0x7F));
 
 	spin_lock(&charger->charger_lock);
 	charger->interval = msecs_to_jiffies(10 * 1000);
@@ -494,13 +422,14 @@ static int axp_battery_probe(struct platform_device *pdev)
 	INIT_DELAYED_WORK(&charger->work, axp_charging_monitor);
 	schedule_delayed_work(&charger->work, charger->interval);
 
+	axp_chg_init(charger);
 	ret = axp_irq_init(charger, pdev);
 	if(ret){
 		printk("cat notaxp_charger_create_attrs!!!===\n ");
 		return ret;
 	}
+	axp_usbac_checkst(charger);
 
-	axp_charger = charger;
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	axp_early_suspend.suspend = axp_earlysuspend;
 	axp_early_suspend.resume = axp_lateresume;
@@ -522,11 +451,12 @@ static int axp_battery_remove(struct platform_device *dev)
 {
 	struct axp_charger *charger = platform_get_drvdata(dev);
 	
-	if(main_task){
-		kthread_stop(main_task);
-		main_task = NULL;
-	}
+	class_unregister(&axppower_class);
+#ifdef CONFIG_HAS_EARLYSUSPEND
+	unregister_early_suspend(&axp_early_suspend);
+#endif
 	axp_irq_exit(charger);
+	axp_chg_exit(charger);
 	cancel_delayed_work_sync(&charger->work);
 	power_supply_unregister(&charger->usb);
 	power_supply_unregister(&charger->ac);
@@ -538,25 +468,17 @@ static int axp_battery_remove(struct platform_device *dev)
 
 static int axp81x_suspend(struct platform_device *dev, pm_message_t state)
 {
-	uint8_t tmp, ret;
+	int ret;
 	struct axp_charger *charger = platform_get_drvdata(dev);
 
 	ret = axp_disable_irq(charger);
 	if (ret < 0)
 		return ret;
+	schedule_delayed_work(&charger->usbwork, 0);
+	flush_delayed_work_sync(&charger->usbwork);
 	cancel_delayed_work_sync(&charger->work);
-#if defined (CONFIG_AXP_CHGCHANGE)
-	if(axp81x_config.pmu_suspend_chgcur == 0)
-		axp_clr_bits(charger->master,AXP81X_CHARGE_CONTROL1,0x80);
-	else
-		axp_set_bits(charger->master,AXP81X_CHARGE_CONTROL1,0x80);
-	printk("pmu_suspend_chgcur = %d\n", axp81x_config.pmu_suspend_chgcur);
-	if(axp81x_config.pmu_suspend_chgcur >= 300000 && axp81x_config.pmu_suspend_chgcur <= 2550000){
-		tmp = (axp81x_config.pmu_suspend_chgcur -200001)/150000;
-		charger->chgcur = tmp *150000 + 300000;
-		axp_update(charger->master, AXP81X_CHARGE_CONTROL1, tmp,0x0F);
-	}
-#endif
+	cancel_delayed_work_sync(&charger->usbwork);
+	axp81x_chg_current_limit(axp81x_config.pmu_suspend_chgcur);
 	return 0;
 }
 
@@ -564,7 +486,7 @@ static int axp81x_resume(struct platform_device *dev)
 {
 	struct axp_charger *charger = platform_get_drvdata(dev);
 	int pre_rest_vol;
-	uint8_t val,tmp;
+	uint8_t val;
 
 	axp_enable_irq(charger);
 	pre_rest_vol = charger->rest_vol;
@@ -575,22 +497,7 @@ static int axp81x_resume(struct platform_device *dev)
 		pre_rest_vol = charger->rest_vol;
 		axp_write(charger->master,AXP81X_DATA_BUFFER1,charger->rest_vol | 0x80);
 	}
-#if defined (CONFIG_AXP_CHGCHANGE)
-	if(axp81x_config.pmu_runtime_chgcur == 0)
-		axp_clr_bits(charger->master,AXP81X_CHARGE_CONTROL1,0x80);
-	else
-		axp_set_bits(charger->master,AXP81X_CHARGE_CONTROL1,0x80);
-	printk("pmu_runtime_chgcur = %d\n", axp81x_config.pmu_runtime_chgcur);
-	if(axp81x_config.pmu_runtime_chgcur >= 300000 && axp81x_config.pmu_runtime_chgcur <= 2550000){
-		tmp = (axp81x_config.pmu_runtime_chgcur -200001)/150000;
-		charger->chgcur = tmp *150000 + 300000;
-		axp_update(charger->master, AXP81X_CHARGE_CONTROL1, tmp,0x0F);
-	}else if(axp81x_config.pmu_runtime_chgcur < 300000){
-		axp_clr_bits(axp_charger->master, AXP81X_CHARGE_CONTROL1,0x0F);
-	}else{
-		axp_set_bits(axp_charger->master, AXP81X_CHARGE_CONTROL1,0x0F);
-	}
-#endif
+	axp81x_chg_current_limit(axp81x_config.pmu_runtime_chgcur);
 	charger->disvbat = 0;
 	charger->disibat = 0;
 	axp_charger_update_state(charger);
@@ -599,27 +506,16 @@ static int axp81x_resume(struct platform_device *dev)
 	power_supply_changed(&charger->ac);
 	power_supply_changed(&charger->usb);
 	schedule_delayed_work(&charger->work, charger->interval);
+	schedule_delayed_work(&charger->usbwork, msecs_to_jiffies(7 * 1000));
 	return 0;
 }
 
 static void axp81x_shutdown(struct platform_device *dev)
 {
-	uint8_t tmp;
 	struct axp_charger *charger = platform_get_drvdata(dev);
 
 	cancel_delayed_work_sync(&charger->work);
-#if defined (CONFIG_AXP_CHGCHANGE)
-	if(axp81x_config.pmu_shutdown_chgcur == 0)
-		axp_clr_bits(charger->master,AXP81X_CHARGE_CONTROL1,0x80);
-	else
-		axp_set_bits(charger->master,AXP81X_CHARGE_CONTROL1,0x80);
-	printk("pmu_shutdown_chgcur = %d\n", axp81x_config.pmu_shutdown_chgcur);
-	if(axp81x_config.pmu_shutdown_chgcur >= 300000 && axp81x_config.pmu_shutdown_chgcur <= 2550000){
-		tmp = (axp81x_config.pmu_shutdown_chgcur -200001)/150000;
-		charger->chgcur = tmp *150000 + 300000;
-		axp_update(charger->master, AXP81X_CHARGE_CONTROL1, tmp, 0x0F);
-	}
-#endif
+	axp81x_chg_current_limit(axp81x_config.pmu_shutdown_chgcur);
 	return;
 }
 
@@ -651,6 +547,6 @@ static void axp_battery_exit(void)
 subsys_initcall(axp_battery_init);
 module_exit(axp_battery_exit);
 
-MODULE_DESCRIPTION("AXP81X battery charger driver");
+MODULE_DESCRIPTION("AXP81X battery driver");
 MODULE_AUTHOR("Ming Li");
 MODULE_LICENSE("GPL");

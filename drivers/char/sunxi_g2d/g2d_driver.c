@@ -35,19 +35,19 @@ static struct resource g2d_resource[2] =
 
 };
 
-static int g2d_dev_release(struct device *dev)
+static void g2d_dev_release(struct device *dev)
 {
-	return 0;
+
 }
 
 struct platform_device g2d_device =
 {
 	.name           = "g2d",
-	.id		        = -1,
+	.id             = -1,
 	.num_resources  = ARRAY_SIZE(g2d_resource),
-	.resource	    = g2d_resource,
+	.resource       = g2d_resource,
 	.dev            = {
-    	.release        = g2d_dev_release,},
+	.release        = g2d_dev_release,},
 };
 
 int drv_g2d_begin(void)

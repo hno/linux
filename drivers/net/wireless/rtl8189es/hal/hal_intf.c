@@ -297,7 +297,7 @@ s32	rtw_hal_init_recv_priv(_adapter *padapter)
 	return _FAIL;
 }
 void	rtw_hal_free_recv_priv(_adapter *padapter)
-{	
+{	
 	if(padapter->HalFunc.free_recv_priv)
 		padapter->HalFunc.free_recv_priv(padapter);
 }

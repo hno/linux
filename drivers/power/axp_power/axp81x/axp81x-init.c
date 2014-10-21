@@ -1,7 +1,7 @@
 /*
- * Battery charger driver for X-POWERS AXP81X
+ * Battery charger driver for allwinnertech AXP81X
  *
- * Copyright (C) 2014 X-POWERS Ltd.
+ * Copyright (C) 2014 ALLWINNERTECH.
  *  Ming Li <liming@allwinnertech.com>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -77,12 +77,12 @@ static void axp_set_charge(struct axp_charger *charger)
 	uint8_t val=0x00;
 	uint8_t tmp=0x00;
 
-	if(charger->chgvol < 4150000){
+	if(charger->chgvol < AXP81X_CHARGE_VOLTAGE_LEVEL1){
 		val &= ~(3 << 5);
-	}else if (charger->chgvol<4200000){
+	}else if (charger->chgvol<AXP81X_CHARGE_VOLTAGE_LEVEL2){
 		val &= ~(3 << 5);
 		val |= 1 << 5;
-	}else if (charger->chgvol<4350000){
+	}else if (charger->chgvol<AXP81X_CHARGE_VOLTAGE_LEVEL3){
 		val &= ~(3 << 5);
 		val |= 1 << 6;
 	}else
@@ -92,13 +92,13 @@ static void axp_set_charge(struct axp_charger *charger)
 	if(charger->chgcur == 0)
 		charger->chgen = 0;
 
-	if(charger->chgcur< 300000)
-		charger->chgcur = 300000;
-	else if(charger->chgcur > 2550000)
-		charger->chgcur = 2550000;
+	if(charger->chgcur< 200000)
+		charger->chgcur = 200000;
+	else if(charger->chgcur > 2800000)
+		charger->chgcur = 2800000;
 	spin_unlock(&charger->charger_lock);
 
-	val |= (charger->chgcur - 300000) / 150000 ;
+	val |= (charger->chgcur - 200000) / 200000 ;
 	if(charger ->chgend == 10)
 		val &= ~(1 << 4);
 	else
@@ -139,19 +139,22 @@ static int axp_battery_adc_set(struct axp_charger *charger)
 	ret = axp_update(charger->master, AXP81X_ADC_CONTROL, val , AXP81X_ADC_BATVOL_ENABLE | AXP81X_ADC_BATCUR_ENABLE | AXP81X_ADC_TSVOL_ENABLE);
 	if (ret)
 		return ret;
-	ret = axp_read(charger->master, AXP81X_ADC_CONTROL3, &val);
+	val = 0;
 	switch (charger->sample_time/100){
-		case 1: val &= ~(3 << 6);break;
-		case 2: val &= ~(3 << 6);val |= 1 << 6;break;
-		case 4: val &= ~(3 << 6);val |= 2 << 6;break;
-		case 8: val |= 3 << 6;break;
-	default: break;
+		case 1: val &= ~(3 << 4);break;
+		case 2: val &= ~(3 << 4);val |= 1 << 4;break;
+		case 4: val &= ~(3 << 4);val |= 2 << 4;break;
+		case 8: val |= 3 << 4;break;
+		default: break;
 	}
-	if (0 != axp81x_config.pmu_temp_enable)
-		val &= (~(1 << 2));
-	ret = axp_write(charger->master, AXP81X_ADC_CONTROL3, val);
+	ret = axp_update(charger->master, AXP81X_ADC_CONTROL4, val, 0x30);
 	if (ret)
 		return ret;
+	if (0 != axp81x_config.pmu_temp_enable){
+		ret = axp_clr_bits(axp_charger->master, AXP81X_ADC_CONTROL3, 0x04);
+		if (ret)
+			return ret;
+	}
 	return 0;
 }
 #else
@@ -170,10 +173,10 @@ static int axp_battery_first_init(struct axp_charger *charger)
 	ret = axp_battery_adc_set(charger);
 	if(ret)
 	return ret;
-	ret = axp_read(charger->master, AXP81X_ADC_CONTROL3, &val);
+	ret = axp_read(charger->master, AXP81X_ADC_CONTROL4, &val);
 
 	spin_lock(&charger->charger_lock);
-	switch ((val >> 6) & 0x03){
+	switch ((val >> 4) & 0x03){
 		case 0: charger->sample_time = 100;break;
 		case 1: charger->sample_time = 200;break;
 		case 2: charger->sample_time = 400;break;
@@ -185,6 +188,29 @@ static int axp_battery_first_init(struct axp_charger *charger)
 	return ret;
 }
 
+int axp81x_chg_current_limit(int current_limit)
+{
+	uint8_t tmp = 0;
+#if defined (CONFIG_AXP_CHGCHANGE)
+	if(current_limit == 0)
+		axp_clr_bits(axp_charger->master,AXP81X_CHARGE_CONTROL1,0x80);
+	else
+		axp_set_bits(axp_charger->master,AXP81X_CHARGE_CONTROL1,0x80);
+	DBG_PSY_MSG(DEBUG_SPLY, "current_limit = %d\n", current_limit);
+	if(current_limit >= AXP81X_CHARGE_CURRENT_MIN && current_limit <= AXP81X_CHARGE_CURRENT_MAX){
+		tmp = (current_limit -AXP81X_CHARGE_CURRENT_STEP)/AXP81X_CHARGE_CURRENT_STEP;
+		spin_lock(&axp_charger->charger_lock);
+		axp_charger->chgcur = tmp *AXP81X_CHARGE_CURRENT_STEP + AXP81X_CHARGE_CURRENT_MIN;
+		spin_unlock(&axp_charger->charger_lock);
+		axp_update(axp_charger->master, AXP81X_CHARGE_CONTROL1, tmp,0x0F);
+	}else if(current_limit < AXP81X_CHARGE_CURRENT_MIN){
+		axp_clr_bits(axp_charger->master, AXP81X_CHARGE_CONTROL1,0x0F);
+	}else{
+		axp_set_bits(axp_charger->master, AXP81X_CHARGE_CONTROL1,0x0F);
+	}
+#endif
+	return 0;
+}
 
 int axp81x_init(struct axp_charger *charger)
 {
@@ -199,37 +225,17 @@ int axp81x_init(struct axp_charger *charger)
 
 	/* usb voltage limit */
 	if((axp81x_config.pmu_usbvol) && (axp81x_config.pmu_usbvol_limit)){
-		axp_set_bits(charger->master, AXP81X_CHARGE_VBUS, 0x40);
+		axp_set_bits(charger->master, AXP81X_CHARGE_VBUS, 0x40);///qin no use
 		var = axp81x_config.pmu_usbvol * 1000;
 		if(var >= 4000000 && var <=4700000){
 			tmp = (var - 4000000)/100000;
-			axp_read(charger->master, AXP81X_CHARGE_VBUS,&val);
-			val &= 0xC7;
-			val |= tmp << 3;
-			axp_write(charger->master, AXP81X_CHARGE_VBUS,val);
+			val = tmp << 3;
+			axp_update(charger->master, AXP81X_CHARGE_VBUS, val, 0x38);
 		}
 	}else
-		axp_clr_bits(charger->master, AXP81X_CHARGE_VBUS, 0x40);
+		axp_clr_bits(charger->master, AXP81X_CHARGE_VBUS, 0x40);///qin no use
 
-	/* enable BC */
-	axp_set_bits(charger->master,  AXP81X_USBAC_SET,  0x01);
-
-#if defined (CONFIG_AXP_CHGCHANGE)
-	if(axp81x_config.pmu_runtime_chgcur == 0)
-		axp_clr_bits(charger->master,AXP81X_CHARGE_CONTROL1,0x80);
-	else
-		axp_set_bits(charger->master,AXP81X_CHARGE_CONTROL1,0x80);
-	printk("pmu_runtime_chgcur = %d\n", axp81x_config.pmu_runtime_chgcur);
-	if(axp81x_config.pmu_runtime_chgcur >= 300000 && axp81x_config.pmu_runtime_chgcur <= 2550000){
-		tmp = (axp81x_config.pmu_runtime_chgcur -200001)/150000;
-		charger->chgcur = tmp *150000 + 300000;
-		axp_update(charger->master, AXP81X_CHARGE_CONTROL1, tmp,0x0F);
-	}else if(axp81x_config.pmu_runtime_chgcur < 300000){
-		axp_clr_bits(axp_charger->master, AXP81X_CHARGE_CONTROL1,0x0F);
-	}else{
-		axp_set_bits(axp_charger->master, AXP81X_CHARGE_CONTROL1,0x0F);
-	}
-#endif
+	axp81x_chg_current_limit(axp81x_config.pmu_runtime_chgcur);
 
 	/* set lowe power warning/shutdown level */
 	axp_write(charger->master, AXP81X_WARNING_LEVEL,((axp81x_config.pmu_battery_warning_level1-5) << 4)+axp81x_config.pmu_battery_warning_level2);
@@ -298,38 +304,31 @@ int axp81x_init(struct axp_charger *charger)
 	ocv_cap[62] = axp81x_config.pmu_bat_para32;
 	axp_writes(charger->master, 0xC0,63,ocv_cap);
 	/* pok open time set */
-	axp_read(charger->master,AXP81X_POK_SET,&val);
 	if(axp81x_config.pmu_pekon_time < 1000)
-		val &= 0x3f;
+		val = 0x00;
 	else if(axp81x_config.pmu_pekon_time < 2000){
-		val &= 0x3f;
-		val |= 0x40;
+		val = 0x40;
 	}else if(axp81x_config.pmu_pekon_time < 3000){
-		val &= 0x3f;
-		val |= 0x80;
+		val = 0x80;
 	}else {
-		val &= 0x3f;
-		val |= 0xc0;
+		val = 0xc0;
 	}
-	axp_write(charger->master,AXP81X_POK_SET,val);
+	axp_update(charger->master, AXP81X_POK_SET, val, 0xc0);
+	var = axp81x_config.pmu_peklong_time;
 	/* pok long time set*/
 	if(axp81x_config.pmu_peklong_time < 1000)
 		var = 1000;
 	if(axp81x_config.pmu_peklong_time > 2500)
 		var = 2500;
-	axp_read(charger->master,AXP81X_POK_SET,&val);
-	val &= 0xcf;
-	val |= (((var - 1000) / 500) << 4);
-	axp_write(charger->master,AXP81X_POK_SET,val);
+	val = (((var - 1000) / 500) << 4);
+	axp_update(charger->master, AXP81X_POK_SET, val, 0x30);
 	/* pek offlevel poweroff en set*/
 	if(axp81x_config.pmu_pekoff_en)
 		var = 1;
 	else
 		var = 0;
-	axp_read(charger->master,AXP81X_POK_SET,&val);
-	val &= 0xf7;
-	val |= (var << 3);
-	axp_write(charger->master,AXP81X_POK_SET,val);
+	val = (var << 3);
+	axp_update(charger->master, AXP81X_POK_SET, val, 0x8);
 	/*Init offlevel restart or not */
 	if(axp81x_config.pmu_pekoff_func)
 		axp_set_bits(charger->master,AXP81X_POK_SET,0x04); //restart
@@ -355,26 +354,28 @@ int axp81x_init(struct axp_charger *charger)
 	axp_write(charger->master,AXP81X_POK_DELAY_SET,val);
 
 	/* pek delay set */
-	axp_read(charger->master,AXP81X_OFF_CTL,&val);
-	val &= 0xfc;
-	val |= ((axp81x_config.pmu_pwrok_time / 8) - 1);
-	axp_write(charger->master,AXP81X_OFF_CTL,val);
+	if (axp81x_config.pmu_pwrok_time < 32)
+		val = ((axp81x_config.pmu_pwrok_time / 8) - 1);
+	else
+		val = ((axp81x_config.pmu_pwrok_time / 32) + 1);
+	axp_update(charger->master, AXP81X_OFF_CTL, val, 0x3);
 
-	axp_read(charger->master,AXP81X_DCDC_MONITOR,&val);
-	if(axp81x_config.pmu_pwrok_shutdown_en)
-		val |= 0x40;
-	axp_write(charger->master,AXP81X_DCDC_MONITOR,val);
+	//axp_read(charger->master,AXP81X_DCDC_MONITOR,&val);
+	//if(axp81x_config.pmu_pwrok_shutdown_en)
+	//	val |= 0x40;
+	//axp_write(charger->master,AXP81X_DCDC_MONITOR,val);
+
+	if(axp81x_config.pmu_reset_shutdown_en)
+		axp_set_bits(charger->master,AXP81X_HOTOVER_CTL,0x01); //restart shutdown ldo/dcdc
 
 	/* pek offlevel time set */
 	if(axp81x_config.pmu_pekoff_time < 4000)
 		var = 4000;
 	if(axp81x_config.pmu_pekoff_time > 10000)
 		var =10000;
-	var = (var - 4000) / 2000 ;
-	axp_read(charger->master,AXP81X_POK_SET,&val);
-	val &= 0xfc;
-	val |= var ;
-	axp_write(charger->master,AXP81X_POK_SET,val);
+	var = (axp81x_config.pmu_pekoff_time - 4000) / 2000 ;
+	val = var ;
+	axp_update(charger->master, AXP81X_POK_SET, val, 0x3);
 	/*Init 16's Reset PMU en */
 	if(axp81x_config.pmu_reset)
 		axp_set_bits(charger->master,0x8F,0x08); //enable

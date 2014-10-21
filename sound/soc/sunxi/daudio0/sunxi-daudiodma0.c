@@ -19,6 +19,7 @@
 #include <linux/io.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <linux/delay.h>
 #include <linux/dma-mapping.h>
 #include <linux/dma/sunxi-dma.h>
 #include <linux/arisc/arisc.h>
@@ -31,6 +32,14 @@
 #include <asm/dma.h>
 #include <mach/hardware.h>
 #include "sunxi-daudiodma0.h"
+
+#ifdef AUDIO_KARAOKE
+atomic_t cap_num;
+dma_addr_t daudiocap_dma_addr = 0;
+unsigned char *daudiocap_dma_area = NULL;	/* DMA area */
+unsigned char *daudiocap_area = NULL;
+struct timeval tv_start, tv_cur;
+#endif
 
 #ifdef AR200_AUDIO
 static volatile unsigned int capture_remain_byte 	= 0;
@@ -166,10 +175,17 @@ static int sunxi_pcm_hw_params(struct snd_pcm_substream *substream,
 			slave_config.src_addr_width = DMA_SLAVE_BUSWIDTH_4_BYTES;
 		}
 		slave_config.dst_addr = dmap->dma_addr;
+		#if defined CONFIG_ARCH_SUN8IW6
+		slave_config.dst_maxburst = 8;
+		slave_config.src_maxburst = 8;
+		#else
 		slave_config.dst_maxburst = 4;
 		slave_config.src_maxburst = 4;
-		#ifdef CONFIG_ARCH_SUN9IW1
+		#endif
+		#if defined CONFIG_ARCH_SUN9IW1
 		slave_config.slave_id = sunxi_slave_id(DRQDST_R_DAUDIO_1_TX, DRQSRC_SDRAM);
+		#elif defined CONFIG_ARCH_SUN8IW8 || defined CONFIG_ARCH_SUN8IW7
+		slave_config.slave_id = sunxi_slave_id(DRQDST_DAUDIO_0_TX, DRQSRC_SDRAM);
 		#else
 		slave_config.slave_id = sunxi_slave_id(DRQDST_TDM_TX, DRQSRC_SDRAM);
 		#endif
@@ -195,10 +211,17 @@ static int sunxi_pcm_hw_params(struct snd_pcm_substream *substream,
 		slave_config.src_addr_width = DMA_SLAVE_BUSWIDTH_2_BYTES;
 		slave_config.dst_addr_width = DMA_SLAVE_BUSWIDTH_2_BYTES;
 		slave_config.src_addr = dmap->dma_addr;
+		#if defined CONFIG_ARCH_SUN8IW6
+		slave_config.dst_maxburst = 8;
+		slave_config.src_maxburst = 8;
+		#else
 		slave_config.dst_maxburst = 4;
 		slave_config.src_maxburst = 4;
-		#ifdef CONFIG_ARCH_SUN9IW1
+		#endif
+		#if defined CONFIG_ARCH_SUN9IW1
 		slave_config.slave_id = sunxi_slave_id(DRQDST_SDRAM, DRQSRC_R_DAUDIO_1_RX);
+		#elif defined CONFIG_ARCH_SUN8IW8 || defined CONFIG_ARCH_SUN8IW7
+		slave_config.slave_id = sunxi_slave_id(DRQDST_SDRAM, DRQSRC_DAUDIO_0_RX);
 		#else
 		slave_config.slave_id = sunxi_slave_id(DRQDST_SDRAM, DRQDST_TDMRX);
 		#endif
@@ -215,9 +238,9 @@ static int sunxi_pcm_hw_params(struct snd_pcm_substream *substream,
 #ifdef CONFIG_ARCH_SUN9IW1
 #ifndef AR200_AUDIO
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-		substream->dma_buffer.addr = AUDIO_SRAM_BASE_PALY;
-		substream->dma_buffer.area = 0xf8117000;
-		memset(0xf8117000, 0, 0x3c00);
+		substream->dma_buffer.addr = 0x14000;
+		substream->dma_buffer.area = (unsigned char *)0xf0014000;
+		memset((void *)0xf0014000, 0, 0x4000);
 	}
 #endif
 #endif
@@ -299,6 +322,11 @@ static int sunxi_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 		case SNDRV_PCM_TRIGGER_START:
 		case SNDRV_PCM_TRIGGER_RESUME:
 		case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
+#ifdef AUDIO_KARAOKE
+			memset(daudiocap_dma_area, 0, 0x4000);
+			atomic_inc(&cap_num);
+			do_gettimeofday(&tv_start);
+#endif
 #ifdef AR200_AUDIO
 			arisc_audio_start(prtd->mode);
 #else
@@ -308,6 +336,10 @@ static int sunxi_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 		case SNDRV_PCM_TRIGGER_SUSPEND:
 		case SNDRV_PCM_TRIGGER_STOP:
 		case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
+#ifdef AUDIO_KARAOKE
+		do_gettimeofday(&tv_start);
+		atomic_dec(&cap_num);
+#endif
 #ifdef AR200_AUDIO
 			arisc_audio_stop(prtd->mode);
 #else
@@ -417,6 +449,47 @@ static int sunxi_pcm_mmap(struct snd_pcm_substream *substream,
 	}
 }
 
+#ifdef AUDIO_KARAOKE
+void daudio_restore_capbuf(int *daudiocap_area, short* hwbuf, int samples)
+{
+	memcpy(daudiocap_area, hwbuf, samples);
+}
+
+static int sunxi_pcm_copy(struct snd_pcm_substream *substream, int a,
+	 snd_pcm_uframes_t hwoff, void __user *buf, snd_pcm_uframes_t frames)
+{
+	int ret = 0;
+	struct snd_pcm_runtime *runtime = substream->runtime;
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		char *hwbuf = runtime->dma_area + frames_to_bytes(runtime, hwoff);
+		if (copy_from_user(hwbuf, buf, frames_to_bytes(runtime, frames))) {
+			return -EFAULT;
+		}
+		do_gettimeofday(&tv_cur);
+		/*mixer capture buffer to the play output buffer*/
+		if ((atomic_read(&cap_num) == 1) && ((tv_cur.tv_sec - tv_start.tv_sec) > 4)) {
+			if (frames_to_bytes(runtime, frames)>snd_pcm_lib_period_bytes(substream)) {
+				audio_mixer_buffer(hwbuf, daudiocap_dma_area, hwbuf, snd_pcm_lib_period_bytes(substream));
+				hwbuf = hwbuf+snd_pcm_lib_period_bytes(substream);
+				audio_mixer_buffer(hwbuf, daudiocap_area, hwbuf, snd_pcm_lib_period_bytes(substream));
+			} else {
+				audio_mixer_buffer(hwbuf, daudiocap_area, hwbuf, frames_to_bytes(runtime, frames));
+			}
+		}
+	} else if (substream->stream == SNDRV_PCM_STREAM_CAPTURE) {
+		char *hwbuf = runtime->dma_area + frames_to_bytes(runtime, hwoff);
+		daudiocap_area = daudiocap_dma_area + frames_to_bytes(runtime, hwoff);
+		/*restore dma capture buffer to tmp buffer area for mixer output to hdmi/spdif/codec*/
+		daudio_restore_capbuf((int*)daudiocap_area, (short*)hwbuf, frames_to_bytes(runtime, frames));
+		if (copy_to_user(buf, hwbuf, frames_to_bytes(runtime, frames))) {
+			return -EFAULT;
+		}
+	}
+
+	return ret;
+}
+#endif
+
 static struct snd_pcm_ops sunxi_pcm_ops = {
 	.open			= sunxi_pcm_open,
 	.close			= sunxi_pcm_close,
@@ -427,7 +500,12 @@ static struct snd_pcm_ops sunxi_pcm_ops = {
 #ifdef AR200_AUDIO
 	.pointer		= sunxi_pcm_pointer,
 #else
+#ifdef AUDIO_KARAOKE
+	.pointer        = snd_dmaengine_pcm_pointer_no_residue,
+	.copy			= sunxi_pcm_copy,
+#else
 	.pointer        = snd_dmaengine_pcm_pointer,
+#endif
 #endif
 	.mmap			= sunxi_pcm_mmap,
 };
@@ -474,6 +552,11 @@ static void sunxi_pcm_free_dma_buffers(struct snd_pcm *pcm)
 				      buf->area, buf->addr);
 		buf->area = NULL;
 	}
+#ifdef AUDIO_KARAOKE
+	dma_free_coherent(NULL, 0x4000, daudiocap_dma_area, daudiocap_dma_addr);
+	daudiocap_dma_area = NULL;
+	daudiocap_area = NULL;
+#endif
 }
 
 static u64 sunxi_pcm_mask = DMA_BIT_MASK(32);
@@ -502,6 +585,10 @@ static int sunxi_pcm_new(struct snd_soc_pcm_runtime *rtd)
 		if (ret)
 			goto out;
 	}
+#ifdef AUDIO_KARAOKE
+	atomic_set(&cap_num, 0);
+	daudiocap_dma_area = dma_alloc_coherent(NULL, 0x4000, &daudiocap_dma_addr, GFP_KERNEL);
+#endif
  	out:
 		return ret;
 }

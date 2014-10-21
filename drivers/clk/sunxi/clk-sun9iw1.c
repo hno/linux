@@ -15,6 +15,7 @@
 #include <linux/clkdev.h>
 #include <linux/clk/sunxi.h>
 #include <mach/sys_config.h>
+#include <mach/sunxi-smc.h>
 #include "clk-sunxi.h"
 #include "clk-factors.h"
 #include "clk-periph.h"
@@ -79,7 +80,7 @@ SUNXI_CLK_FACTORS(pll2,   8,  8,  0,  0,  0,  0,  16, 1,  0,   0,   0,   0,    0
 SUNXI_CLK_FACTORS(pll3,   8,  8,  0,  0,  0,  0,  0,  6,  16,  1,   18,  1,    0,    0,   0,     31,    24,    1,       PLL3_PAT, 0xc000e147);
 SUNXI_CLK_FACTORS(pll4,   8,  8,  0,  0,  0,  0,  0,  0,  16,  1,   18,  1,    0,    0,   0,     31,    0,     0,       0,        0);
 SUNXI_CLK_FACTORS(pll5,   8,  8,  0,  0,  0,  0,  0,  0,  16,  1,   18,  1,    0,    0,   0,     31,    0,     0,       0,        0);
-SUNXI_CLK_FACTORS(pll6,   8,  8,  0,  0,  0,  0,  0,  0,  16,  1,   18,  1,    0,    0,   0,     31,    0,     0,       0,        0);
+SUNXI_CLK_FACTORS_UPDATE(pll6,   8,  8,  0,  0,  0,  0,  0,  0,  16,  1,   18,  1,    0,    0,   0,     31,    0,     0,       0,        0,		30);
 SUNXI_CLK_FACTORS(pll7,   8,  8,  0,  0,  0,  0,  0,  0,  16,  1,   0,   0,    0,    0,   0,     31,    24,    0,       PLL7_PAT, 0xd1303333);
 SUNXI_CLK_FACTORS(pll8,   8,  8,  0,  0,  0,  0,  0,  2,  16,  1,   0,   0,    0,    0,   0,     31,    24,    0,       PLL8_PAT, 0xd1303333);
 SUNXI_CLK_FACTORS(pll9,   8,  8,  0,  0,  0,  0,  0,  0,  16,  1,   18,  1,    0,    0,   0,     31,    24,    0,       PLL9_PAT, 0xd1303333);
@@ -162,7 +163,7 @@ static int get_factors_pll11(u32 rate, u32 parent_rate, struct clk_factors_value
 }
 static int get_factors_pll12(u32 rate, u32 parent_rate, struct clk_factors_value *factor)
 {
-    return get_factors_common(rate,parent_rate,factor, &sunxi_clk_factor_pll12, pll12_max,factor_pll12_tbl,sizeof(factor_pll10_tbl)/sizeof(struct sunxi_clk_factor_freq));
+    return get_factors_common(rate,parent_rate,factor, &sunxi_clk_factor_pll12, pll12_max,factor_pll12_tbl,sizeof(factor_pll12_tbl)/sizeof(struct sunxi_clk_factor_freq));
 }
 static unsigned long calc_rate_pll1(u32 parent_rate, struct clk_factors_value *factor)
 {
@@ -285,7 +286,7 @@ static struct sunxi_clk_comgate com_gates[]={
 {"sdmmc",    0,  0xf,    BUS_GATE_SHARE|RST_GATE_SHARE,                 0},
 {"mipi_dsi", 0,  0x3,    BUS_GATE_SHARE|RST_GATE_SHARE,                 0},
 {"csi",      0, 0x1f,    BUS_GATE_SHARE|RST_GATE_SHARE,                 0},
-{"gpu",      0,  0x7,    BUS_GATE_SHARE|RST_GATE_SHARE,                 0},
+{"gpu",      0,  0x7,    RST_GATE_SHARE,                 0},
 };
 /*
 SUNXI_CLK_PERIPH(name,    mux_reg,    mux_shift, mux_width, div_reg,    div_mshift, div_mwidth, div_nshift, div_nwidth, gate_flags, enable_reg, reset_reg, bus_gate_reg, drm_gate_reg, enable_shift, reset_shift, bus_gate_shift, dram_gate_shift, lock,com_gate,com_gate_off)
@@ -343,9 +344,10 @@ SUNXI_CLK_PERIPH(csi1_mclk,CSI1_MCLK,  24,       4,         CSI1_MCLK,  0,      
 SUNXI_CLK_PERIPH(fd,	   FD_CFG,     24,       4,         FD_CFG,     0,          4,           0,         0,          0,          FD_CFG,     AHB0_RST,  AHB0_GATE,    0,            31,           0,           0,              0,            &clk_lock,NULL,             0);
 SUNXI_CLK_PERIPH(ve,	   0,           0,       0,         VE_CFG,    16,          3,           0,         0,          0,          VE_CFG,     AHB0_RST,  AHB0_GATE,    0,            31,           1,           1,              0,            &clk_lock,NULL,             0);
 SUNXI_CLK_PERIPH(avs,	   0,           0,       0,         0,          0,          0,           0,         0,          0,          AVS_CFG,    0,         0,            0,            31,           0,           0,              0,            &clk_lock,NULL,             0);
-SUNXI_CLK_PERIPH(gpucore,  0,           0,       0,         GPU_CORE,   0,          3,           0,         0,          0,          GPU_CORE,   AHB0_RST,  AHB0_GATE,    0,            31,           3,           3,              0,            &clk_lock,&com_gates[5],    0);
-SUNXI_CLK_PERIPH(gpumem,   0,           0,       0,         GPU_MEM,    0,          3,           0,         0,          0,          GPU_MEM,    AHB0_RST,  AHB0_GATE,    0,            31,           3,           3,              0,            &clk_lock,&com_gates[5],    1);
-SUNXI_CLK_PERIPH(gpuaxi,   GPU_AXI,    24,       4,         GPU_AXI,    0,          4,           0,         0,          0,          GPU_AXI,    AHB0_RST,  AHB0_GATE,    0,            31,           3,           3,              0,            &clk_lock,&com_gates[5],    2);
+SUNXI_CLK_PERIPH(gpuctrl,  0,           0,       0,         0,          0,          0,           0,         0,          0,          0,          AHB0_RST,  AHB0_GATE,    0,             0,           3,           3,              0,            &clk_lock,NULL,             0);
+SUNXI_CLK_PERIPH(gpucore,  0,           0,       0,         GPU_CORE,   0,          3,           0,         0,          0,          GPU_CORE,   AHB2_RST,  0,            0,            31,           9,           0,              0,            &clk_lock,&com_gates[5],    0);
+SUNXI_CLK_PERIPH(gpumem,   0,           0,       0,         GPU_MEM,    0,          3,           0,         0,          0,          GPU_MEM,    AHB2_RST,  0,            0,            31,           9,           0,              0,            &clk_lock,&com_gates[5],    1);
+SUNXI_CLK_PERIPH(gpuaxi,   GPU_AXI,    24,       4,         GPU_AXI,    0,          4,           0,         0,          0,          GPU_AXI,    AHB2_RST,  0,            0,            31,           9,           0,              0,            &clk_lock,&com_gates[5],    2);
 SUNXI_CLK_PERIPH(sata,	   0,           0,       0,         SATA_CFG,   0,          4,           0,         0,          0,          SATA_CFG,   AHB0_RST,  AHB0_GATE,    0,            31,          16,          16,              0,            &clk_lock,NULL,             0);
 SUNXI_CLK_PERIPH(ac97,	   0,           0,       0,         AC97_CFG,   0,          4,           0,         0,          0,          AC97_CFG,   APB0_RST,  APB0_GATE,    0,            31,          11,          11,              0,            &clk_lock,NULL,             0);
 SUNXI_CLK_PERIPH(mipi_hsi, MIPI_HSI,    24,      4,         MIPI_HSI,   0,          4,           0,         0,          0,          MIPI_HSI,   AHB1_RST,  AHB0_GATE,    0,            31,           9,          15,              0,            &clk_lock,NULL,             0);
@@ -397,10 +399,10 @@ static struct periph_init_data sunxi_periphs_init[] = {
     {"nand0_1",  0,       			  storage_parents,  ARRAY_SIZE(storage_parents),  &sunxi_clk_periph_nand0_1},
     {"nand1_0",  0,       			  storage_parents,  ARRAY_SIZE(storage_parents),  &sunxi_clk_periph_nand1_0},
     {"nand1_1",  0,       			  storage_parents,  ARRAY_SIZE(storage_parents),  &sunxi_clk_periph_nand1_1},
-    {"sdmmc0",   0,       			  storage_parents,  ARRAY_SIZE(storage_parents),  &sunxi_clk_periph_sdmmc0},                                        
-    {"sdmmc1",   0,       			  storage_parents,  ARRAY_SIZE(storage_parents),  &sunxi_clk_periph_sdmmc1},   
-    {"sdmmc2",   0,       			  storage_parents,  ARRAY_SIZE(storage_parents),  &sunxi_clk_periph_sdmmc2},   
-    {"sdmmc3",   0,       			  storage_parents,  ARRAY_SIZE(storage_parents),  &sunxi_clk_periph_sdmmc3},   
+    {"sdmmc0",   CLK_IGNORE_AUTORESET,       			  storage_parents,  ARRAY_SIZE(storage_parents),  &sunxi_clk_periph_sdmmc0},                                        
+    {"sdmmc1",   CLK_IGNORE_AUTORESET,       			  storage_parents,  ARRAY_SIZE(storage_parents),  &sunxi_clk_periph_sdmmc1},   
+    {"sdmmc2",   CLK_IGNORE_AUTORESET,       			  storage_parents,  ARRAY_SIZE(storage_parents),  &sunxi_clk_periph_sdmmc2},   
+    {"sdmmc3",   CLK_IGNORE_AUTORESET,       			  storage_parents,  ARRAY_SIZE(storage_parents),  &sunxi_clk_periph_sdmmc3},   
     {"ts",       0,       			  storage_parents,  ARRAY_SIZE(storage_parents),  &sunxi_clk_periph_ts},
     {"ss",       0,       			  ss_parents,       ARRAY_SIZE(ss_parents),       &sunxi_clk_periph_ss},
     {"spi0",     0,       			  storage_parents,  ARRAY_SIZE(storage_parents),  &sunxi_clk_periph_spi0},
@@ -431,6 +433,7 @@ static struct periph_init_data sunxi_periphs_init[] = {
     {"fd",		 0,       			  fd_parents,       ARRAY_SIZE(fd_parents),       &sunxi_clk_periph_fd},
     {"ve",		 0,       			  ve_parents,       ARRAY_SIZE(ve_parents),       &sunxi_clk_periph_ve},
     {"avs",		 0,       			  hosc_parents,     ARRAY_SIZE(hosc_parents),     &sunxi_clk_periph_avs},
+    {"gpuctrl",	 CLK_IGNORE_AUTORESET,gpu_parents,      ARRAY_SIZE(gpu_parents),      &sunxi_clk_periph_gpuctrl},
     {"gpucore",	 CLK_IGNORE_AUTORESET,gpu_parents,      ARRAY_SIZE(gpu_parents),      &sunxi_clk_periph_gpucore},
     {"gpumem",	 CLK_IGNORE_AUTORESET,gpu_parents,      ARRAY_SIZE(gpu_parents),      &sunxi_clk_periph_gpumem},
     {"gpuaxi",	 CLK_IGNORE_AUTORESET,gpuaxi_parents,   ARRAY_SIZE(gpuaxi_parents),   &sunxi_clk_periph_gpuaxi},
@@ -470,6 +473,8 @@ static struct periph_init_data sunxi_periphs_cpus_init[] = {
 };
 
 static char *force_enable_clks[] = {"pll7", "pll8"};
+
+struct sunxi_reg_ops clk_regops={sunxi_smc_readl, sunxi_smc_writel};
 void __init sunxi_init_clocks(void)
 {
     int     i;
@@ -499,7 +504,7 @@ void __init sunxi_init_clocks(void)
     /* register normal factors, based on sunxi factor framework */
     for(i=0; i<ARRAY_SIZE(sunxi_factos); i++) {
         factor = &sunxi_factos[i];
-
+        factor->priv_regops = &clk_regops;
         clk = sunxi_clk_register_factors(NULL,  sunxi_clk_base, &clk_lock,factor);
         clk_register_clkdev(clk, factor->name, NULL);
     }
@@ -520,6 +525,7 @@ void __init sunxi_init_clocks(void)
     /* register periph clock */
     for(i=0; i<ARRAY_SIZE(sunxi_periphs_init); i++) {
         periph = &sunxi_periphs_init[i];
+        periph->periph->priv_regops = &clk_regops;
         clk = sunxi_clk_register_periph(periph->name, periph->parent_names,
                         periph->num_parents,periph->flags, sunxi_clk_base, periph->periph);
         clk_register_clkdev(clk, periph->name, NULL);
@@ -527,6 +533,7 @@ void __init sunxi_init_clocks(void)
 
     for(i=0; i<ARRAY_SIZE(sunxi_periphs_cpus_init); i++) {
         periph = &sunxi_periphs_cpus_init[i];
+        periph->periph->priv_regops = &clk_regops;
         clk = sunxi_clk_register_periph(periph->name, periph->parent_names,
                         periph->num_parents,periph->flags, sunxi_clk_cpus_base , periph->periph);
         clk_register_clkdev(clk, periph->name, NULL);

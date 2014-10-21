@@ -34,6 +34,8 @@
 #define ARISC_VERSIONS (170)
 #elif defined CONFIG_ARCH_SUN8IW7P1
 #define ARISC_VERSIONS (180)
+#elif defined CONFIG_ARCH_SUN8IW9P1
+#define ARISC_VERSIONS (190)
 #elif defined CONFIG_ARCH_SUN9IW1P1
 #define ARISC_VERSIONS (200)
 #else
@@ -49,7 +51,7 @@
 
 /* the start address of message pool */
 #if (defined CONFIG_ARCH_SUN8IW1P1) || (defined CONFIG_ARCH_SUN8IW3P1) || (defined CONFIG_ARCH_SUN8IW5P1) || \
-    (defined CONFIG_ARCH_SUN8IW6P1)
+    (defined CONFIG_ARCH_SUN8IW6P1) || (defined CONFIG_ARCH_SUN8IW9P1)
 	#define ARISC_MESSAGE_POOL_START    (0x13000)
 	#define ARISC_MESSAGE_POOL_END      (0x14000)
 #elif  (defined CONFIG_ARCH_SUN8IW7P1)
@@ -59,7 +61,7 @@
 	#define ARISC_MESSAGE_POOL_START    (0x27000)
 	#define ARISC_MESSAGE_POOL_END      (0x28000)
 #endif
-
+#define ARISC_PARA_ADDR_OFFSET      (SUNXI_SRAM_A2_SIZE - 4 * 1024)
 
 /* spinlock max timeout, base on ms */
 #define ARISC_SPINLOCK_TIMEOUT      (100)

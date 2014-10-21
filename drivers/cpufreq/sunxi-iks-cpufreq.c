@@ -48,10 +48,13 @@ static unsigned long long c1_get_time_usecs = 0;
 #endif
 
 
-#ifdef CONFIG_ARCH_SUN8IW6P1
+#if defined(CONFIG_ARCH_SUN8IW6P1) || defined(CONFIG_ARCH_SUN8IW9P1)
 #define PLL1_CLK PLL_CPU0_CLK
 #define PLL2_CLK PLL_CPU1_CLK
 static struct cpufreq_frequency_table sunxi_freq_table_ca7[] = {
+	{0,  2016 * 1000},
+	{0,  1800 * 1000},
+	{0,  1608 * 1000},
 	{0,  1200 * 1000},
 	{0,  1128 * 1000},
 	{0,  1008 * 1000},
@@ -74,7 +77,7 @@ static struct cpufreq_frequency_table sunxi_freq_table_ca7[] = {
  * the target_freq will never equal to the policy->min !!! Then, the timer
  * will wakeup the cpu frequently
 */
-#define SUNXI_CPUFREQ_L_MAX           (1200000000)            /* config the maximum frequency of sunxi core */
+#define SUNXI_CPUFREQ_L_MAX           (2016000000)            /* config the maximum frequency of sunxi core */
 #define SUNXI_CPUFREQ_L_MIN           (480000000)             /* config the minimum frequency of sunxi core */
 #define SUNXI_CPUFREQ_B_MAX           SUNXI_CPUFREQ_L_MAX     /* config the maximum frequency of sunxi core */
 #define SUNXI_CPUFREQ_B_MIN           SUNXI_CPUFREQ_L_MIN     /* config the minimum frequency of sunxi core */
@@ -82,19 +85,19 @@ static struct cpufreq_frequency_table sunxi_freq_table_ca7[] = {
 #else
 
 static struct cpufreq_frequency_table sunxi_freq_table_ca7[] = {
- 	{0,  1200 * 1000},
+	{0,  1200 * 1000},
 	{0,  1104 * 1000},
- 	{0,  1008 * 1000},
- 	{0,  912  * 1000},
- 	{0,  816  * 1000},
-        {0,  720  * 1000},
-        {0,  600  * 1000},
-        {0,  480  * 1000},
+	{0,  1008 * 1000},
+	{0,  912  * 1000},
+	{0,  816  * 1000},
+	{0,  720  * 1000},
+	{0,  600  * 1000},
+	{0,  480  * 1000},
 	{0,  CPUFREQ_TABLE_END},
 };
 
 static struct cpufreq_frequency_table sunxi_freq_table_ca15[] = {
- 	{0,  1800 * 1000},
+	{0,  1800 * 1000},
 	{0,  1704 * 1000},
 	{0,  1608 * 1000},
 	{0,  1512 * 1000},
@@ -106,7 +109,7 @@ static struct cpufreq_frequency_table sunxi_freq_table_ca15[] = {
 	{0,  912  * 1000},
 	{0,  816  * 1000},
 	{0,  720  * 1000},
- 	{0,  600  * 1000},
+	{0,  600  * 1000},
 	{0,  CPUFREQ_TABLE_END},
 };
 
@@ -129,12 +132,10 @@ static struct cpufreq_frequency_table sunxi_freq_table_ca15[] = {
 
 static unsigned int l_freq_max   = SUNXI_CPUFREQ_L_MAX / 1000;
 static unsigned int l_freq_boot  = SUNXI_CPUFREQ_L_MAX / 1000;
-static unsigned int l_freq_burst = SUNXI_CPUFREQ_L_MAX / 1000;
 static unsigned int l_freq_ext   = SUNXI_CPUFREQ_L_MAX / 1000;
 static unsigned int l_freq_min   = SUNXI_CPUFREQ_L_MIN / 1000;
 static unsigned int b_freq_max   = SUNXI_CPUFREQ_B_MAX / 1000;
 static unsigned int b_freq_boot  = SUNXI_CPUFREQ_B_MAX / 1000;
-static unsigned int b_freq_burst = SUNXI_CPUFREQ_B_MAX / 1000;
 static unsigned int b_freq_ext   = SUNXI_CPUFREQ_B_MAX / 1000;
 static unsigned int b_freq_min   = SUNXI_CPUFREQ_B_MIN / 1000;
 
@@ -143,6 +144,7 @@ bool bL_switching_enabled;
 #endif
 
 int sunxi_dvfs_debug = 0;
+int sunxi_boot_freq_lock = 0;
 
 static struct clk *clk_pll1; /* pll1 clock handler */
 static struct clk *clk_pll2; /* pll2 clock handler */
@@ -349,6 +351,7 @@ static int sunxi_cpufreq_set_target(struct cpufreq_policy *policy,
     u32 cpu = policy->cpu, freq_tab_idx;
     u32 cur_cluster, new_cluster, actual_cluster;
     int ret = 0;
+    int boot_freq = 0;
 #ifdef CONFIG_SCHED_SMP_DCMP
     u32 i,other_cluster;
 #endif
@@ -360,6 +363,14 @@ static int sunxi_cpufreq_set_target(struct cpufreq_policy *policy,
 
     cur_cluster = cpu_to_cluster(cpu);
     new_cluster = actual_cluster = per_cpu(physical_cluster, cpu);
+
+    if (unlikely(sunxi_dvfs_debug))
+        CPUFREQ_DBG("request frequency is %u\n", target_freq);
+
+    if (unlikely(sunxi_boot_freq_lock)) {
+        boot_freq = cur_cluster == A7_CLUSTER ? l_freq_boot : b_freq_boot;
+        target_freq = target_freq > boot_freq ? boot_freq : target_freq;
+    }
 
     /* Determine valid target frequency using freq_table */
     ret = cpufreq_frequency_table_target(policy, freq_table[cur_cluster],
@@ -448,7 +459,7 @@ static int merge_cluster_tables(void)
     for (i = MAX_CLUSTERS - 1; i >= 0; i--) {
         for (j = 0; freq_table[i][j].frequency != CPUFREQ_TABLE_END; j++) {
             table[k].frequency = VIRT_FREQ(i, freq_table[i][j].frequency);
-            CPUFREQ_INF("%s: index: %d, freq: %d\n", __func__, k, table[k].frequency);
+            CPUFREQ_DBG("%s: index: %d, freq: %d\n", __func__, k, table[k].frequency);
             k++;
         }
     }
@@ -456,7 +467,7 @@ static int merge_cluster_tables(void)
     table[k].index = k;
     table[k].frequency = CPUFREQ_TABLE_END;
 
-    CPUFREQ_INF("%s: End, table: %p, count: %d\n", __func__, table, k);
+    CPUFREQ_DBG("%s: End, table: %p, count: %d\n", __func__, table, k);
 
     return 0;
 }
@@ -478,7 +489,6 @@ static int __init_freq_syscfg(char *tbl_name)
         goto fail;
     }
     l_freq_max = l_max.val;
-    l_freq_burst = l_freq_max;
 
     type = script_get_item(tbl_name, "L_min_freq", &l_min);
     if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
@@ -497,6 +507,8 @@ static int __init_freq_syscfg(char *tbl_name)
     type = script_get_item(tbl_name, "L_boot_freq", &l_boot);
     if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
         l_boot.val = l_freq_max;
+    } else {
+        sunxi_boot_freq_lock = 1;
     }
     l_freq_boot = l_boot.val;
 
@@ -507,7 +519,6 @@ static int __init_freq_syscfg(char *tbl_name)
         goto fail;
     }
     b_freq_max = b_max.val;
-    b_freq_burst = b_freq_max;
 
     type = script_get_item(tbl_name, "B_min_freq", &b_min);
     if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
@@ -526,6 +537,8 @@ static int __init_freq_syscfg(char *tbl_name)
     type = script_get_item(tbl_name, "B_boot_freq", &b_boot);
     if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
         b_boot.val = b_freq_max;
+    } else {
+        sunxi_boot_freq_lock = 1;
     }
     b_freq_boot = b_boot.val;
 
@@ -583,12 +596,10 @@ static int __init_freq_syscfg(char *tbl_name)
     l_freq_min   /= 1000;
     l_freq_ext   /= 1000;
     l_freq_boot  /= 1000;
-    l_freq_burst /= 1000;
     b_freq_max   /= 1000;
     b_freq_min   /= 1000;
     b_freq_ext   /= 1000;
     b_freq_boot  /= 1000;
-    b_freq_burst /= 1000;
 
     return 0;
 
@@ -598,12 +609,10 @@ fail:
     l_freq_min   = SUNXI_CPUFREQ_L_MIN / 1000;
     l_freq_ext   = l_freq_max;
     l_freq_boot  = l_freq_max;
-    l_freq_burst = l_freq_max;
     b_freq_max   = SUNXI_CPUFREQ_B_MAX / 1000;
     b_freq_min   = SUNXI_CPUFREQ_B_MIN / 1000;
     b_freq_ext   = b_freq_max;
     b_freq_boot  = b_freq_max;
-    b_freq_burst = b_freq_max;
 
     return ret;
 }
@@ -653,16 +662,12 @@ static int sunxi_cpufreq_cpu_init(struct cpufreq_policy *policy)
         /* HMP use the per-cluster freq table */
         if (cur_cluster == A7_CLUSTER) {
             policy->min = policy->cpuinfo.min_freq = l_freq_min;
-            policy->max = l_freq_boot;
-            policy->cpuinfo.max_freq   = l_freq_ext;
+            policy->max = policy->cpuinfo.max_freq = l_freq_ext;
             policy->cpuinfo.boot_freq  = l_freq_boot;
-            policy->cpuinfo.burst_freq = l_freq_burst;
         } else if (cur_cluster == A15_CLUSTER) {
             policy->min = policy->cpuinfo.min_freq = b_freq_min;
-            policy->max = b_freq_boot;
-            policy->cpuinfo.max_freq   = b_freq_ext;
+            policy->max = policy->cpuinfo.max_freq = b_freq_ext;
             policy->cpuinfo.boot_freq  = b_freq_boot;
-            policy->cpuinfo.burst_freq = b_freq_burst;
         }
     }
 
@@ -764,7 +769,7 @@ static int  __init sunxi_cpufreq_init(void)
 
     type = script_get_item("dvfs_table", "vf_table_count", &vf_table_count);
     if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        CPUFREQ_INF("%s: support only one vf_table\n", __func__);
+        CPUFREQ_DBG("%s: support only one vf_table\n", __func__);
         sprintf(vftbl_name, "%s", "dvfs_table");
     } else {
         vf_table_type = sunxi_get_soc_bin();
@@ -776,7 +781,7 @@ static int  __init sunxi_cpufreq_init(void)
         CPUFREQ_ERR("%s, use default cpu max/min frequency, l_max: %uMHz, l_min: %uMHz, b_max: %uMHz, b_min: %uMHz\n",
                 __func__, l_freq_max/1000, l_freq_min/1000, b_freq_max/1000, b_freq_min/1000);
     }else{
-        CPUFREQ_INF("%s, get cpu frequency from sysconfig, l_max: %uMHz, l_min: %uMHz, b_max: %uMHz, b_min: %uMHz\n",
+        CPUFREQ_DBG("%s, get cpu frequency from sysconfig, l_max: %uMHz, l_min: %uMHz, b_max: %uMHz, b_min: %uMHz\n",
                 __func__, l_freq_max/1000, l_freq_min/1000, b_freq_max/1000, b_freq_min/1000);
     }
 
@@ -788,19 +793,19 @@ static int  __init sunxi_cpufreq_init(void)
     if (ret) {
         CPUFREQ_ERR("sunxi register cpufreq driver fail, err: %d\n", ret);
     } else {
-        CPUFREQ_INF("sunxi register cpufreq driver succeed\n");
+        CPUFREQ_DBG("sunxi register cpufreq driver succeed\n");
         ret = bL_switcher_register_notifier(&sunxi_switcher_notifier);
         if (ret) {
             CPUFREQ_ERR("sunxi register bL notifier fail, err: %d\n", ret);
             cpufreq_unregister_driver(&sunxi_cpufreq_driver);
         } else {
-            CPUFREQ_INF("sunxi register bL notifier succeed\n");
+            CPUFREQ_DBG("sunxi register bL notifier succeed\n");
         }
     }
 
     bL_switcher_put_enabled();
 
-    CPUFREQ_INF("%s: done!\n", __func__);
+    pr_debug("%s: done!\n", __func__);
     return ret;
 }
 module_init(sunxi_cpufreq_init);
@@ -822,7 +827,7 @@ static void __exit sunxi_cpufreq_exit(void)
     bL_switcher_unregister_notifier(&sunxi_switcher_notifier);
     cpufreq_unregister_driver(&sunxi_cpufreq_driver);
     bL_switcher_put_enabled();
-    CPUFREQ_INF("%s: done!\n", __func__);
+    CPUFREQ_DBG("%s: done!\n", __func__);
 }
 module_exit(sunxi_cpufreq_exit);
 

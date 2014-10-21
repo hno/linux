@@ -113,7 +113,7 @@ static int sunxi_snddaudio_hw_params(struct snd_pcm_substream *substream,
 	ret = snd_soc_dai_set_fmt(codec_dai, SND_SOC_DAIFMT_I2S |
 			SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_CBM_CFM);
 	if (ret < 0) {
-		printk("%s, line:%d\n", __func__, __LINE__);
+		pr_err("%s, line:%d\n", __func__, __LINE__);
 		return ret;
 	}
 
@@ -125,7 +125,7 @@ static int sunxi_snddaudio_hw_params(struct snd_pcm_substream *substream,
 	ret = snd_soc_dai_set_fmt(codec_dai, SND_SOC_DAIFMT_I2S |
 			SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_CBS_CFS);
 	if (ret < 0) {
-		printk("%s, line:%d\n", __func__, __LINE__);
+		pr_err("%s, line:%d\n", __func__, __LINE__);
 		return ret;
 	}
 	/*
@@ -142,7 +142,7 @@ static int sunxi_snddaudio_hw_params(struct snd_pcm_substream *substream,
 	}
 	ret = snd_soc_dai_set_clkdiv(codec_dai, 0, sample_rate);
 	if (ret < 0) {
-		printk("%s, line:%d\n", __func__, __LINE__);
+		pr_err("%s, line:%d\n", __func__, __LINE__);
 		return ret;
 	}
 	/*
@@ -186,16 +186,11 @@ static struct snd_soc_ops sunxi_snddaudio_ops = {
 
 static struct snd_soc_dai_link sunxi_snddaudio_dai_link = {
 	.name 			= "s_i2s1",
-#ifdef CONFIG_ARCH_SUN9I
-	.cpu_dai_name 	= "s_i2s1",
-	.stream_name 	= "SUNXI-I2S0",
-#else
-	.cpu_dai_name 	= "tdm0",
+	.cpu_dai_name 	= "pri_dai",
 	.stream_name 	= "SUNXI-TDM0",
-#endif
 #ifdef CONFIG_SND_SOC_AC100_CODEC
 	.codec_dai_name = "sndvir_audio",
-	.codec_name 	= "vir_audio-codec.0-001a",
+	.codec_name 	= "ac100-codec",
 #else
 	.codec_dai_name = "snddaudio",
 	.codec_name 	= "sunxi-daudio-codec.0",
@@ -212,71 +207,102 @@ static struct snd_soc_card snd_soc_sunxi_snddaudio = {
 	.num_links 	= 1,
 };
 
-static struct platform_device *sunxi_snddaudio_device;
-
-static int __init sunxi_snddaudio_init(void)
+static int __devinit sunxi_snddaudio0_dev_probe(struct platform_device *pdev)
 {
 	int ret = 0;
 	script_item_u val;
 	script_item_value_type_e  type;
-printk("%s, line:%d\n", __func__, __LINE__);
+	struct snd_soc_card *card = &snd_soc_sunxi_snddaudio;
+
+pr_debug("%s, line:%d\n", __func__, __LINE__);
 	type = script_get_item(TDM_NAME, "daudio_used", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[I2S0] type err!\n");
+        pr_err("[daudio0]:%s,line:%d type err!\n", __func__, __LINE__);
     }
 	daudio_used = val.val;
-	printk("%s, line:%d, daudio_used:%d\n", __func__, __LINE__, daudio_used);
+	pr_debug("%s, line:%d, daudio_used:%d\n", __func__, __LINE__, daudio_used);
 	type = script_get_item(TDM_NAME, "daudio_select", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[I2S0] daudio_select type err!\n");
+        pr_err("[I2S0] daudio_select type err!\n");
     }
 	daudio_pcm_select = val.val;
 
 	type = script_get_item(TDM_NAME, "daudio_master", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[I2S0] daudio_master type err!\n");
+        pr_err("[I2S0] daudio_master type err!\n");
     }
 	daudio_master = val.val;
 	
 	type = script_get_item(TDM_NAME, "audio_format", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[I2S0] audio_format type err!\n");
+        pr_err("[I2S0] audio_format type err!\n");
     }
 	audio_format = val.val;
 
 	type = script_get_item(TDM_NAME, "signal_inversion", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[I2S0] signal_inversion type err!\n");
+        pr_err("[I2S0] signal_inversion type err!\n");
     }
 	signal_inversion = val.val;
-
-    if (daudio_used) {
-		sunxi_snddaudio_device = platform_device_alloc("soc-audio", 4);
-		if(!sunxi_snddaudio_device)
-			return -ENOMEM;
-		platform_set_drvdata(sunxi_snddaudio_device, &snd_soc_sunxi_snddaudio);
-		ret = platform_device_add(sunxi_snddaudio_device);
+	if (daudio_used) {
+		card->dev = &pdev->dev;
+	
+		ret = snd_soc_register_card(card);
 		if (ret) {
-			platform_device_put(sunxi_snddaudio_device);
+			dev_err(&pdev->dev, "snd_soc_register_card() failed: %d\n", ret);
 		}
 	} else {
-		printk("[I2S0]sunxi_snddaudio cannot find any using configuration for controllers, return directly!\n");
+		pr_err("[daudio0]sunxi_snddaudio0 cannot find any using configuration for controllers, return directly!\n");
         return 0;
 	}
 	return ret;
 }
 
-static void __exit sunxi_snddaudio_exit(void)
+static int __devexit sunxi_snddaudio0_dev_remove(struct platform_device *pdev)
 {
+	struct snd_soc_card *card = platform_get_drvdata(pdev);
+
 	if (daudio_used) {
-		daudio_used = 0;
-		platform_device_unregister(sunxi_snddaudio_device);
+		snd_soc_unregister_card(card);
 	}
+	return 0;
 }
 
-module_init(sunxi_snddaudio_init);
-module_exit(sunxi_snddaudio_exit);
+/*data relating*/
+static struct platform_device sunxi_daudio_device = {
+	.name 	= "snddaudio",
+	.id 	= PLATFORM_DEVID_NONE,
+};
 
+/*method relating*/
+static struct platform_driver sunxi_daudio_driver = {
+	.probe = sunxi_snddaudio0_dev_probe,
+	.remove = __exit_p(sunxi_snddaudio0_dev_remove),
+	.driver = {
+		.name = "snddaudio",
+		.owner = THIS_MODULE,
+		.pm = &snd_soc_pm_ops,
+	},
+};
+
+static int __init sunxi_snddaudio0_init(void)
+{
+	int err = 0;
+	if((err = platform_device_register(&sunxi_daudio_device)) < 0)
+		return err;
+
+	if ((err = platform_driver_register(&sunxi_daudio_driver)) < 0)
+		return err;	
+
+	return 0;
+}
+module_init(sunxi_snddaudio0_init);
+
+static void __exit sunxi_snddaudio0_exit(void)
+{
+	platform_driver_unregister(&sunxi_daudio_driver);
+}
+module_exit(sunxi_snddaudio0_exit);
 MODULE_AUTHOR("huangxin");
 MODULE_DESCRIPTION("SUNXI_snddaudio ALSA SoC audio driver");
 MODULE_LICENSE("GPL");

@@ -5,13 +5,14 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  *
- * Adjustable factor-based clock implementation
+ * Adjustable periph-based clock implementation
  */
 #ifndef __MACH_SUNXI_CLK_PERIPH_H
 #define __MACH_SUNXI_CLK_PERIPH_H
 
 #include <linux/clk-provider.h>
 #include <linux/clkdev.h>
+#include <linux/io.h>
 #include <asm/div64.h>
 
 /**
@@ -132,10 +133,14 @@ struct sunxi_clk_periph {
     struct clk_ops*                 priv_clkops;
     struct sunxi_reg_ops*           priv_regops;
 };
-
-#define periph_readl(periph,reg) (periph->priv_regops)?periph->priv_regops->reg_readl(reg):readl(reg)
-#define periph_writel(periph,val,reg) (periph->priv_regops)?periph->priv_regops->reg_writel(val,reg):writel(val,reg)
-
+static inline u32 periph_readl(struct sunxi_clk_periph * periph, void __iomem * reg)
+{
+    return (((unsigned int)periph->priv_regops)?periph->priv_regops->reg_readl(reg):readl(reg));
+}
+static inline void periph_writel(struct sunxi_clk_periph * periph, unsigned int val, void __iomem * reg)
+{
+    (((unsigned int)periph->priv_regops)?periph->priv_regops->reg_writel(val,reg):writel(val,reg));
+}
 struct clk *sunxi_clk_register_periph(const char *name, const char **parent_names,
             int num_parents, unsigned long flags, void __iomem  *base, struct sunxi_clk_periph *periph);
 int sunxi_periph_reset_deassert(struct clk *c);

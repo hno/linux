@@ -37,15 +37,17 @@
 
 static int regsave[9];
 static int spdif_used = 0;
+static int vol_self_config;
 #ifdef CONFIG_ARCH_SUN9IW1
 static script_item_u 	spdif_voltage;
 struct regulator *spdif_vol= NULL;
 #endif
 struct sunxi_spdif_info sunxi_spdif;
+static struct pinctrl *spdif_pinctrl;
 //static struct clk *spdif_apbclk 	= NULL;
 #ifndef CONFIG_ARCH_SUN9IW1
 static struct clk *spdif_pll2clk	= NULL;
-static struct clk *spdif_pllx8		= NULL;
+static struct clk *spdif_pll		= NULL;
 #else
 static struct clk *spdif_pll3clk	= NULL;
 #endif
@@ -186,7 +188,7 @@ static int sunxi_spdif_set_fmt(struct snd_soc_dai *cpu_dai, unsigned int fmt)
 	writel(reg_val, sunxi_spdif.regs + SUNXI_SPDIF_TXCFG);
 	
 	reg_val = 0;
-#ifdef CONFIG_ARCH_SUN8I1W
+#ifdef CONFIG_ARCH_SUN8IW1
 	reg_val &= ~SUNXI_SPDIF_FCTL_FIFOSRC;
 #endif
 	reg_val |= SUNXI_SPDIF_FCTL_TXTL(16);
@@ -315,22 +317,36 @@ static int sunxi_spdif_set_sysclk(struct snd_soc_dai *cpu_dai, int clk_id,
 {
 	if (!freq) {
 		#ifndef CONFIG_ARCH_SUN9IW1
-		if (clk_set_rate(spdif_pll2clk, 24576000)) {
-			printk("try to set the spdif_pll2clk rate failed!\n");
-		}
+		//#ifdef CONFIG_ARCH_SUN8IW7||CONFIG_ARCH_SUN8IW6
+		#if defined(CONFIG_ARCH_SUN8IW7) || defined(CONFIG_ARCH_SUN8IW6)
+			if (clk_set_rate(spdif_pll, 24576000)) {
+				pr_err("try to set the spdif_pll rate failed!\n");
+			}
+		#else
+			if (clk_set_rate(spdif_pll2clk, 24576000)) {
+				pr_err("try to set the spdif_pll2clk rate failed!\n");
+			}
+		#endif
 		#else
 		if (clk_set_rate(spdif_pll3clk, 24576000)) {
-			printk("try to set the spdif_pll2clk rate failed!\n");
+			pr_err("try to set the spdif_pll2clk rate failed!\n");
 		}
 		#endif
 	} else {
 		#ifndef CONFIG_ARCH_SUN9IW1
-		if (clk_set_rate(spdif_pll2clk, 22579200)) {
-			printk("try to set the spdif_pll2clk rate failed!\n");
-		}
+		//#ifdef CONFIG_ARCH_SUN8IW7||CONFIG_ARCH_SUN8IW6
+		#if defined(CONFIG_ARCH_SUN8IW7) || defined(CONFIG_ARCH_SUN8IW6)
+			if (clk_set_rate(spdif_pll, 22579200)) {
+				pr_err("try to set the spdif_pll rate failed!\n");
+			}
 		#else
-		if (clk_set_rate(spdif_pll3clk, 24576000)) {
-			printk("try to set the spdif_pll2clk rate failed!\n");
+			if (clk_set_rate(spdif_pll2clk, 22579200)) {
+				pr_err("try to set the spdif_pll2clk rate failed!\n");
+			}
+		#endif
+		#else
+		if (clk_set_rate(spdif_pll3clk, 22579200)) {
+			pr_err("try to set the spdif_pll3clk rate failed!\n");
 		}
 		#endif
 	}
@@ -641,7 +657,7 @@ static void spdifregrestore(void)
 static int sunxi_spdif_suspend(struct snd_soc_dai *cpu_dai)
 {
 	u32 reg_val;
-	printk("[SPDIF]Enter %s\n", __func__);
+	pr_debug("[SPDIF]Enter %s\n", __func__);
 	
 	reg_val = readl(sunxi_spdif.regs + SUNXI_SPDIF_CTL);
 	reg_val &= ~SUNXI_SPDIF_CTL_GEN;
@@ -649,20 +665,38 @@ static int sunxi_spdif_suspend(struct snd_soc_dai *cpu_dai)
 
 	spdifregsave();
 	if ((NULL == spdif_moduleclk) ||(IS_ERR(spdif_moduleclk))) {
-		printk("spdif_moduleclk handle is invalid, just return\n");
+		pr_err("spdif_moduleclk handle is invalid, just return\n");
 		return -EFAULT;
 	} else {
 		/*disable the module clock*/
 		clk_disable(spdif_moduleclk);
 	}
-	#ifdef CONFIG_ARCH_SUN9IW1
-	if (spdif_vol) {
-		regulator_disable(spdif_vol);
-		regulator_put(spdif_vol);
-		spdif_vol = NULL;
+	#ifdef CONFIG_ARCH_SUN8IW6
+	if ((NULL == spdif_pll) ||(IS_ERR(spdif_pll))) {
+		pr_err("spdif_pll handle is invalid, just return\n");
+		return -EFAULT;
 	} else {
-		printk("regulator_disable failed: spdif_vol is null!!\n");
+		/*disable the module clock*/
+		clk_disable(spdif_pll);
 	}
+	#endif
+	if (vol_self_config == 1){
+		#ifdef CONFIG_ARCH_SUN9IW1
+		if (spdif_vol) {
+			regulator_disable(spdif_vol);
+			regulator_put(spdif_vol);
+			spdif_vol = NULL;
+		} else {
+			pr_err("regulator_disable failed: spdif_vol is null!!\n");
+		}
+		#endif
+	}
+	devm_pinctrl_put(spdif_pinctrl);
+	#ifdef CONFIG_ARCH_SUN8IW6
+	/*config owa gpio as input*/
+	reg_val = readl((void __iomem *)0xf1c20898);
+	reg_val |= 0x7<<8;
+	writel(reg_val, (void __iomem *)0xf1c20898);
 	#endif
 
 	return 0;
@@ -671,22 +705,33 @@ static int sunxi_spdif_suspend(struct snd_soc_dai *cpu_dai)
 static int sunxi_spdif_resume(struct snd_soc_dai *cpu_dai)
 {
 	u32 reg_val;
-	printk("[SPDIF]Enter %s\n", __func__);
-	#ifdef CONFIG_ARCH_SUN9IW1
-	/*spdf:dcdc1*/
-	spdif_vol = regulator_get(NULL, spdif_voltage.str);
-	if (!spdif_vol) {
-		printk("get audio spdif_vol failed\n");
-		return -EFAULT;
+	pr_debug("[SPDIF]Enter %s\n", __func__);
+	if (vol_self_config == 1){
+		#ifdef CONFIG_ARCH_SUN9IW1
+		/*spdf:dcdc1*/
+		spdif_vol = regulator_get(NULL, spdif_voltage.str);
+		if (!spdif_vol) {
+			pr_err("get audio spdif_vol failed\n");
+			return -EFAULT;
+		}
+		//regulator_set_voltage(spdif_vol, 3000000, 3000000);
+		regulator_enable(spdif_vol);
+		#endif
 	}
-	//regulator_set_voltage(spdif_vol, 3000000, 3000000);
-	regulator_enable(spdif_vol);
+	#ifdef CONFIG_ARCH_SUN8IW6
+	if (clk_prepare_enable(spdif_pll)) {
+		pr_err("try to enable spdif_pll output failed!\n");
+	}
 	#endif
 	/*enable the module clock*/
-	if (clk_enable(spdif_moduleclk)) {
-		printk("try to enable spdif_moduleclk output failed!\n");
+	if (clk_prepare_enable(spdif_moduleclk)) {
+		pr_err("try to enable spdif_moduleclk output failed!\n");
 	}
-	
+	spdif_pinctrl = devm_pinctrl_get_select_default(cpu_dai->dev);
+	if (IS_ERR_OR_NULL(spdif_pinctrl)) {
+		dev_warn(cpu_dai->dev,
+			"pins are not configured from the driver\n");
+	}
 	spdifregrestore();
 	
 	reg_val = readl(sunxi_spdif.regs + SUNXI_SPDIF_CTL);
@@ -721,103 +766,126 @@ static struct snd_soc_dai_driver sunxi_spdif_dai = {
 		.formats = SNDRV_PCM_FMTBIT_S16_LE|SNDRV_PCM_FMTBIT_S20_3LE| SNDRV_PCM_FMTBIT_S24_LE | SNDRV_PCM_FMTBIT_S32_LE,},
 	.ops = &sunxi_spdif_dai_ops,
 };		
-static struct pinctrl *spdif_pinctrl;
+//static struct pinctrl *spdif_pinctrl;
 
 static int __init sunxi_spdif_dev_probe(struct platform_device *pdev)
 {
 	int reg_val = 0;
 	int ret = 0;
-	#ifdef CONFIG_ARCH_SUN9IW1
-	if(script_get_item("spdif0", "spdif_voltage", &spdif_voltage) != SCIRPT_ITEM_VALUE_TYPE_STR){
-		printk("[aif3_voltage]script_get_item return type err\n");
-		return -EFAULT;
+	if (vol_self_config == 1){
+		#ifdef CONFIG_ARCH_SUN9IW1
+		if(script_get_item("spdif0", "spdif_voltage", &spdif_voltage) != SCIRPT_ITEM_VALUE_TYPE_STR){
+			pr_err("[aif3_voltage]script_get_item return type err\n");
+			return -EFAULT;
+		}
+		/*spdif:dcdc1*/
+		spdif_vol = regulator_get(NULL, spdif_voltage.str);
+		if (!spdif_vol) {
+			pr_err("get audio spdif_vol failed\n");
+			return -EFAULT;
+		}
+		//regulator_set_voltage(spdif_vol, 3000000, 3000000);
+		regulator_enable(spdif_vol);
+		#endif
 	}
-	/*spdif:dcdc1*/
-	spdif_vol = regulator_get(NULL, spdif_voltage.str);
-	if (!spdif_vol) {
-		printk("get audio spdif_vol failed\n");
-		return -EFAULT;
-	}
-	//regulator_set_voltage(spdif_vol, 3000000, 3000000);
-	regulator_enable(spdif_vol);
-	#endif
 
 	sunxi_spdif.regs = ioremap(SUNXI_SPDIFBASE, 0x100);
 	if (sunxi_spdif.regs == NULL) {
 		return -ENXIO;
 	}
-	printk("%s, line:%d, dev_name(&pdev->dev):%s\n", __func__, __LINE__, dev_name(&pdev->dev));
+	pr_debug("%s, line:%d, dev_name(&pdev->dev):%s\n", __func__, __LINE__, dev_name(&pdev->dev));
 	spdif_pinctrl = devm_pinctrl_get_select_default(&pdev->dev);
 	if (IS_ERR_OR_NULL(spdif_pinctrl)) {
 		dev_warn(&pdev->dev,
 			"pins are not configured from the driver\n");
 	}
 
-    #ifdef CONFIG_ARCH_SUN8IW6
-	spdif_pllx8 = clk_get(NULL, "pll_audiox8");
-    if ((!spdif_pllx8)||(IS_ERR(spdif_pllx8))) {
-		printk("try to get spdif_pllx8 failed\n");
+#if defined(CONFIG_ARCH_SUN8IW6) || defined(CONFIG_ARCH_SUN8IW7)
+	spdif_pll = clk_get(NULL, "pll_audio");
+    if ((!spdif_pll)||(IS_ERR(spdif_pll))) {
+		pr_err("try to get spdif_pll failed\n");
 	}
-	if (clk_prepare_enable(spdif_pllx8)) {
-		printk("enable spdif_pll2clk failed; \n");
+	if (clk_prepare_enable(spdif_pll)) {
+		pr_err("enable spdif_pll2clk failed; \n");
 	}
-    #else
+#else
     #ifdef CONFIG_ARCH_SUN9IW1
 	/*spdif pll3clk*/
 	spdif_pll3clk = clk_get(NULL, "pll3");
 	if ((!spdif_pll3clk)||(IS_ERR(spdif_pll3clk))) {
-		printk("try to get spdif_pll3clk failed\n");
+		pr_err("try to get spdif_pll3clk failed\n");
 	}
 	if (clk_prepare_enable(spdif_pll3clk)) {
-		printk("enable spdif_pll3clk failed; \n");
+		pr_err("enable spdif_pll3clk failed; \n");
 	}
     #else
-	spdif_pllx8 = clk_get(NULL, "pll2x8");
-	if ((!spdif_pllx8)||(IS_ERR(spdif_pllx8))) {
-		printk("try to get spdif_pllx8 failed\n");
+	spdif_pll = clk_get(NULL, "pll2x8");
+	if ((!spdif_pll)||(IS_ERR(spdif_pll))) {
+		pr_err("try to get spdif_pll failed\n");
 	}
-	if (clk_prepare_enable(spdif_pllx8)) {
-		printk("enable spdif_pll2clk failed; \n");
+	if (clk_prepare_enable(spdif_pll)) {
+		pr_err("enable spdif_pll2clk failed; \n");
 	}
 	#endif
-	#endif
-#ifndef CONFIG_ARCH_SUN9IW1
+#endif
+#ifdef CONFIG_ARCH_SUN8IW1
 /********spdif pll2clk can be remove****************/
 	/*spdif pll2clk*/
 	spdif_pll2clk = clk_get(NULL, "pll2");
 	if ((!spdif_pll2clk)||(IS_ERR(spdif_pll2clk))) {
-		printk("try to get spdif_pll2clk failed\n");
+		pr_err("try to get spdif_pll2clk failed\n");
 	}
 	if (clk_prepare_enable(spdif_pll2clk)) {
-		printk("enable spdif_pll2clk failed; \n");
+		pr_err("enable spdif_pll2clk failed; \n");
 	}
 #endif
+#ifdef CONFIG_ARCH_SUN8IW7
+	/*spdif module clk*/
+	spdif_moduleclk = clk_get(NULL, "owa");
+	if ((!spdif_moduleclk)||(IS_ERR(spdif_moduleclk))) {
+		pr_err("try to get spdif_moduleclk failed\n");
+	}
+#else
 	/*spdif module clk*/
 	spdif_moduleclk = clk_get(NULL, "spdif");
 	if ((!spdif_moduleclk)||(IS_ERR(spdif_moduleclk))) {
-		printk("try to get spdif_moduleclk failed\n");
+		pr_err("try to get spdif_moduleclk failed\n");
 	}
-#ifndef CONFIG_ARCH_SUN9IW1
+#endif
+#ifdef CONFIG_ARCH_SUN8IW1
 /*******clk_set_parent can be remove*******/
 	if (clk_set_parent(spdif_moduleclk, spdif_pll2clk)) {
-		printk("try to set parent of spdif_moduleclk to spdif_pll2ck failed! line = %d\n",__LINE__);
+		pr_err("try to set parent of spdif_moduleclk to spdif_pll2ck failed! line = %d\n",__LINE__);
 	}
 	if (clk_set_rate(spdif_moduleclk, 24576000/8)) {
-		printk("set spdif_moduleclk clock freq to 24576000 failed! line = %d\n", __LINE__);
+		pr_err("set spdif_moduleclk clock freq to 24576000 failed! line = %d\n", __LINE__);
 	}
-#else
-	if (clk_set_parent(spdif_moduleclk, spdif_pll3clk)) {
-		printk("try to set parent of spdif_moduleclk to spdif_pll2ck failed! line = %d\n",__LINE__);
+#elif defined CONFIG_ARCH_SUN8IW7
+	if (clk_set_parent(spdif_moduleclk, spdif_pll)) {
+		pr_err("try to set parent of spdif_moduleclk to spdif_pll failed! line = %d\n",__LINE__);
 	}
 	if (clk_set_rate(spdif_moduleclk, 24576000)) {
-		printk("set spdif_moduleclk clock freq to 24576000 failed! line = %d\n", __LINE__);
+		pr_err("set spdif_moduleclk clock freq to 24576000 failed! line = %d\n", __LINE__);
+	}
+#else
+#ifdef CONFIG_ARCH_SUN8IW6
+	if (clk_set_parent(spdif_moduleclk, spdif_pll)) {
+		pr_err("try to set parent of spdif_moduleclk to spdif_pll2ck failed! line = %d\n",__LINE__);
+	}
+#else
+	if (clk_set_parent(spdif_moduleclk, spdif_pll3clk)) {/*sun9i*/
+		pr_err("try to set parent of spdif_moduleclk to spdif_pll3ck failed! line = %d\n",__LINE__);
+	}
+#endif
+	if (clk_set_rate(spdif_moduleclk, 24576000)) {
+		pr_err("set spdif_moduleclk clock freq to 24576000 failed! line = %d\n", __LINE__);
 	}
 #endif
 	if (clk_prepare_enable(spdif_moduleclk)) {
-		printk("open spdif_moduleclk failed! line = %d\n", __LINE__);
+		pr_err("open spdif_moduleclk failed! line = %d\n", __LINE__);
 	}
 //	if (clk_reset(spdif_moduleclk, AW_CCU_CLK_NRESET)) {
-//		printk("try to NRESET spdif module clk failed!\n");
+//		pr_err("try to NRESET spdif module clk failed!\n");
 //	}
 
 	/*global enbale*/
@@ -834,23 +902,23 @@ static int __exit sunxi_spdif_dev_remove(struct platform_device *pdev)
 	if (spdif_used) {
 		spdif_used = 0;
 		if ((NULL == spdif_moduleclk) ||(IS_ERR(spdif_moduleclk))) {
-			printk("spdif_moduleclk handle is invalid, just return\n");
+			pr_err("spdif_moduleclk handle is invalid, just return\n");
 			return -EFAULT;
 		} else {
 			/*release the module clock*/
 			clk_disable(spdif_moduleclk);
 		}
 #ifndef		CONFIG_ARCH_SUN9IW1
-		if ((NULL == spdif_pllx8) ||(IS_ERR(spdif_pllx8))) {
-			printk("spdif_pllx8 handle is invalid, just return\n");
+		if ((NULL == spdif_pll) ||(IS_ERR(spdif_pll))) {
+			pr_err("spdif_pll handle is invalid, just return\n");
 			return -EFAULT;
 		} else {
 			/*release pllx8clk*/
-			clk_put(spdif_pllx8);
+			clk_put(spdif_pll);
 		}
 
 		if ((NULL == spdif_pll2clk) ||(IS_ERR(spdif_pll2clk))) {
-			printk("spdif_pll2clk handle is invalid, just return\n");
+			pr_err("spdif_pll2clk handle is invalid, just return\n");
 			return -EFAULT;
 		} else {
 			/*release pll2clk*/
@@ -858,7 +926,7 @@ static int __exit sunxi_spdif_dev_remove(struct platform_device *pdev)
 		}
 #else
 		if ((NULL == spdif_pll3clk) ||(IS_ERR(spdif_pll3clk))) {
-			printk("spdif_pll2clk handle is invalid, just return\n");
+			pr_err("spdif_pll2clk handle is invalid, just return\n");
 			return -EFAULT;
 		} else {
 			/*release pll3clk*/
@@ -866,7 +934,7 @@ static int __exit sunxi_spdif_dev_remove(struct platform_device *pdev)
 		}
 #endif
 //		if ((NULL == spdif_apbclk) ||(IS_ERR(spdif_apbclk))) {
-//			printk("spdif_apbclk handle is invalid, just return\n");
+//			pr_err("spdif_apbclk handle is invalid, just return\n");
 //			return -EFAULT;
 //		} else {
 //			/*release apbclk*/
@@ -903,11 +971,17 @@ static int __init sunxi_spdif_init(void)
 
 	type = script_get_item("spdif0", "spdif_used", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[SPDIF] type err!\n");
+        pr_err("[SPDIF]:%s,line:%d type err!\n", __func__, __LINE__);
     }
 
 	spdif_used = val.val;
-	printk("%s, line:%d, spdif_used:%d\n", __func__, __LINE__, spdif_used);
+	pr_debug("%s, line:%d, spdif_used:%d\n", __func__, __LINE__, spdif_used);
+
+	if (script_get_item("spdif0", "spdif_vol_config", &val) != SCIRPT_ITEM_VALUE_TYPE_INT){
+		pr_err("[spdif_vol_config]script_get_item return type err\n");
+	}
+	vol_self_config = val.val;
+
  	if (spdif_used) {
 		if((platform_device_register(&sunxi_spdif_device))<0)
 			return err;
@@ -915,7 +989,7 @@ static int __init sunxi_spdif_init(void)
 		if ((err = platform_driver_register(&sunxi_spdif_driver)) < 0)
 			return err;
 	} else {
-        printk("[SPDIF]sunxi-spdif cannot find any using configuration for controllers, return directly!\n");
+        pr_err("[SPDIF]sunxi-spdif cannot find any using configuration for controllers, return directly!\n");
         return 0;
     }
  

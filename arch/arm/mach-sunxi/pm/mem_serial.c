@@ -7,22 +7,6 @@
 
 #include "pm_i.h"
 
-//------------------------------------------------------------------------------
-//return value defines
-//------------------------------------------------------------------------------
-#define	OK		(0)
-#define	FAIL		(-1)
-#define TRUE		(1)
-#define	FALSE		(0)
-#define NULL		(0)
-
-#define readb(addr)		(*((volatile unsigned char  *)(addr)))
-#define readw(addr)		(*((volatile unsigned short *)(addr)))
-#define readl(addr)		(*((volatile unsigned long  *)(addr)))
-#define writeb(v, addr)		(*((volatile unsigned char  *)(addr)) = (unsigned char)(v))
-#define writew(v, addr)		(*((volatile unsigned short *)(addr)) = (unsigned short)(v))
-#define writel(v, addr)		(*((volatile unsigned long  *)(addr)) = (unsigned long)(v))
-
 static __u32 backup_ccu_uart            = 0;
 static __u32 backup_ccu_uart_reset      = 0;
 static __u32 backup_gpio_uart           = 0;
@@ -31,9 +15,11 @@ static __u32 serial_inited_flag = 0;
 static __u32 set_serial_clk(__u32 mmu_flag)
 {
 	__u32 			src_freq = 0;
-	__u32 			p2clk;
-	volatile unsigned int 	*reg;
-	__ccmu_reg_list_t 	*ccu_reg;	
+	__u32 			p2clk = 0;
+	
+	volatile unsigned int 	*reg = (volatile unsigned int 	*)(0);
+	__ccmu_reg_list_t 	*ccu_reg = (__ccmu_reg_list_t 	*)(0);	
+	
 	__u32 port = 0;
 	__u32 i = 0;
 
@@ -68,8 +54,6 @@ static __u32 set_serial_clk(__u32 mmu_flag)
 		backup_ccu_uart = *(volatile unsigned int *)(IO_ADDRESS(AW_CCU_UART_PA));
 		//backup uart reset 
 		backup_ccu_uart_reset = *(volatile unsigned int *)(IO_ADDRESS(AW_CCU_UART_RESET_PA));
-		//backup gpio
-		backup_gpio_uart = *(volatile unsigned int *)(IO_ADDRESS(AW_UART_GPIO_PA));
 
 		//de-assert uart reset
 		reg = (volatile unsigned int *)(IO_ADDRESS(AW_CCU_UART_RESET_PA));
@@ -109,9 +93,9 @@ static __u32 set_serial_clk(__u32 mmu_flag)
 static __u32 set_serial_clk(__u32 mmu_flag)
 {
 	__u32 			src_freq = 0;
-	__u32 			p2clk;
-	volatile unsigned int 	*reg;
-	__ccmu_reg_list_t 	*ccu_reg;
+	__u32 			p2clk = 0;
+	volatile unsigned int 	*reg = (volatile unsigned int 	*)(0);
+	__ccmu_reg_list_t 	*ccu_reg = (__ccmu_reg_list_t 	*)(0);	
 	__u32 port = 0;
 	__u32 i = 0;
 
@@ -143,8 +127,6 @@ static __u32 set_serial_clk(__u32 mmu_flag)
 		backup_ccu_uart = *(volatile unsigned int *)(IO_ADDRESS(AW_CCU_UART_PA));
 		//backup uart reset 
 		backup_ccu_uart_reset = *(volatile unsigned int *)(IO_ADDRESS(AW_CCU_UART_RESET_PA));
-		//backup gpio
-		backup_gpio_uart = *(volatile unsigned int *)(AW_UART_GPIO_PA);
 
 		//config uart clk: apb2 gating.
 		reg = (volatile unsigned int *)(IO_ADDRESS(AW_CCU_UART_PA));
@@ -182,63 +164,97 @@ static __u32 set_serial_clk(__u32 mmu_flag)
 #endif
 
 #if defined(CONFIG_ARCH_SUN8IW1P1)	//use PF
-static void set_serial_gpio(__u32 mmu_flag)
+static void set_serial_gpio(__u32 mmu_flag, __u32 port_id)
 {
 	__u32 port = 0;
 	__u32 i = 0;
-	volatile unsigned int 	*reg;
+	volatile unsigned int 	*reg = (volatile unsigned int *)(0);
+	volatile unsigned int value = 0;
 	
 	// config uart gpio
 	// config tx gpio
 	//fpga not need care gpio config;
 
 	if(mmu_flag){
-		reg = (volatile unsigned int *)(IO_ADDRESS(AW_UART_GPIO_PA));
+		//backup gpio
+		backup_gpio_uart = *(volatile unsigned int *)(IO_ADDRESS(AW_UART_GPIO_PA));
+		reg = (__u32 *)(IO_ADDRESS(AW_UART_GPIO_PA));
 	}else{
-		reg = (volatile unsigned int *)(AW_UART_GPIO_PA);
+		reg = (__u32 *)(AW_UART_GPIO_PA);
 	}
+
 	*reg &= ~(0x707 << (8 + port));
 	for( i = 0; i < 100; i++ );
 	*reg |=  (0x404 << (8 + port));
-
 	return	;
 }
-#elif defined(CONFIG_ARCH_SUN9IW1P1)	//use PH
-static void set_serial_gpio(__u32 mmu_flag)
+#elif defined(CONFIG_ARCH_SUN9IW1P1) || defined(CONFIG_ARCH_SUN8IW6P1)
+/*
+ * if   0 != port_id, mean use specific port(PF) for debug.
+ * elif 0== port_id, mean use default port(PH) for debug. 
+ */
+static void set_serial_gpio(__u32 mmu_flag, __u32 port_id)
 {
 	__u32 port = 0;
 	__u32 i = 0;
-	volatile unsigned int 	*reg;
+	volatile unsigned int 	*reg = (volatile unsigned int *)(0);
+	__u32 uart_gpio_mask = 0;
+	__u32 uart_gpio_config_val = 0;
+
+	//config gpio clk;
+	config_gpio_clk(mmu_flag);
 	
 	// config uart gpio
 	// config tx gpio
 	//fpga not need care gpio config;
 
 	if(mmu_flag){
-		reg = (volatile unsigned int *)(IO_ADDRESS(AW_UART_GPIO_PA));
+	    //backup gpio
+	    backup_gpio_uart = *(volatile unsigned int *)(IO_ADDRESS(AW_UART_PF_GPIO_PA));
+	    reg = (volatile unsigned int *)(IO_ADDRESS(AW_UART_PF_GPIO_PA));
 	}else{
-		reg = (volatile unsigned int *)(AW_UART_GPIO_PA);
+	    if(likely(port_id)){
+		reg = (volatile unsigned int *)(AW_UART_PF_GPIO_PA);
+		uart_gpio_mask = AW_UART_PF_CONFIG_VAL_MASK;
+		uart_gpio_config_val = AW_UART_PF_CONFIG_VAL;
+	    }else{
+		reg = (volatile unsigned int *)(AW_UART_PH_GPIO_PA);
+		uart_gpio_mask = AW_UART_PH_CONFIG_VAL_MASK;
+		uart_gpio_config_val = AW_UART_PH_CONFIG_VAL;
+	    }
 	}
-	*reg &= ~(0x77 << (16 + port));
+	
+	//config uart-gpio
+	*reg &= ~(uart_gpio_mask);
+	asm volatile ("dsb");	
+	asm volatile ("isb");	
+	
 	for( i = 0; i < 100; i++ );
-	*reg |=  (0x22 << (16 + port));
+	asm volatile ("dsb");	
+	asm volatile ("isb");	
+	
+	*reg |=  (uart_gpio_config_val);
+	asm volatile ("dsb");	
+	asm volatile ("isb");	
 
 	return	;
 }
 
 
-#elif defined(CONFIG_ARCH_SUN8IW3P1) || defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1)
-static void set_serial_gpio(__u32 mmu_flag)
+#elif defined(CONFIG_ARCH_SUN8IW3P1) || defined(CONFIG_ARCH_SUN8IW5P1) 
+static void set_serial_gpio(__u32 mmu_flag, __u32 port_id)
 {
 	__u32 port = 0;
 	__u32 i = 0;
-	volatile unsigned int 	*reg;
+	volatile unsigned int 	*reg = (volatile unsigned int *)(0);
 	
 	// config uart gpio
 	// config tx gpio
 	//fpga not need care gpio config;
 
 	if(mmu_flag){
+		//backup gpio
+		backup_gpio_uart = *(volatile unsigned int *)(IO_ADDRESS(AW_UART_GPIO_PA));
 		reg = (volatile unsigned int *)(IO_ADDRESS(AW_UART_GPIO_PA));
 	}else{
 		reg = (volatile unsigned int *)(AW_UART_GPIO_PA);
@@ -251,13 +267,13 @@ static void set_serial_gpio(__u32 mmu_flag)
 }
 #endif
 
-void serial_init_nommu(void)
+void serial_init_nommu(__u32 port_id)
 {
-	__u32 df;
-	__u32 lcr;
-	__u32 p2clk;
+	__u32 df = 0;
+	__u32 lcr = 0;
+	__u32 p2clk = 0;
 
-	set_serial_gpio(0);
+	set_serial_gpio(0, port_id);
 	p2clk = set_serial_clk(0);
 
 	/* set baudrate */
@@ -284,7 +300,11 @@ void serial_init_nommu(void)
 static void serial_put_char_nommu(char c)
 {
 	while (!(readl(SUART_USR_PA) & 2));
+	asm volatile ("dsb");	
+	asm volatile ("isb");	
 	writel(c, SUART_THR_PA);
+	asm volatile ("dsb");	
+	asm volatile ("isb");	
 
 	return	;
 }
@@ -322,8 +342,8 @@ __s32 serial_puts_nommu(const char *string)
 
 __u32 serial_gets_nommu(char* buf, __u32 n)
 {
-	__u32 i;
-	char c;
+	__u32 i = 0;
+	char c = '\0';
 	
 	if(0 == serial_inited_flag){
 	    return FAIL;
@@ -341,11 +361,11 @@ __u32 serial_gets_nommu(char* buf, __u32 n)
 void serial_init(void)
 {
 
-	__u32 p2clk;
-	__u32 df;
-	__u32 lcr;
+	__u32 p2clk = 0;
+	__u32 df = 0;
+	__u32 lcr = 0;
 
-	set_serial_gpio(1);
+	set_serial_gpio(1, 0);
 	p2clk = set_serial_clk(1);
 	
 	/* set baudrate */
@@ -386,7 +406,11 @@ void serial_exit(void)
 static void serial_put_char(char c)
 {
 	while (!(readl(SUART_USR) & 2));
+	asm volatile ("dsb");	
+	asm volatile ("isb");	
 	writel(c, SUART_THR);
+	asm volatile ("dsb");	
+	asm volatile ("isb");	
 
 	return	;
 }
@@ -437,8 +461,8 @@ __s32 serial_puts(const char *string)
 
 __u32 serial_gets(char* buf, __u32 n)
 {
-	__u32 i;
-	char c;
+	__u32 i = 0;
+	char c = '\0';
 	
 	if(0 == serial_inited_flag){
 	    return FAIL;

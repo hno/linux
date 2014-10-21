@@ -24,12 +24,13 @@
 #define SUNXI_IO_SIZE                   0x01000000
 #define SUNXI_BROM0_N_PBASE             0xffff0000
 #define SUNXI_BROM0_N_SIZE              0x00008000
+#define SUNXI_BROM_SIZE                 SUNXI_BROM0_N_SIZE
 #define SUNXI_BROM1_S_PBASE             0xffff0000
 #define SUNXI_BROM1_S_SIZE              0x00010000
 #define SUNXI_SRAM_A1_PBASE             0x00000000
 #define SUNXI_SRAM_A1_SIZE              0x00010000
-#define SUNXI_SRAM_A2_PBASE             0x00044000
-#define SUNXI_SRAM_A2_SIZE              0x00008000
+#define SUNXI_SRAM_A2_PBASE             0x00040000
+#define SUNXI_SRAM_A2_SIZE              0x0000C000
 #define SUNXI_SRAM_C_PBASE              0x00010000
 #define SUNXI_SRAM_C_SIZE               0x0000b000
 #define SUNXI_SDRAM_PBASE               0x40000000
@@ -39,8 +40,10 @@
  *  device physical addresses
  */
 #define SUNXI_DE_PBASE                  0x01000000
+#define SUNXI_DE_SIZE                   0x00400000
 #define SUNXI_DEINTERLACE_PBASE         0x01400000
 #define SUNXI_SYSCTL_PBASE              0x01c00000
+#define SUNXI_SRAMCTRL_PBASE            SUNXI_SYSCTL_PBASE
 #define SUNXI_DMA_PBASE                 0x01c02000
 #define SUNXI_NFC0_PBASE                0x01c03000
 #define SUNXI_KEYMEM_PBASE              0x01c0b000
@@ -58,6 +61,7 @@
 #define SUNXI_USB_HCI0_PBASE            0x01c1a000
 #define SUNXI_USB_HCI1_PBASE            0x01c1b000
 #define SUNXI_USB_HCI2_PBASE            0x01c1c000
+#define SUNXI_USB_HCI3_PBASE            0x01c1d000
 #define SUNXI_SMC_PBASE                 0x01c1e000
 #define SUNXI_CCM_PBASE                 0x01c20000
 #define SUNXI_PIO_PBASE                 0x01c20800
@@ -115,12 +119,14 @@
 #define SUNXI_IO_VBASE                  IO_ADDRESS(SUNXI_IO_PBASE             )
 #define SUNXI_BROM0_N_VBASE             0xf1000000 /* note: IO_ADDRESS(SUNXI_BROM0_N_VBASE) out of vmalloc range */
 #define SUNXI_BROM1_S_VBASE             0xf1000000 /* note: IO_ADDRESS(SUNXI_BROM1_S_PBASE) out of vmalloc range */
+#define SUNXI_BROM_VBASE                SUNXI_BROM0_N_PBASE
 #define SUNXI_SRAM_A1_VBASE             IO_ADDRESS(SUNXI_SRAM_A1_PBASE        )
 #define SUNXI_SRAM_A2_VBASE             IO_ADDRESS(SUNXI_SRAM_A2_PBASE        )
 #define SUNXI_SRAM_C_VBASE              IO_ADDRESS(SUNXI_SRAM_C_PBASE         )
 #define SUNXI_DE_VBASE                  IO_ADDRESS(SUNXI_DE_PBASE             )
 #define SUNXI_DEINTERLACE_VBASE         IO_ADDRESS(SUNXI_DEINTERLACE_PBASE    )
 #define SUNXI_SYSCTL_VBASE              IO_ADDRESS(SUNXI_SYSCTL_PBASE         )
+#define SUNXI_SRAMCTRL_VBASE            IO_ADDRESS(SUNXI_SRAMCTRL_PBASE       )
 #define SUNXI_DMA_VBASE                 IO_ADDRESS(SUNXI_DMA_PBASE            )
 #define SUNXI_NFC0_VBASE                IO_ADDRESS(SUNXI_NFC0_PBASE           )
 #define SUNXI_KEYMEM_VBASE              IO_ADDRESS(SUNXI_KEYMEM_PBASE         )
@@ -138,6 +144,7 @@
 #define SUNXI_USB_HCI0_VBASE            IO_ADDRESS(SUNXI_USB_HCI0_PBASE       )
 #define SUNXI_USB_HCI1_VBASE            IO_ADDRESS(SUNXI_USB_HCI1_PBASE       )
 #define SUNXI_USB_HCI2_VBASE            IO_ADDRESS(SUNXI_USB_HCI2_PBASE       )
+#define SUNXI_USB_HCI3_VBASE            IO_ADDRESS(SUNXI_USB_HCI3_PBASE       )
 #define SUNXI_SMC_VBASE                 IO_ADDRESS(SUNXI_SMC_PBASE            )
 #define SUNXI_CCM_VBASE                 IO_ADDRESS(SUNXI_CCM_PBASE            )
 #define SUNXI_PIO_VBASE                 IO_ADDRESS(SUNXI_PIO_PBASE            )

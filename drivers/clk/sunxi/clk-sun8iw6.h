@@ -74,6 +74,7 @@
 #define PLL_LOCK            0x0200
 #define CPU_LOCK            0x0204
 #define LOCK_STAT           0x020c
+#define PLL_AUDIOPAT        0x0284
 #define PLL_VIDEO0PAT       0x0288
 #define AHB1_RST0           0x02C0  //bus reset 0
 #define AHB1_RST1           0x02C4  //bus reset 1
@@ -97,7 +98,7 @@
 
 #define PLLCPU(n,p,freq)            {F_N8X8_P16x1(n, p),  freq}
 #define PLLVIDEO(n,p,d1,freq)       {F_N8X8_P0x2_D1S16X1(n, p,d1),  freq}
-#define PLLVE(n,p,d1,freq)          {F_N8X8_P0x2_D1S16X1(n, p,d1),     freq}
+#define PLLVE(n,d1,d2,freq)         {F_N8X8_D1S16X1_D2S18X1(n, d1,d2), freq}
 #define PLLDDR(n,d1,d2,freq)        {F_N8X6_D1S16X1_D2S18X1(n, d1,d2), freq}
 #define PLLPERIPH(n,d1,d2,freq)     {F_N8X8_D1S16X1_D2S18X1(n, d1,d2), freq}
 #define PLLGPU(n,d1,d2,freq)        {F_N8X8_D1S16X1_D2S18X1(n, d1,d2), freq}

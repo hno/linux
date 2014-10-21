@@ -23,6 +23,7 @@
 #include <linux/delay.h>
 #include <linux/platform_device.h>
 #include <linux/arisc/arisc.h>
+#include <linux/mfd/ac100-mfd.h>
 #include <mach/sys_config.h>
 
 #define DRV_VERSION "0.4.3"
@@ -81,16 +82,18 @@ struct sunxi_rtc {
 	struct work_struct work;
 #endif
 	struct mutex mutex;
+	struct ac100 *ac100;
 };
 
 /* reg_val: raw value to be wrote to the reg, bcd convertion is done outside */
-static inline void rtc_write_reg(int reg, int value)
+static inline void rtc_write_reg(struct ac100 *ac100, int reg, int value)
 {
+#if 0
 	arisc_rsb_block_cfg_t rsb_data;
 	unsigned char addr;
 	unsigned int data;
-
 	addr = (unsigned char)reg;
+
 	data = value;
 	rsb_data.len = 1;
 	rsb_data.datatype = RSB_DATA_TYPE_HWORD;
@@ -102,11 +105,15 @@ static inline void rtc_write_reg(int reg, int value)
 	/* read axp registers */
 	if (arisc_rsb_write_block_data(&rsb_data))
 		pr_err("%s(%d) err: write reg-0x%x failed", __func__, __LINE__, reg);
+#else
+	ac100_reg_write(ac100, reg, value);
+#endif
 }
 
 /* return raw value from the reg, then it may do bcd convertion if needed */
-static inline int rtc_read_reg(int reg)
+static inline int rtc_read_reg(struct ac100 *ac100, int reg)
 {
+#if 0
 	arisc_rsb_block_cfg_t rsb_data;
 	unsigned char addr;
 	unsigned int data;
@@ -125,6 +132,9 @@ static inline int rtc_read_reg(int reg)
 		return -EPERM;
 	}
 	return data;
+#else
+	return ac100_reg_read(ac100, reg);
+#endif
 }
 
 /**
@@ -227,7 +237,7 @@ bool time_valid(struct rtc_time *tm)
 	return true;
 }
 
-static int rtc_settime(struct rtc_time *tm)
+static int rtc_settime(struct sunxi_rtc *rtc_dev, struct rtc_time *tm)
 {
 	int actual_year, actual_month, leap_year = 0, reg_val;
 
@@ -261,22 +271,22 @@ static int rtc_settime(struct rtc_time *tm)
 	}
 
 	/* set time */
-	rtc_write_reg(RTC_SEC_REG_OFF, bin2bcd(tm->tm_sec) & 0x7f);
-	rtc_write_reg(RTC_MIN_REG_OFF, bin2bcd(tm->tm_min) & 0x7f);
-	rtc_write_reg(RTC_HOU_REG_OFF, bin2bcd(tm->tm_hour) & 0x3f);
-	rtc_write_reg(RTC_WEE_REG_OFF, bin2bcd(tm->tm_wday) & 0x7);
-	rtc_write_reg(RTC_DAY_REG_OFF, bin2bcd(tm->tm_mday) & 0x3f);
-	rtc_write_reg(RTC_MON_REG_OFF, bin2bcd(actual_month) & 0x1f);
+	rtc_write_reg(rtc_dev->ac100, RTC_SEC_REG_OFF, bin2bcd(tm->tm_sec) & 0x7f);
+	rtc_write_reg(rtc_dev->ac100, RTC_MIN_REG_OFF, bin2bcd(tm->tm_min) & 0x7f);
+	rtc_write_reg(rtc_dev->ac100, RTC_HOU_REG_OFF, bin2bcd(tm->tm_hour) & 0x3f);
+	rtc_write_reg(rtc_dev->ac100, RTC_WEE_REG_OFF, bin2bcd(tm->tm_wday) & 0x7);
+	rtc_write_reg(rtc_dev->ac100, RTC_DAY_REG_OFF, bin2bcd(tm->tm_mday) & 0x3f);
+	rtc_write_reg(rtc_dev->ac100, RTC_MON_REG_OFF, bin2bcd(actual_month) & 0x1f);
 
 	/* set year */
 	reg_val = actual_year_to_reg_year(actual_year);
 	reg_val = bin2bcd(reg_val) & 0xff;
 	if (leap_year)
 		reg_val |= LEAP_YEAR_FLAG;
-	rtc_write_reg(RTC_YEA_REG_OFF, reg_val);
+	rtc_write_reg(rtc_dev->ac100, RTC_YEA_REG_OFF, reg_val);
 
 	/* set write trig bit */
-	rtc_write_reg(RTC_UPD_TRIG_OFF, RTC_WRITE_RTIG_FLAG);
+	rtc_write_reg(rtc_dev->ac100, RTC_UPD_TRIG_OFF, RTC_WRITE_RTIG_FLAG);
 	mdelay(30); /* delay 30ms to wait write stable */
 
 	pr_info("%s(%d): set time %d-%d-%d %d:%d:%d success!\n", __func__, __LINE__, actual_year,
@@ -284,38 +294,38 @@ static int rtc_settime(struct rtc_time *tm)
 	return 0;
 }
 
-static int rtc_gettime(struct rtc_time *tm)
+static int rtc_gettime(struct sunxi_rtc *rtc_dev, struct rtc_time *tm)
 {
 	struct rtc_time time_tmp;
 	int tmp;
 
 	/* get sec */
-	tmp = rtc_read_reg(RTC_SEC_REG_OFF);
+	tmp = rtc_read_reg(rtc_dev->ac100, RTC_SEC_REG_OFF);
 	time_tmp.tm_sec = bcd2bin(tmp & 0x7f);
 
 	/* get min */
-	tmp = rtc_read_reg(RTC_MIN_REG_OFF);
+	tmp = rtc_read_reg(rtc_dev->ac100, RTC_MIN_REG_OFF);
 	time_tmp.tm_min = bcd2bin(tmp & 0x7f);
 
 	/* get hour */
-	tmp = rtc_read_reg(RTC_HOU_REG_OFF);
+	tmp = rtc_read_reg(rtc_dev->ac100, RTC_HOU_REG_OFF);
 	time_tmp.tm_hour = bcd2bin(tmp & 0x3f);
 
 	/* get week day */
-	tmp = rtc_read_reg(RTC_WEE_REG_OFF);
+	tmp = rtc_read_reg(rtc_dev->ac100, RTC_WEE_REG_OFF);
 	time_tmp.tm_wday = bcd2bin(tmp & 0x7);
 
 	/* get day */
-	tmp = rtc_read_reg(RTC_DAY_REG_OFF);
+	tmp = rtc_read_reg(rtc_dev->ac100, RTC_DAY_REG_OFF);
 	time_tmp.tm_mday = bcd2bin(tmp & 0x3f);
 
 	/* get month */
-	tmp = rtc_read_reg(RTC_MON_REG_OFF);
+	tmp = rtc_read_reg(rtc_dev->ac100, RTC_MON_REG_OFF);
 	time_tmp.tm_mon = bcd2bin(tmp & 0x1f);
 	time_tmp.tm_mon -= 1; /* month is 1..12 in RTC reg but 0..11 in linux */
 
 	/* get year */
-	tmp = rtc_read_reg(RTC_YEA_REG_OFF);
+	tmp = rtc_read_reg(rtc_dev->ac100, RTC_YEA_REG_OFF);
 	tmp = bcd2bin(tmp & 0xff);
 	time_tmp.tm_year = reg_year_to_actual_year(tmp) - 1900; /* in linux, tm_year=0 is 1900 */
 
@@ -339,7 +349,7 @@ static int sunxi_rtc_read_time(struct device *dev, struct rtc_time *tm)
 	int ret = 0;
 
 	mutex_lock(&rtc_dev->mutex);
-	ret = rtc_gettime(tm);
+	ret = rtc_gettime(rtc_dev, tm);
 	mutex_unlock(&rtc_dev->mutex);
 	return ret;
 }
@@ -351,7 +361,7 @@ static int sunxi_rtc_set_time(struct device *dev, struct rtc_time *tm)
 	int ret = 0;
 
 	mutex_lock(&rtc_dev->mutex);
-	ret = rtc_settime(tm);
+	ret = rtc_settime(rtc_dev, tm);
 	mutex_unlock(&rtc_dev->mutex);
 	return ret;
 }
@@ -365,7 +375,7 @@ static int sunxi_rtc_set_time(struct device *dev, struct rtc_time *tm)
 #define ALM_MIN_ENA_FLAG	BIT(15)
 #define ALM_SEC_ENA_FLAG	BIT(15)
 #define ALM_WRITE_RTIG_FLAG	BIT(15)
-static int alarm_settime(struct rtc_time *tm)
+static int alarm_settime(struct sunxi_rtc *rtc_dev, struct rtc_time *tm)
 {
 	int actual_year, actual_month, reg_val;
 
@@ -378,43 +388,43 @@ static int alarm_settime(struct rtc_time *tm)
 	/* set sec */
 	reg_val = bin2bcd(tm->tm_sec) & 0x7f;
 	reg_val |= ALM_SEC_ENA_FLAG;
-	rtc_write_reg(ALM_SEC_REG_OFF, reg_val);
+	rtc_write_reg(rtc_dev->ac100, ALM_SEC_REG_OFF, reg_val);
 
 	/* set minute */
 	reg_val = bin2bcd(tm->tm_min) & 0x7f;
 	reg_val |= ALM_MIN_ENA_FLAG;
-	rtc_write_reg(ALM_MIN_REG_OFF, reg_val);
+	rtc_write_reg(rtc_dev->ac100, ALM_MIN_REG_OFF, reg_val);
 
 	/* set hour */
 	reg_val = bin2bcd(tm->tm_hour) & 0x3f;
 	reg_val |= ALM_HOU_ENA_FLAG;
-	rtc_write_reg(ALM_HOU_REG_OFF, reg_val);
+	rtc_write_reg(rtc_dev->ac100, ALM_HOU_REG_OFF, reg_val);
 
 	/* set week */
 	reg_val = bin2bcd(tm->tm_wday) & 0x7;
 #if 0 /* donot both enable day & week alarm */
 	reg_val |= ALM_WEE_ENA_FLAG;
 #endif
-	rtc_write_reg(ALM_WEEK_REG_OFF, reg_val);
+	rtc_write_reg(rtc_dev->ac100, ALM_WEEK_REG_OFF, reg_val);
 
 	/* set day */
 	reg_val = bin2bcd(tm->tm_mday) & 0x3f;
 	reg_val |= ALM_DAY_ENA_FLAG;
-	rtc_write_reg(ALM_DAY_REG_OFF, reg_val);
+	rtc_write_reg(rtc_dev->ac100, ALM_DAY_REG_OFF, reg_val);
 
 	/* set month */
 	reg_val = bin2bcd(actual_month) & 0x1f;
 	reg_val |= ALM_MON_ENA_FLAG;
-	rtc_write_reg(ALM_MON_REG_OFF, reg_val);
+	rtc_write_reg(rtc_dev->ac100, ALM_MON_REG_OFF, reg_val);
 
 	/* set year */
 	reg_val = actual_year_to_reg_year(actual_year);
 	reg_val = bin2bcd(reg_val) & 0xff;
 	reg_val |= ALM_YEA_ENA_FLAG;
-	rtc_write_reg(ALM_YEA_REG_OFF, reg_val);
+	rtc_write_reg(rtc_dev->ac100, ALM_YEA_REG_OFF, reg_val);
 
 	/* set write trig bit */
-	rtc_write_reg(ALM_UPD_TRIG_OFF, ALM_WRITE_RTIG_FLAG);
+	rtc_write_reg(rtc_dev->ac100, ALM_UPD_TRIG_OFF, ALM_WRITE_RTIG_FLAG);
 	mdelay(30); /* delay 30ms to wait stable */
 
 	pr_info("%s(%d): set alarm time %d-%d-%d %d:%d:%d success!\n", __func__, __LINE__, actual_year,
@@ -422,37 +432,37 @@ static int alarm_settime(struct rtc_time *tm)
 	return 0;
 }
 
-static int alarm_gettime(struct rtc_time *tm)
+static int alarm_gettime(struct sunxi_rtc *rtc_dev, struct rtc_time *tm)
 {
 	int reg_val;
 
 	/* get sec */
-	reg_val = rtc_read_reg(ALM_SEC_REG_OFF);
+	reg_val = rtc_read_reg(rtc_dev->ac100, ALM_SEC_REG_OFF);
 	tm->tm_sec = bcd2bin(reg_val & 0x7f);
 
 	/* get minute */
-	reg_val = rtc_read_reg(ALM_MIN_REG_OFF);
+	reg_val = rtc_read_reg(rtc_dev->ac100, ALM_MIN_REG_OFF);
 	tm->tm_min = bcd2bin(reg_val & 0x7f);
 
 	/* get hour */
-	reg_val = rtc_read_reg(ALM_HOU_REG_OFF);
+	reg_val = rtc_read_reg(rtc_dev->ac100, ALM_HOU_REG_OFF);
 	tm->tm_hour = bcd2bin(reg_val & 0x3f);
 
 	/* get week */
-	reg_val = rtc_read_reg(ALM_WEEK_REG_OFF);
+	reg_val = rtc_read_reg(rtc_dev->ac100, ALM_WEEK_REG_OFF);
 	tm->tm_wday = bcd2bin(reg_val & 0x7);
 
 	/* get day */
-	reg_val = rtc_read_reg(ALM_DAY_REG_OFF);
+	reg_val = rtc_read_reg(rtc_dev->ac100, ALM_DAY_REG_OFF);
 	tm->tm_mday = bcd2bin(reg_val & 0x3f);
 
 	/* get month */
-	reg_val = rtc_read_reg(ALM_MON_REG_OFF);
+	reg_val = rtc_read_reg(rtc_dev->ac100, ALM_MON_REG_OFF);
 	reg_val = bcd2bin(reg_val & 0x1f);
 	tm->tm_mon = reg_val - 1; /* month is 1..12 in RTC reg but 0..11 in linux */
 
 	/* get year */
-	reg_val = rtc_read_reg(ALM_YEA_REG_OFF);
+	reg_val = rtc_read_reg(rtc_dev->ac100, ALM_YEA_REG_OFF);
 	reg_val = bcd2bin(reg_val & 0xff);
 	tm->tm_year = reg_year_to_actual_year(reg_val) - 1900; /* tm_year is from 1900 in linux */
 
@@ -468,23 +478,23 @@ static int alarm_gettime(struct rtc_time *tm)
 	return 0;
 }
 
-void alarm_enable(void)
+void alarm_enable(struct sunxi_rtc *rtc_dev)
 {
 	/* enable alarm irq */
-	rtc_write_reg(ALM_INT_ENA_OFF, 1);
+	rtc_write_reg(rtc_dev->ac100, ALM_INT_ENA_OFF, 1);
 }
 
-void alarm_disable(void)
+void alarm_disable(struct sunxi_rtc *rtc_dev)
 {
 	/* disable alarm irq */
-	rtc_write_reg(ALM_INT_ENA_OFF, 0);
+	rtc_write_reg(rtc_dev->ac100, ALM_INT_ENA_OFF, 0);
 }
 
 int sunxi_alarm_enable(struct sunxi_rtc *rtc_dev)
 {
 	mutex_lock(&rtc_dev->mutex);
 
-	alarm_enable();
+	alarm_enable(rtc_dev);
 
 	mutex_unlock(&rtc_dev->mutex);
 	return 0;
@@ -494,7 +504,7 @@ int sunxi_alarm_disable(struct sunxi_rtc *rtc_dev)
 {
 	mutex_lock(&rtc_dev->mutex);
 
-	alarm_disable();
+	alarm_disable(rtc_dev);
 
 	mutex_unlock(&rtc_dev->mutex);
 	return 0;
@@ -516,7 +526,7 @@ static void alarm_irq_work(struct work_struct *work)
 	mutex_lock(&rtc_dev->mutex);
 
 	/* clear alarm irq pending */
-	reg_val = rtc_read_reg(ALM_INT_STA_REG_OFF);
+	reg_val = rtc_read_reg(rtc_dev->ac100, ALM_INT_STA_REG_OFF);
 	if (reg_val < 0) {
 		mutex_unlock(&rtc_dev->mutex);
 		pr_err("%s(%d) err: read alarm int status reg failed!\n", __func__, __LINE__);
@@ -524,10 +534,10 @@ static void alarm_irq_work(struct work_struct *work)
 	}
 
 	if (reg_val & 1) {
-		rtc_write_reg(ALM_INT_STA_REG_OFF, 1);
+		rtc_write_reg(rtc_dev->ac100, ALM_INT_STA_REG_OFF, 1);
 		mutex_unlock(&rtc_dev->mutex);
 
-		//printk("%s(%d): alarm interrupt!\n", __func__, __LINE__);
+		pr_err("%s(%d): alarm interrupt!\n", __func__, __LINE__);
 		rtc_update_irq(rtc_dev->rtc, 1, RTC_AF | RTC_IRQF);
 		goto end;
 	}
@@ -545,7 +555,7 @@ static int sunxi_rtc_getalarm(struct device *dev, struct rtc_wkalrm *alrm)
 
 	mutex_lock(&rtc_dev->mutex);
 	/* get alarm time */
-	if (alarm_gettime(&alrm->time)) {
+	if (alarm_gettime(rtc_dev, &alrm->time)) {
 		pr_err("%s(%d) err: get alarm time failed!\n", __func__, __LINE__);
 		ret = -EINVAL;
 		goto end;
@@ -587,10 +597,10 @@ static int sunxi_rtc_setalarm(struct device *dev, struct rtc_wkalrm *alrm)
 	mutex_lock(&rtc_dev->mutex);
 
 	/* disable alarm */
-	alarm_disable();
+	alarm_disable(rtc_dev);
 
 	/* set alarm time */
-	if (alarm_settime(&alrm->time)) {
+	if (alarm_settime(rtc_dev, &alrm->time)) {
 		mutex_unlock(&rtc_dev->mutex);
 		pr_err("%s(%d) err: set alarm time failed!\n", __func__, __LINE__);
 		return -EINVAL;
@@ -599,7 +609,7 @@ static int sunxi_rtc_setalarm(struct device *dev, struct rtc_wkalrm *alrm)
 	/* enable alarm if flag set */
 	if (alrm->enabled) {
 		arisc_enable_nmi_irq(); /* temperally, but no better way */
-		alarm_enable();
+		alarm_enable(rtc_dev);
 	}
 
 	mutex_unlock(&rtc_dev->mutex);
@@ -635,22 +645,22 @@ static const struct rtc_class_ops sunxi_rtc_ops = {
 #endif
 };
 
-void sunxi_rtc_hw_init(void)
+void sunxi_rtc_hw_init(struct sunxi_rtc *rtc_dev)
 {
 	int reg_val;
 
 	/* reset rtc reg??? */
 
 	/* set 24h mode */
-	rtc_write_reg(RTC_CTRL_REG_OFF, RTC_12H_24H_MODE);
+	rtc_write_reg(rtc_dev->ac100, RTC_CTRL_REG_OFF, RTC_12H_24H_MODE);
 
 	/* disable alarm irq */
-	rtc_write_reg(ALM_INT_ENA_OFF, 0);
+	rtc_write_reg(rtc_dev->ac100, ALM_INT_ENA_OFF, 0);
 
 	/* clear alarm irq pending */
-	reg_val = rtc_read_reg(ALM_INT_STA_REG_OFF);
+	reg_val = rtc_read_reg(rtc_dev->ac100, ALM_INT_STA_REG_OFF);
 	if (!IS_ERR_VALUE(reg_val) && (reg_val & 1))
-		rtc_write_reg(ALM_INT_STA_REG_OFF, 1);
+		rtc_write_reg(rtc_dev->ac100, ALM_INT_STA_REG_OFF, 1);
 }
 
 static int __init sunxi_rtc_probe(struct platform_device *pdev)
@@ -658,6 +668,7 @@ static int __init sunxi_rtc_probe(struct platform_device *pdev)
 	struct sunxi_rtc *rtc_dev;
 	int err = 0;
 
+	pr_debug("%s,line:%d\n", __func__, __LINE__);
 	rtc_dev = kzalloc(sizeof(struct sunxi_rtc), GFP_KERNEL);
 	if (!rtc_dev)
 		return -ENOMEM;
@@ -665,6 +676,7 @@ static int __init sunxi_rtc_probe(struct platform_device *pdev)
 	/* must before rtc_device_register, because it will call rtc_device_register -> __rtc_read_alarm ->
 	 *  rtc_read_time-> __rtc_read_time -> sunxi_rtc_read_time, witch may use platform_get_drvdata. */
 	platform_set_drvdata(pdev, rtc_dev);
+	rtc_dev->ac100 = dev_get_drvdata(pdev->dev.parent);
 
 #ifdef ENABLE_ALARM
 	INIT_WORK(&rtc_dev->work, alarm_irq_work);
@@ -672,10 +684,7 @@ static int __init sunxi_rtc_probe(struct platform_device *pdev)
 #endif
 	mutex_init(&rtc_dev->mutex);
 
-	if (arisc_rsb_set_rtsaddr(RSB_DEVICE_SADDR7, RSB_RTSADDR_AC100)) {
-		pr_err("RTC config codec failed\n");
-	}
-	sunxi_rtc_hw_init();
+	sunxi_rtc_hw_init(rtc_dev);
 
 	rtc_dev->rtc = rtc_device_register(RTC_NAME, &pdev->dev, &sunxi_rtc_ops, THIS_MODULE);
 	if (IS_ERR(rtc_dev->rtc)) {
@@ -716,11 +725,6 @@ static int __exit sunxi_rtc_remove(struct platform_device *pdev)
 	return 0;
 }
 
-struct platform_device sunxi_device_rtc = {
-	.name		= RTC_NAME,
-	.id		= -1,
-};
-
 static struct platform_driver sunxi_rtc_driver = {
 	.probe		= sunxi_rtc_probe,
 	.remove		= __exit_p(sunxi_rtc_remove),
@@ -732,7 +736,6 @@ static struct platform_driver sunxi_rtc_driver = {
 
 static int __init sunxi_rtc_init(void)
 {
-	platform_device_register(&sunxi_device_rtc);
 	pr_info("%s(%d): sunxi rtc device register!\n", __func__, __LINE__);
 	return platform_driver_register(&sunxi_rtc_driver);
 }
@@ -740,7 +743,6 @@ static int __init sunxi_rtc_init(void)
 static void __exit sunxi_rtc_exit(void)
 {
 	pr_info("%s(%d): sunxi rtc device unregister!\n", __func__, __LINE__);
-	platform_device_unregister(&sunxi_device_rtc);
 	platform_driver_unregister(&sunxi_rtc_driver);
 }
 

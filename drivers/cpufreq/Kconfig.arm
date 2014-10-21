@@ -4,14 +4,14 @@
 
 config ARM_SUNXI_IKS_CPUFREQ
 	bool "SUNXI CPUFreq IKS driver support"
-	depends on ARCH_SUN9IW1 || ARCH_SUN8IW6
+	depends on ARCH_SUN9IW1 || ARCH_SUN8IW6 || ARCH_SUN8IW9
 	help
 	  This adds the CPUFreq driver for sunxi big.little soc.
 	  If in doubt, say N.
 
 config ARM_SUNXI_CPUFREQ
 	bool "SUNXI CPUFreq driver support"
-	depends on !ARCH_SUN9IW1 && !ARCH_SUN8IW6
+	depends on !ARCH_SUN9IW1 && !ARCH_SUN8IW6 && !ARCH_SUN8IW9
 	help
 	  This adds the CPUFreq driver for the Allwinner SUNXI SoC.
 

@@ -19,7 +19,9 @@
 #define AXP81X_CHARGE_CONTROL1		AXP81X_CHARGE1
 #define AXP81X_CHARGER_ENABLE		(1 << 7)
 #define AXP81X_CHARGE_CONTROL2		AXP81X_CHARGE2
+#define AXP81X_CHARGE_CONTROL3		AXP81X_CHARGE3
 #define AXP81X_CHARGE_VBUS		AXP81X_IPS_SET
+#define AXP81X_CHARGE_AC                AXP81X_CHARGE_AC_SET
 #define AXP81X_CAP			(0xB9)
 #define AXP81X_BATCAP0			(0xe0)
 #define AXP81X_BATCAP1			(0xe1)
@@ -54,6 +56,7 @@
 #define AXP81X_ADC_GPIO2_ENABLE				(1 << 1)
 #define AXP81X_ADC_GPIO3_ENABLE				(1 << 0)
 #define AXP81X_ADC_CONTROL3				(0x84)
+#define AXP81X_ADC_CONTROL4				(0x85)
 #define AXP81X_VBATH_RES					(0x78)
 #define AXP81X_VTS_RES					(0x58)
 #define AXP81X_VBATL_RES					(0x79)
@@ -73,8 +76,21 @@
 #define AXP81X_DATA_BUFFERA				AXP81X_BUFFERB
 #define AXP81X_DATA_BUFFERB				AXP81X_BUFFERC
 
-#define AXP81X_USBAC_SET                                   AXP81X_BC_SET
-#define AXP81X_USBAC_STATUS                            AXP81X_BC_STATUS
+#define AXP81X_CHARGE_VOLTAGE_LEVEL0                    (4100000)
+#define AXP81X_CHARGE_VOLTAGE_LEVEL1                    (4150000)
+#define AXP81X_CHARGE_VOLTAGE_LEVEL2                    (4200000)
+#define AXP81X_CHARGE_VOLTAGE_LEVEL3                    (4350000)
+#define AXP81X_CHARGE_CURRENT_MIN                       (200000)
+#define AXP81X_CHARGE_CURRENT_MAX                       (2800000)
+#define AXP81X_CHARGE_CURRENT_STEP                      (200000)
+#define AXP81X_CHARGE_END_LEVEL0                        (10)
+#define AXP81X_CHARGE_END_LEVEL1                        (20)
+#define AXP81X_CHARGE_PRETIME_MIN                       (40)
+#define AXP81X_CHARGE_PRETIME_MAX                       (70)
+#define AXP81X_CHARGE_PRETIME_STEP                      (10)
+#define AXP81X_CHARGE_FASTTIME_MIN                      (360)
+#define AXP81X_CHARGE_FASTTIME_MAX                      (720)
+#define AXP81X_CHARGE_FASTTIME_STEP                     (120)
 
 #define AXP_CHG_ATTR(_name)					\
 {								\
@@ -141,6 +157,7 @@ struct axp_charger {
 	bool usb_det;
 	bool ac_valid;
 	bool usb_valid;
+	bool usb_adapter_valid;
 	bool ext_valid;
 	bool bat_current_direction;
 	bool in_short;
@@ -172,12 +189,18 @@ struct axp_charger {
 	int ic_temp;
 	int bat_temp;
 
+	/* chg current limit work*/
+	struct delayed_work usbwork;
+
 	/*irq*/
 	struct notifier_block nb;
 
 	/* platform callbacks for battery low and critical events */
 	void (*battery_low)(void);
 	void (*battery_critical)(void);
+
+	/* timer for report ac/usb type */
+	struct timer_list usb_status_timer;
 
 	struct dentry *debug_file;
 
@@ -189,6 +212,7 @@ extern struct class axppower_class;
 extern struct axp_charger *axp_charger;
 extern int vbus_curr_limit_debug;
 
+extern int axp81x_chg_current_limit(int current_limit);
 extern int axp_charger_create_attrs(struct power_supply *psy);
 extern void axp_charger_update_state(struct axp_charger *charger);
 extern void axp_charger_update(struct axp_charger *charger, const struct axp_config_info *axp_config);
@@ -198,6 +222,11 @@ extern void axp_powerkey_set(int value);
 extern int axp_powerkey_get(void);
 extern int axp_irq_init(struct axp_charger *charger, struct platform_device *pdev);
 extern void axp_irq_exit(struct axp_charger *charger);
+extern int axp_chg_init(struct axp_charger *charger);
+extern void axp_chg_exit(struct axp_charger *charger);
+extern void axp_usbac_in(struct axp_charger *charger);
+extern void axp_usbac_out(struct axp_charger *charger);
+extern void axp_usbac_checkst(struct axp_charger *charger);
 extern int axp_enable_irq(struct axp_charger *charger);
 extern int axp_disable_irq(struct axp_charger *charger);
 #endif

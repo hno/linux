@@ -1,36 +1,6 @@
 #ifndef __LINUX_AXP_MFD_81X_H_
 #define __LINUX_AXP_MFD_81X_H_
 
-/* Unified sub device IDs for AXP */
-/* LDO0 For RTCLDO ,LDO1-3 for ALDO,LDO*/
-enum {
-	AXP81X_ID_LDO1,   //RTC
-	AXP81X_ID_LDO2,   //ALDO1
-	AXP81X_ID_LDO3,   //ALDO2
-	AXP81X_ID_LDO4,   //ALDO3
-	AXP81X_ID_LDO5,   //DLDO1
-	AXP81X_ID_LDO6,   //DLDO2
-	AXP81X_ID_LDO7,   //DLDO3
-	AXP81X_ID_LDO8,   //DLDO4
-	AXP81X_ID_LDO9,   //ELDO1
-	AXP81X_ID_LDO10,  //ELDO2
-	AXP81X_ID_LDO11,  //ELDO3
-	AXP81X_ID_LDO12,  //FLDO1
-	AXP81X_ID_LDO13,  //FLDO2
-	AXP81X_ID_LDO14,  //FLDO3
-	AXP81X_ID_SW0,   //DC1SW
-	AXP81X_ID_LDOIO0 = 30,
-	AXP81X_ID_LDOIO1,
-	AXP81X_ID_DCDC1 = 40,
-	AXP81X_ID_DCDC2,
-	AXP81X_ID_DCDC3,
-	AXP81X_ID_DCDC4,
-	AXP81X_ID_DCDC5,
-	AXP81X_ID_DCDC6,
-	AXP81X_ID_DCDC7,
-	AXP81X_ID_SUPPLY,
-};
-
 /*For AXP81X*/ 
 #define AXP81X                     (28)
 #define AXP81X_STATUS              (0x00)
@@ -49,7 +19,7 @@ enum {
 #define AXP81X_BUFFERB             (0x0E)
 #define AXP81X_BUFFERC             (0x0F)
 #define AXP81X_BC_SET              (0x2C)
-#define AXP81X_BC_STATUS       (0x2F)
+#define AXP81X_BC_DET_STATUS       (0x2F)
 #define AXP81X_IPS_SET             (0x30)
 #define AXP81X_VOFF_SET            (0x31)
 #define AXP81X_OFF_CTL             (0x32)
@@ -58,6 +28,7 @@ enum {
 #define AXP81X_CHARGE3             (0x35)
 #define AXP81X_POK_SET             (0x36)
 #define AXP81X_POK_DELAY_SET       (0x37)
+#define AXP81X_CHARGE_AC_SET       (0x3A)
 #define AXP81X_DCDC_FREQSET        (0x3B)
 #define AXP81X_INTEN1              (0x40)
 #define AXP81X_INTEN2              (0x41)

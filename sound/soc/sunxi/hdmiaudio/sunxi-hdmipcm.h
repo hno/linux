@@ -15,7 +15,7 @@
 
 #ifndef SUNXI_HDMIPCM_H_
 #define SUNXI_HDMIPCM_H_
-#ifndef CONFIG_ARCH_SUN9I
+#ifdef CONFIG_ARCH_SUN8IW1
 #define SUNXI_HDMIBASE 		0x01c16000
 #define SUNXI_HDMIAUDIO_TX	0x400
 #endif
@@ -27,7 +27,15 @@ struct sunxi_dma_params {
 /* REGISTER definition */
 #ifdef CONFIG_ARCH_SUN9I
 #define SUNXI_I2S1BASE 							(0x06002400)
+#define SUNXI_I2S1_VBASE 						(0xf6002400)
+#endif
 
+#ifdef CONFIG_ARCH_SUN8IW6
+#define SUNXI_I2S1BASE 							(0x01c22800)
+#define SUNXI_I2S1_VBASE 						(0xf1c22800)
+#endif
+
+#if defined CONFIG_ARCH_SUN9I || CONFIG_ARCH_SUN8IW6
 #define SUNXI_I2S1CTL 	  						(0x00)
 	#define SUNXI_I2S1CTL_SDO3EN					(1<<11)
 	#define SUNXI_I2S1CTL_SDO2EN					(1<<10)

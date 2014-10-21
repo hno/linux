@@ -1174,11 +1174,20 @@ static void end_unlink_async (struct ehci_hcd *ehci)
 	iaa_watchdog_done(ehci);
 
 	// qh->hw_next = cpu_to_hc32(qh->qh_dma);
+
+	if(qh == NULL){
+		printk("qh is null");
+		return;
+	}
 	qh->qh_state = QH_STATE_IDLE;
 	qh->qh_next.qh = NULL;
 	qh_put (qh);			// refcount from reclaim
 
 	/* other unlink(s) may be pending (in QH_STATE_UNLINK_WAIT) */
+	if(qh == NULL){
+		printk("qh is null");
+		return;
+	}
 	next = qh->reclaim;
 	ehci->reclaim = next;
 	qh->reclaim = NULL;

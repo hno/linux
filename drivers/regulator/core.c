@@ -621,6 +621,17 @@ static void regulator_dev_release(struct device *dev)
 }
 
 #ifdef CONFIG_AW_AXP
+static uint32_t axp_debug = 0x0;
+static DEFINE_MUTEX(enabler_list_mutex);
+/*
+ * struct enabler
+ *
+ * One for each supply.
+ */
+struct enabler {
+	struct list_head list;
+	char *supply_name;
+};
 static ssize_t axp_print_state(char *buf, int state)
 {
 	if (state > 0)
@@ -634,7 +645,7 @@ static ssize_t axp_print_state(char *buf, int state)
 static ssize_t axp_dump_show(struct class *class,
 			struct class_attribute *attr,	char *buf)
 {
-	struct regulator *regulator = NULL;
+	struct enabler *enabler = NULL;
 	struct regulator_dev *rdev;
 	int count = 0;
 
@@ -646,8 +657,8 @@ static ssize_t axp_dump_show(struct class *class,
 		count += sprintf(buf+count, "%d  ", rdev->use_count);
 		count += sprintf(buf+count, "%d  ", _regulator_get_voltage(rdev));
 		count += sprintf(buf+count, "  %s:  ", "supply_name");
-		list_for_each_entry(regulator, &rdev->consumer_list, list) {
-			count += sprintf(buf+count, "%s  ", regulator->supply_name);
+		list_for_each_entry(enabler, &rdev->enabler_list, list) {
+			count += sprintf(buf+count, "%s  ", enabler->supply_name);
 		}
 		mutex_unlock(&rdev->mutex);
 		count += sprintf(buf+count, "\n ");
@@ -656,10 +667,276 @@ static ssize_t axp_dump_show(struct class *class,
 	return count;
 }
 
+static ssize_t axp_debug_store(struct class *class,
+        struct class_attribute *attr, const char *buf, size_t count)
+{
+	unsigned long data;
+	int error;
+
+	error = strict_strtoul(buf, 10, &data);
+	if (error)
+		return error;
+
+	axp_debug = (uint32_t)data;
+	printk("%s:%d axp_debug=%d\n", __func__, __LINE__, axp_debug);
+
+	return count;
+}
+
 static struct class_attribute axp_class_attrs[] = {
 	__ATTR(dump,S_IRUGO|S_IWUSR,axp_dump_show,NULL),
+	__ATTR(debug,S_IRUGO|S_IWUSR,NULL,axp_debug_store),
 	__ATTR_NULL
 };
+
+static void create_enabler(struct regulator_dev *rdev,
+					  const char *supply_name)
+{
+	struct enabler *enabler;
+
+	enabler = kzalloc(sizeof(*enabler), GFP_KERNEL);
+	if (enabler == NULL) {
+		printk(KERN_ERR "%s: enabler request mem failed\n", supply_name);
+		return;
+	}
+
+	mutex_lock(&rdev->mutex);
+	list_add(&enabler->list, &rdev->enabler_list);
+
+	enabler->supply_name = kstrdup(supply_name, GFP_KERNEL);
+	if (enabler->supply_name == NULL) {
+		printk(KERN_ERR "enabler->%s set failed\n", supply_name);
+		goto attr_err;
+	}
+
+	mutex_unlock(&rdev->mutex);
+	return;
+
+attr_err:
+	list_del(&enabler->list);
+	kfree(enabler);
+	mutex_unlock(&rdev->mutex);
+	return;
+}
+
+void delete_enabler(struct regulator_dev *rdev,
+					const char *supply_name)
+{
+	struct enabler *enabler;
+
+	mutex_lock(&enabler_list_mutex);
+	list_for_each_entry(enabler, &rdev->enabler_list, list) {
+		if (!strcmp(enabler->supply_name, supply_name)) {
+			kfree(enabler->supply_name);
+			list_del(&enabler->list);
+			kfree(enabler);
+			mutex_unlock(&enabler_list_mutex);
+			return;
+		}
+	}
+	mutex_unlock(&enabler_list_mutex);
+	printk(KERN_ERR "%s: enabler donot find\n", supply_name);
+	return;
+}
+
+int get_ldo_name(const char *supply_id, char * ldo_name)
+{
+	struct regulator_dev *rdev;
+	struct regulator_map *map;
+
+	mutex_lock(&regulator_list_mutex);
+	list_for_each_entry(map, &regulator_map_list, list) {
+		if (strcmp(map->supply, supply_id) == 0) {
+			rdev = map->regulator;
+			goto found;
+		}
+	}
+	mutex_unlock(&regulator_list_mutex);
+
+	return -1;
+found:
+	mutex_unlock(&regulator_list_mutex);
+	strcpy(ldo_name, rdev->constraints->name);
+	return 0;
+}
+
+int get_enable_id_count(const char *ldo_name)
+{
+	struct enabler *enabler = NULL;
+	struct regulator_dev *rdev;
+	int id_count = 0;
+
+	mutex_lock(&regulator_list_mutex);
+	list_for_each_entry(rdev, &regulator_list, list) {
+		mutex_lock(&rdev->mutex);
+		if (NULL != rdev->constraints->name) {
+			if (strcmp(rdev->constraints->name, ldo_name) == 0) {
+				mutex_lock(&enabler_list_mutex);
+				list_for_each_entry(enabler, &rdev->enabler_list, list) {
+					id_count++;
+				}
+				mutex_unlock(&enabler_list_mutex);
+				mutex_unlock(&rdev->mutex);
+				break;
+			}
+		}
+		mutex_unlock(&rdev->mutex);
+	}
+	mutex_unlock(&regulator_list_mutex);
+
+	return id_count;
+}
+
+int get_enable_id(const char *ldo_name, unsigned int count, char *enable_id)
+{
+	struct enabler *enabler = NULL;
+	struct regulator_dev *rdev;
+	int id_count = 0;
+
+	mutex_lock(&regulator_list_mutex);
+	list_for_each_entry(rdev, &regulator_list, list) {
+		mutex_lock(&rdev->mutex);
+		if (NULL != rdev->constraints->name) {
+			if (strcmp(rdev->constraints->name, ldo_name) == 0) {
+				mutex_lock(&enabler_list_mutex);
+				list_for_each_entry(enabler, &rdev->enabler_list, list) {
+					if (id_count == count) {
+						strcpy(enable_id, enabler->supply_name);
+						mutex_unlock(&enabler_list_mutex);
+						mutex_unlock(&rdev->mutex);
+						mutex_unlock(&regulator_list_mutex);
+						return 0;
+					}
+					id_count++;
+				}
+				mutex_unlock(&enabler_list_mutex);
+				mutex_unlock(&rdev->mutex);
+				break;
+			}
+		}
+		mutex_unlock(&rdev->mutex);
+	}
+	mutex_unlock(&regulator_list_mutex);
+
+	return -1;
+}
+
+int check_enable_id(const char *ldo_name, const char *enalbe_id)
+{
+	struct enabler *enabler = NULL;
+	struct regulator_dev *rdev;
+
+	mutex_lock(&regulator_list_mutex);
+	list_for_each_entry(rdev, &regulator_list, list) {
+		mutex_lock(&rdev->mutex);
+		if (NULL != rdev->constraints->name) {
+			if (strcmp(rdev->constraints->name, ldo_name) == 0) {
+				mutex_lock(&enabler_list_mutex);
+				list_for_each_entry(enabler, &rdev->enabler_list, list) {
+					if (strcmp(enabler->supply_name, enalbe_id) == 0) {
+						mutex_unlock(&enabler_list_mutex);
+						mutex_unlock(&rdev->mutex);
+						goto found;
+					}
+				}
+				mutex_unlock(&enabler_list_mutex);
+			}
+		}
+		mutex_unlock(&rdev->mutex);
+	}
+	mutex_unlock(&regulator_list_mutex);
+
+	return 0;
+found:
+	mutex_unlock(&regulator_list_mutex);
+	return 1;
+}
+
+int check_ldo_alwayson(const char *ldo_name)
+{
+	struct regulator_dev *rdev;
+
+	mutex_lock(&regulator_list_mutex);
+	list_for_each_entry(rdev, &regulator_list, list) {
+		mutex_lock(&rdev->mutex);
+		if (NULL != rdev->constraints->name) {
+			if (strcmp(rdev->constraints->name, ldo_name) == 0) {
+				if (rdev->constraints->always_on) {
+					mutex_unlock(&rdev->mutex);
+					mutex_unlock(&regulator_list_mutex);
+					return 1;
+				} else {
+					mutex_unlock(&rdev->mutex);
+					mutex_unlock(&regulator_list_mutex);
+					return 0;
+				}
+			}
+		}
+		mutex_unlock(&rdev->mutex);
+	}
+	mutex_unlock(&regulator_list_mutex);
+
+	return -1;
+}
+
+int set_ldo_alwayson(const char *ldo_name, unsigned int value)
+{
+	struct regulator_dev *rdev;
+
+	mutex_lock(&regulator_list_mutex);
+	list_for_each_entry(rdev, &regulator_list, list) {
+		mutex_lock(&rdev->mutex);
+		if (NULL != rdev->constraints->name) {
+			if (strcmp(rdev->constraints->name, ldo_name) == 0) {
+				rdev->constraints->always_on = value;
+				mutex_unlock(&rdev->mutex);
+				mutex_unlock(&regulator_list_mutex);
+				if ((rdev->constraints->always_on == 1) &&
+					(_regulator_is_enabled(rdev) <= 0)) {
+					rdev->desc->ops->enable(rdev);
+				}
+				if ((rdev->constraints->always_on == 0) &&
+					(rdev->use_count == 0) &&
+					(_regulator_is_enabled(rdev) > 0)) {
+					rdev->desc->ops->disable(rdev);
+				}
+				return 0;
+
+			}
+		}
+		mutex_unlock(&rdev->mutex);
+	}
+	mutex_unlock(&regulator_list_mutex);
+
+	return -1;
+}
+
+int axp_regulator_dump(void)
+{
+	struct enabler *enabler = NULL;
+	struct regulator_dev *rdev;
+	char buf[256] = "";
+	int count = 0;
+
+	mutex_lock(&regulator_list_mutex);
+	list_for_each_entry(rdev, &regulator_list, list) {
+		mutex_lock(&rdev->mutex);
+		count += sprintf(buf+count, "%s : ", rdev_get_name(rdev));
+		count += axp_print_state(buf+count, _regulator_is_enabled(rdev));
+		count += sprintf(buf+count, "%d  ", rdev->use_count);
+		count += sprintf(buf+count, "%d  ", _regulator_get_voltage(rdev));
+		count += sprintf(buf+count, "  %s:  ", "supply_name");
+		list_for_each_entry(enabler, &rdev->enabler_list, list) {
+			count += sprintf(buf+count, "%s  ", enabler->supply_name);
+		}
+		mutex_unlock(&rdev->mutex);
+		printk(KERN_ERR "%s\n", buf);
+		count = 0;
+	}
+	mutex_unlock(&regulator_list_mutex);
+
+	return 0;
+}
 #endif
 
 static struct class regulator_class = {
@@ -845,7 +1122,8 @@ static void print_constraints(struct regulator_dev *rdev)
 	if (constraints->valid_modes_mask & REGULATOR_MODE_STANDBY)
 		count += sprintf(buf + count, "standby");
 
-	rdev_info(rdev, "%s\n", buf);
+	/* rdev_warn change to rdev_dbg by liming 20140826*/
+	rdev_dbg(rdev, "%s\n", buf);
 
 	if ((constraints->min_uV != constraints->max_uV) &&
 	    !(constraints->valid_ops_mask & REGULATOR_CHANGE_VOLTAGE))
@@ -1026,7 +1304,8 @@ static int set_supply(struct regulator_dev *rdev,
 {
 	int err;
 
-	rdev_info(rdev, "supplied by %s\n", rdev_get_name(supply_rdev));
+	/* rdev_warn change to rdev_dbg by liming 20140826*/
+	rdev_dbg(rdev, "supplied by %s\n", rdev_get_name(supply_rdev));
 
 	rdev->supply = create_regulator(supply_rdev, &rdev->dev, "SUPPLY");
 	if (rdev->supply == NULL) {
@@ -1573,6 +1852,15 @@ int regulator_enable(struct regulator *regulator)
 	struct regulator_dev *rdev = regulator->rdev;
 	int ret = 0;
 
+#ifdef CONFIG_AW_AXP
+	if(0 != axp_debug) {
+		printk("%s:%s\n", __func__, regulator->supply_name);
+		dump_stack();
+	}
+
+	create_enabler(rdev, regulator->supply_name);
+#endif
+
 	if (rdev->supply) {
 		ret = regulator_enable(rdev->supply);
 		if (ret != 0)
@@ -1650,6 +1938,14 @@ int regulator_disable(struct regulator *regulator)
 {
 	struct regulator_dev *rdev = regulator->rdev;
 	int ret = 0;
+
+#ifdef CONFIG_AW_AXP
+	if(0 != axp_debug) {
+		printk("%s:%s\n", __func__, regulator->supply_name);
+		dump_stack();
+	}
+	delete_enabler(rdev, regulator->supply_name);
+#endif
 
 	mutex_lock(&rdev->mutex);
 	ret = _regulator_disable(rdev);
@@ -2924,6 +3220,9 @@ struct regulator_dev *regulator_register(struct regulator_desc *regulator_desc,
 	rdev->owner = regulator_desc->owner;
 	rdev->desc = regulator_desc;
 	INIT_LIST_HEAD(&rdev->consumer_list);
+#ifdef CONFIG_AW_AXP
+	INIT_LIST_HEAD(&rdev->enabler_list);
+#endif
 	INIT_LIST_HEAD(&rdev->list);
 	BLOCKING_INIT_NOTIFIER_HEAD(&rdev->notifier);
 	INIT_DELAYED_WORK(&rdev->disable_work, regulator_disable_work);
@@ -2982,6 +3281,9 @@ struct regulator_dev *regulator_register(struct regulator_desc *regulator_desc,
 		if (ret < 0)
 			goto scrub;
 
+		/* 20140604 by Ming Li, to sure regulator init don't enable and set voltage*/
+#ifdef CONFIG_AW_AXP
+#else
 		/* Enable supply if rail is enabled */
 		if (rdev->desc->ops->is_enabled &&
 				rdev->desc->ops->is_enabled(rdev)) {
@@ -2989,6 +3291,7 @@ struct regulator_dev *regulator_register(struct regulator_desc *regulator_desc,
 			if (ret < 0)
 				goto scrub;
 		}
+#endif
 	}
 
 	/* add consumers devices */
@@ -3331,7 +3634,8 @@ static int __init regulator_init_complete(void)
 			 * so warn even if we aren't going to do
 			 * anything here.
 			 */
-			rdev_warn(rdev, "incomplete constraints, leaving on\n");
+			/* rdev_warn change to rdev_dbg by liming 20140826*/
+			rdev_dbg(rdev, "incomplete constraints, leaving on\n");
 		}
 
 unlock:

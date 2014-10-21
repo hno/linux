@@ -60,6 +60,45 @@
 #define AUDIO_SRAM_PER_SIZE_16K (16384)     /* period size 16k = 0x4000 = 16384 */
 #define AUDIO_SRAM_PER_SIZE_32K (32768)     /* period size 32k = 0x8000 = 32768 */
 
+//pmu voltage types
+typedef enum power_voltage_type
+{
+	AXP809_POWER_VOL_DCDC1 = 0x0,
+	AXP809_POWER_VOL_DCDC2,
+	AXP809_POWER_VOL_DCDC3,
+	AXP809_POWER_VOL_DCDC4,
+	AXP809_POWER_VOL_DCDC5,
+	AXP809_POWER_VOL_DC5LDO,
+	AXP809_POWER_VOL_ALDO1,
+	AXP809_POWER_VOL_ALDO2,
+	AXP809_POWER_VOL_ALDO3,
+	AXP809_POWER_VOL_DLDO1,
+	AXP809_POWER_VOL_DLDO2,
+	AXP809_POWER_VOL_ELDO1,
+	AXP809_POWER_VOL_ELDO2,
+	AXP809_POWER_VOL_ELDO3,
+
+	AXP806_POWER_VOL_DCDCA,
+	AXP806_POWER_VOL_DCDCB,
+	AXP806_POWER_VOL_DCDCC,
+	AXP806_POWER_VOL_DCDCD,
+	AXP806_POWER_VOL_DCDCE,
+	AXP806_POWER_VOL_ALDO1,
+	AXP806_POWER_VOL_ALDO2,
+	AXP806_POWER_VOL_ALDO3,
+	AXP806_POWER_VOL_BLDO1,
+	AXP806_POWER_VOL_BLDO2,
+	AXP806_POWER_VOL_BLDO3,
+	AXP806_POWER_VOL_BLDO4,
+	AXP806_POWER_VOL_CLDO1,
+	AXP806_POWER_VOL_CLDO2,
+	AXP806_POWER_VOL_CLDO3,
+
+	OZ80120_POWER_VOL_DCDC,
+
+	POWER_VOL_MAX,
+} power_voltage_type_e;
+
 /* the pll of arisc dvfs */
 typedef enum arisc_pll_no {
 	ARISC_DVFS_PLL1 = 1,
@@ -79,7 +118,7 @@ typedef enum arisc_p2wi_bits_ops {
 	P2WI_SET_BITS
 } arisc_p2wi_bits_ops_e;
 #elif (defined CONFIG_ARCH_SUN8IW3P1) || (defined CONFIG_ARCH_SUN8IW5P1) || (defined CONFIG_ARCH_SUN8IW6P1) || \
-      (defined CONFIG_ARCH_SUN8IW7P1) || (defined CONFIG_ARCH_SUN9IW1P1)
+      (defined CONFIG_ARCH_SUN8IW7P1) || (defined CONFIG_ARCH_SUN8IW9P1) || (defined CONFIG_ARCH_SUN9IW1P1)
 /* rsb transfer data type */
 typedef enum arisc_rsb_bits_ops {
 	RSB_CLR_BITS,
@@ -153,7 +192,7 @@ typedef struct arisc_p2wi_bits_cfg
 	unsigned char *delay;
 }arisc_p2wi_bits_cfg_t;
 #elif (defined CONFIG_ARCH_SUN8IW3P1) || (defined CONFIG_ARCH_SUN8IW5P1) || (defined CONFIG_ARCH_SUN8IW6P1) || \
-      (defined CONFIG_ARCH_SUN8IW7P1) || (defined CONFIG_ARCH_SUN9IW1P1)
+      (defined CONFIG_ARCH_SUN8IW7P1) || (defined CONFIG_ARCH_SUN8IW9P1) || (defined CONFIG_ARCH_SUN9IW1P1)
 /*
  * @len :       number of read registers, max len:4;
  * @datatype:   type of the data, 0:byte(8bits), 1:halfword(16bits), 2:word(32bits)
@@ -344,7 +383,9 @@ int arisc_disable_nmi_irq(void);
 int arisc_enable_nmi_irq(void);
 
 int arisc_axp_get_chip_id(unsigned char *chip_id);
-
+#if (defined CONFIG_ARCH_SUN8IW5P1)
+int arisc_adjust_pmu_chgcur(unsigned int max_chgcur, unsigned int chg_ic_temp);
+#endif
 /* ====================================audio interface==================================== */
 /**
  * start audio play or capture.
@@ -482,7 +523,7 @@ int arisc_p2wi_write_block_data(struct arisc_p2wi_block_cfg *cfg);
 int p2wi_bits_ops_sync(struct arisc_p2wi_bits_cfg *cfg);
 
 #elif (defined CONFIG_ARCH_SUN8IW3P1) || (defined CONFIG_ARCH_SUN8IW5P1) || (defined CONFIG_ARCH_SUN8IW6P1) || \
-      (defined CONFIG_ARCH_SUN8IW7P1) || (defined CONFIG_ARCH_SUN9IW1P1)
+      (defined CONFIG_ARCH_SUN8IW7P1) || (defined CONFIG_ARCH_SUN8IW9P1) || (defined CONFIG_ARCH_SUN9IW1P1)
 /**
  * rsb read block data.
  * @cfg:    point of arisc_rsb_block_cfg struct;
@@ -543,7 +584,23 @@ int arisc_rsb_set_interface_mode(u32 devaddr, u32 regaddr, u32 data);
 int arisc_rsb_set_rtsaddr(u32 devaddr, u32 rtsaddr);
 #endif
 
+/**
+ * set pmu voltage.
+ * @type:     pmu regulator type;
+ * @voltage:  pmu regulator voltage;
+ *
+ * return: result, 0 - set pmu voltage successed,
+ *                !0 - set pmu voltage failed;
+ */
+int arisc_pmu_set_voltage(u32 type, u32 voltage);
 
+/**
+ * get pmu voltage.
+ * @type:     pmu regulator type;
+ *
+ * return: pmu regulator voltage;
+ */
+unsigned int arisc_pmu_get_voltage(u32 type);
 
 /* ====================================debug interface==================================== */
 int arisc_message_loopback(void);

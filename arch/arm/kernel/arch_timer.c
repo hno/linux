@@ -133,7 +133,11 @@ static int arch_timer_set_next_event(unsigned long evt,
 	return 0;
 }
 
+#ifdef CONFIG_GENERIC_CLOCKEVENTS_BROADCAST
 extern void smp_timer_broadcast(const struct cpumask *mask);
+#else
+#define smp_timer_broadcast	NULL
+#endif
 
 static int __cpuinit arch_timer_setup(struct clock_event_device *clk)
 {

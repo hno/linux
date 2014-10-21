@@ -84,6 +84,36 @@ _start:
 	dsb
 	isb
 
+#if defined(CONFIG_ARCH_SUN9IW1P1)
+	mrc p15, 0, r0, c0, c0, 5	;//Read CPU ID register
+	ubfx	r0, r0, #8, #4		@ cluster
+	cmp	r0, #1                  @ A15 cluster ?
+	bne     A7f
+
+	//config A15
+	@sun9i platform-specific Cortex-A15 setup.
+	mrc p15, 1, r1, c15, c0, 4      @ ACTLR2
+	orr r1, r1, #(0x1<<31)          @ Enable CPU regional clock gates
+	mcr p15, 1, r1, c15, c0, 4
+
+	mrc p15, 1, r1, c15, c0, 0      @ L2ACTLR
+	orr r1, r1, #(0x1<<26)          @ Enables L2, GIC, and Timer regional clock gates
+	mcr p15, 1, r1, c15, c0, 0
+
+	mrc p15, 1, r1, c15, c0, 0      @ L2ACTLR
+	orr r1, r1, #(0x1<<3)           @ Disables clean/evict from being pushed to external
+	mcr p15, 1, r1, c15, c0, 0
+
+	mrc p15, 1, r1, c9, c0, 2
+	bic r1, r1, #(0x7<<0)           @ L2 data ram latency
+	orr r1, r1, #(0x3<<0)
+	mcr p15, 1, r1, c9, c0, 2
+
+	dsb
+	isb
+A7f:
+#endif
+
 #if defined(CONFIG_ARCH_SUN8IW3P1) || defined(CONFIG_ARCH_SUN8IW5P1)
 	ldr r0, =0x01c00024
 	ldr r1, [r0]
@@ -117,9 +147,13 @@ config_end:
 
 	// set SP for SVC mode	
 	mrc p15, 0, r0, c0, c0, 5
+	ubfx	r0, r0, #0, #2		@ cpu id
 	//each core have seperate 512k bytes stack.
-	lsl	r0, r0, #9
+	add r0, r0, #1
+	lsl	r0, r0, #8
 	add	sp, r0, #(SP_IN_SRAM_START)
+	dsb
+	isb
 
 /**********************************the end of initializing system*********************************/
 	bl set_pll

@@ -805,7 +805,6 @@ void v4l2_ctrl_fill(u32 id, const char **name, enum v4l2_ctrl_type *type,
 	case V4L2_CID_AUTO_FOCUS_STOP:
 	case V4L2_CID_AUTO_FOCUS_INIT:
 	case V4L2_CID_AUTO_FOCUS_RELEASE:
-	case V4L2_CID_TAKE_PICTURE:
 		*type = V4L2_CTRL_TYPE_BUTTON;
 		*flags |= V4L2_CTRL_FLAG_WRITE_ONLY;
 		*min = *max = *step = *def = 0;
@@ -884,7 +883,7 @@ void v4l2_ctrl_fill(u32 id, const char **name, enum v4l2_ctrl_type *type,
 	case V4L2_CID_R_GAIN:	
 	case V4L2_CID_G_GAIN:	
 	case V4L2_CID_B_GAIN: 
-
+	case V4L2_CID_TAKE_PICTURE:
 		*type = V4L2_CTRL_TYPE_INTEGER;
 		*step = 1;
 		*min = 0;

@@ -52,17 +52,6 @@ config INPUT_LTR501ALS
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called ltr501als.
-	  
-config INPUT_JSA1127
-	tristate "jas1127 LIGHT SENSOR driver"
-	depends on I2C
-	default m
-	help
-	Say Y here if you want to use jsa127
-	  through I2C interface.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called jsa1127.
 
 config INPUT_88PM860X_ONKEY
 	tristate "88PM860x ONKEY support"

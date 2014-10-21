@@ -21,6 +21,10 @@ ifdef CONFIG_ARCH_SUN8IW7P1
 PLATFORM=arisc_sun8iw7p1
 endif
 
+ifdef CONFIG_ARCH_SUN8IW9P1
+PLATFORM=arisc_sun8iw9p1
+endif
+
 ifdef CONFIG_ARCH_SUN9IW1P1
 PLATFORM=arisc_sun9iw1p1
 endif

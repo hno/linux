@@ -53,7 +53,7 @@
 
 /* Addresses to scan */
 static const unsigned short normal_i2c[2] = {0x0d,I2C_CLIENT_END};
-static __u32 twi_id = 0;
+//static __u32 twi_id = 0;
 static u32 debug_mask = 0xff;
 enum{
 	DEBUG_INIT = 1U << 0,
@@ -114,49 +114,49 @@ static struct akm_compass_data *s_akm;
  *                    = 0; success;
  *                    < 0; err
  */
-
-static int e_compass_fetch_sysconfig_para(void)
-{
-	int ret = -1;
-	int device_used = -1;
-	script_item_u	val;
-	script_item_value_type_e  type;	
-		
-	dprintk(DEBUG_INIT, "========%s===================\n", __func__);
-	
-	type = script_get_item("compass_para", "compass_used", &val);
- 
-	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-		pr_err("%s: type err  device_used = %d. \n", __func__, val.val);
-		goto script_get_err;
-	}
-	device_used = val.val;
-	
-	if (1 == device_used) {
-		type = script_get_item("compass_para", "compass_twi_id", &val);	
-		if(SCIRPT_ITEM_VALUE_TYPE_INT != type){
-			pr_err("%s: type err twi_id = %d. \n", __func__, val.val);
-			goto script_get_err;
-		}
-		twi_id = val.val;
-		
-		dprintk(DEBUG_INIT, "%s: twi_id is %d. \n", __func__, twi_id);
-
-		ret = 0;
-		
-	} else {
-		pr_err("%s: compass_unused. \n",  __func__);
-		ret = -1;
-	}
-
-	return ret;
-
-script_get_err:
-	pr_notice("=========script_get_err============\n");
-	return ret;
-
-}
-
+/**
+ * static int e_compass_fetch_sysconfig_para(void)
+ * {
+ * 	int ret = -1;
+ * 	int device_used = -1;
+ * 	script_item_u	val;
+ * 	script_item_value_type_e  type;	
+ * 		
+ * 	dprintk(DEBUG_INIT, "========%s===================\n", __func__);
+ * 	
+ * 	type = script_get_item("compass_para", "compass_used", &val);
+ *  
+ * 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
+ * 		pr_err("%s: type err  device_used = %d. \n", __func__, val.val);
+ * 		goto script_get_err;
+ * 	}
+ * 	device_used = val.val;
+ * 	
+ * 	if (1 == device_used) {
+ * 		type = script_get_item("compass_para", "compass_twi_id", &val);	
+ * 		if(SCIRPT_ITEM_VALUE_TYPE_INT != type){
+ * 			pr_err("%s: type err twi_id = %d. \n", __func__, val.val);
+ * 			goto script_get_err;
+ * 		}
+ * 		twi_id = val.val;
+ * 		
+ * 		dprintk(DEBUG_INIT, "%s: twi_id is %d. \n", __func__, twi_id);
+ * 
+ * 		ret = 0;
+ * 		
+ * 	} else {
+ * 		pr_err("%s: compass_unused. \n",  __func__);
+ * 		ret = -1;
+ * 	}
+ * 
+ * 	return ret;
+ * 
+ * script_get_err:
+ * 	pr_notice("=========script_get_err============\n");
+ * 	return ret;
+ * 
+ * }
+ */
 int i2c_write_bytes(struct i2c_client *client, uint8_t *data, uint16_t len)
 {
 	struct i2c_msg msg;
@@ -196,9 +196,6 @@ static int e_compass_detect(struct i2c_client *client, struct i2c_board_info *in
 {
 	struct i2c_adapter *adapter = client->adapter;
 	int ret;
-	int err = -1;
-	u8 buf[1];
-	u8 cmd;
 
 	dprintk(DEBUG_INIT, "enter func %s. \n", __FUNCTION__);
 	printk("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++");

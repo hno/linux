@@ -209,7 +209,7 @@ static int __init ir_nec_decode_init(void)
 {
 	ir_raw_handler_register(&nec_handler);
 
-	printk(KERN_INFO "IR NEC protocol handler initialized\n");
+	pr_debug("IR NEC protocol handler initialized\n");
 	return 0;
 }
 

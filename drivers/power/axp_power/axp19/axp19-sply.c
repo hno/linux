@@ -26,7 +26,6 @@
 #include <linux/seq_file.h>
 #include <linux/input.h>
 #include <linux/mfd/axp-mfd.h>
-
 #include "../axp-cfg.h"
 #include "axp19-sply.h"
 

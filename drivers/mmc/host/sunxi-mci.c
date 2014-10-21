@@ -49,6 +49,7 @@
 #include <mach/sys_config.h>
 #include <mach/gpio.h>
 #include <mach/sunxi-chip.h>
+#include <linux/clk/sunxi.h>
 #include <linux/regulator/consumer.h>
 
 #include "sunxi-mci.h"
@@ -58,6 +59,11 @@ static struct sunxi_mmc_host* sunxi_host[] = {NULL, NULL, NULL, NULL};
 //#define CONFIG_CACULATE_TRANS_TIME
 #define USE_AUTO_CMD12_ARG
 //#define NO_USE_PIN
+
+#if defined(CONFIG_ARCH_SUN8IW5P1)
+	#define KEEP_CARD0_POWER_SUPPLY  /*used for sd card hold power when suspend*/
+#endif
+
 
 #ifdef CONFIG_CACULATE_TRANS_TIME
 static unsigned long long begin_time, over_time, end_time;
@@ -113,7 +119,7 @@ static void uart_puts_u32hex(u32 c)
 static void hexdump(struct sunxi_mmc_host* smc_host, char* name, char* base, int len)
 {
 	u32 i;
-	
+
 	if (smc_host->dump_ctl)
 	{
 		printk("%s :", name);
@@ -128,7 +134,7 @@ static void hexdump(struct sunxi_mmc_host* smc_host, char* name, char* base, int
 	}
 }
 
-#endif 
+#endif
 
 #if 1
 static void dumphex32(struct sunxi_mmc_host* smc_host, char* name, char* base, int len)
@@ -152,6 +158,29 @@ static void dumphex32(struct sunxi_mmc_host* smc_host, char* name, char* base, i
 #define dumphex32(fmt...)
 
 #endif
+
+#if defined CONFIG_ARCH_SUN9IW1
+static int sunxi_check_secure_area(u32 start, u32 blkcnt)
+{
+	u32 sta_add = start;
+	u32 end_add = start + blkcnt -1;
+	u32 se_sta_add = SDMMC_SECURE_STORAGE_START_ADD;
+	u32 se_end_add = SDMMC_SECURE_STORAGE_START_ADD+(SDMMC_ITEM_SIZE*2*MAX_SECURE_STORAGE_MAX_ITEM)-1;
+	if(blkcnt<=(SDMMC_ITEM_SIZE*2*MAX_SECURE_STORAGE_MAX_ITEM)){
+		if(((sta_add >= se_sta_add)&&(sta_add <= se_end_add))
+			||((end_add >= se_sta_add)&&(end_add <= se_end_add))){
+			return 1;
+		}
+	}else{
+		if(((se_sta_add >= sta_add)&&(se_sta_add <= end_add))
+			||((se_end_add >= sta_add)&&(se_end_add <= end_add))){
+			return 1;
+		}
+	}
+
+	return 0;
+}
+#endif 
 
 static s32 sunxi_mci_init_host(struct sunxi_mmc_host* smc_host)
 {
@@ -331,13 +360,13 @@ s32 sunxi_mci_set_vddio(struct sunxi_mmc_host* smc_host, u32 vdd)
 	sunxi_mci_change_gpio_bias(smc_host,vdd);
 #endif
 
-	SMC_MSG(smc_host, "sdc%d switch io voltage to %s\n", smc_host->pdev->id, vddstr[vdd]);
+	SMC_DBG(smc_host, "sdc%d switch io voltage to %s\n", smc_host->pdev->id, vddstr[vdd]);
 	return 0;
 }
 
 s32 sunxi_mci_get_vddio(struct sunxi_mmc_host* smc_host)
 {
-	int voltage ;
+	int voltage;
 	char *vol_str[4] = {"3.3V","1.8V","1.2V","0V"};
 
 	if (smc_host->regulator == NULL)
@@ -358,110 +387,88 @@ s32 sunxi_mci_get_vddio(struct sunxi_mmc_host* smc_host)
 }
 
 
-#if defined(CONFIG_ARCH_SUN8IW5P1)
-static int mci_power_on(struct sunxi_mmc_host* smc_host)
+#if defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1) \
+	|| defined(CONFIG_ARCH_SUN8IW7P1) || defined(CONFIG_ARCH_SUN8IW8P1) \
+	|| defined(CONFIG_ARCH_SUN8IW9P1)
+static int card_power_on(struct sunxi_mmc_host* smc_host)
 {
+	int voltage;
 	struct regulator *regu;
 	int ret = 0;
 
-	SMC_MSG(NULL,"mci_power_on start !\n");
+	SMC_DBG(smc_host, "sdc%d card_power_on start...\n", smc_host->pdev->id);
 
-	if(smc_host->pdata->power_supply == NULL)
-	{
-		SMC_MSG(NULL,"power_supply is null !\n");
+	if (smc_host->pdata->power_supply == NULL) {
+		SMC_MSG(NULL, "sdc%d power_supply is null\n", smc_host->pdev->id);
 		return ret;
 	}
 
-	//get ID
-	regu = regulator_get(NULL,smc_host->pdata->power_supply); //"axp22_dcdc1"
-	if(IS_ERR(regu ))
-	{
-		SMC_MSG(NULL, "some error happen, fail to get regulator!\n");
-		return regu;
-	}
-	else
-	{
-		SMC_MSG(NULL, "regulator_get ok!\n");
+	regu = regulator_get(NULL, smc_host->pdata->power_supply);
+	if(IS_ERR(regu)) {
+		SMC_MSG(smc_host, "sdc%d fail to get regulator\n", smc_host->pdev->id);
+		return -1;
 	}
 
 	//set output voltage to 3V
-	/*
-	ret = regulator_set_voltage(regu,3000000,3300000);
-	if(ret)
-	{
-		SMC_MSG(NULL, "some error happen, fail to set regulator voltage!\n");
-		return ret;
+	voltage = regulator_get_voltage(regu);
+	if (IS_ERR(smc_host->regulator)) {
+		SMC_ERR(smc_host, "get power supply voltage fail\n");
+		return -1;
 	}
-	else
-	{
-		SMC_MSG(NULL,"regulator_set_voltage ok!\n");
+	if (!(voltage > 2700000 && voltage < 3600000)) {
+		ret = regulator_set_voltage(regu, 3000000, 3300000);
+		if(ret) {
+			SMC_MSG(NULL, "sdc%d fail to set regulator voltage 2.7~3.6V \n", smc_host->pdev->id);
+			return ret;
+		}
 	}
-	*/
 
 	//enable regulator
 	ret = regulator_enable(regu);
-	if(ret)
-	{
-		SMC_MSG(NULL,"some error happen, fail to enable regulator !\n");
+	if(ret) {
+		SMC_MSG(NULL, "sdc%d fail to enable regulator\n", smc_host->pdev->id);
 		return ret;
-	}
-	else
-	{
-		SMC_MSG(NULL,"regulator_enable ok!\n");
 	}
 
 	//put regulator when module exit
 	regulator_put(regu);
 
+	SMC_DBG(smc_host, "sdc%d card_power_on end ...ok\n", smc_host->pdev->id);
 	return ret;
-
 }
 
-static int mci_power_off(struct sunxi_mmc_host* smc_host)
+static int card_power_off(struct sunxi_mmc_host* smc_host)
 {
 	struct regulator *regu;
 	int ret = 0;
 
-	SMC_MSG(NULL,"mci_power_off start !\n");
+	SMC_DBG(smc_host,"sdc%d card_power_off start...\n", smc_host->pdev->id);
 
-	if( smc_host->pdata->power_supply == NULL)
-	{
-		SMC_MSG(NULL,"power_supply is null !\n");
+	if(smc_host->pdata->power_supply == NULL) {
+		SMC_MSG(NULL, "sdc%d power_supply is null\n", smc_host->pdev->id);
 		return ret;
 	}
-	//get ID
-	regu = regulator_get(NULL,smc_host->pdata->power_supply); //"axp22_dcdc1"
-	if(IS_ERR(regu ))
-	{
-		SMC_MSG(NULL,"some error happen, fail to get regulator!\n");
-		return regu;
-	}
-	else
-	{
-		SMC_MSG(NULL,"regulator_get ok!\n");
+
+	regu = regulator_get(NULL,smc_host->pdata->power_supply);
+	if(IS_ERR(regu)) {
+		SMC_MSG(NULL, "sdc%d fail to get regulator\n", smc_host->pdev->id);
+		return -1;
 	}
 
 	//diable regulator
 	ret = regulator_disable(regu);
-	if(ret)
-	{
-		 SMC_MSG(NULL,"some error happen, fail to disable regulator !\n");
+	if(ret) {
+		SMC_MSG(NULL, "sdc%d fail to disable regulator\n", smc_host->pdev->id);
 		return ret;
-	}
-	else
-	{
-		SMC_MSG(NULL,"regulator_disable ok!\n");
 	}
 
 	//put regulator when module exit
 	regulator_put(regu);
 
+	SMC_DBG(smc_host, "sdc%d card_power_off end ...ok\n", smc_host->pdev->id);
 	return ret;
-
 }
 #endif
-
-
 
 s32 sunxi_mci_update_clk(struct sunxi_mmc_host* smc_host)
 {
@@ -514,30 +521,24 @@ s32 sunxi_mci_set_clk_dly(struct sunxi_mmc_host* smc_host, u32 oclk_dly, u32 scl
 	return 0;
 }
 
-#if defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1) ||defined(CONFIG_ARCH_SUN8IW8P1)
-/*
-*aw1667 0x5c ntsr new/old mode select
-*set before ccmu about mmc
-*
-*/
+#if defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1) \
+	||defined(CONFIG_ARCH_SUN8IW8P1) || defined(CONFIG_ARCH_SUN8IW7P1) \
+	|| defined(CONFIG_ARCH_SUN8IW9P1)
 s32 sunxi_mci_ntsr_onoff(struct sunxi_mmc_host* smc_host, u32 newmode_en)
 {
 	u32 rval = mci_readl(smc_host, REG_NTSR);
 
-	if(newmode_en)
-	{
+	if (newmode_en)
 		rval |= NEWMODE_ENABLE;
-	}
 	else
-	{
 		rval &= ~NEWMODE_ENABLE;
-	}
 	mci_writel(smc_host, REG_NTSR, rval);
-	
-	SMC_MSG(smc_host, "ntsr_onoff REG_NTSR %x\n",
-			mci_readl(smc_host, REG_NTSR));
+	SMC_DBG(smc_host, "ntsr_onoff REG_NTSR %x\n", mci_readl(smc_host, REG_NTSR));
+
+	return 0;
 }
 #endif
+
 s32 sunxi_mci_oclk_onoff(struct sunxi_mmc_host* smc_host, u32 oclk_en, u32 pwr_save)
 {
 	u32 rval = mci_readl(smc_host, REG_CLKCR);
@@ -619,7 +620,9 @@ static void sunxi_mci_send_cmd(struct sunxi_mmc_host* smc_host, struct mmc_comma
 	|| defined(CONFIG_ARCH_SUN9IW1) \
 	|| defined(CONFIG_ARCH_SUN8IW5) \
 	|| defined(CONFIG_ARCH_SUN8IW6) \
-	|| defined(CONFIG_ARCH_SUN8IW8)
+	|| defined(CONFIG_ARCH_SUN8IW8) \
+	|| defined(CONFIG_ARCH_SUN8IW7) \
+	|| defined(CONFIG_ARCH_SUN8IW9)
 	if(cmd_val & SDXC_SendAutoStop)
 		mci_writel(smc_host, REG_A12A, 0);
 	else
@@ -654,9 +657,9 @@ static void sunxi_mci_init_idma_des(struct sunxi_mmc_host* smc_host, struct mmc_
 			memset((void*)&pdes[des_idx], 0, sizeof(struct sunxi_mmc_idma_des));
 			config = SDXC_IDMAC_DES0_CH|SDXC_IDMAC_DES0_OWN|SDXC_IDMAC_DES0_DIC;
 
-		    	if (buff_frag_num > 1 && j != buff_frag_num-1)
+			if (buff_frag_num > 1 && j != buff_frag_num-1)
 				pdes[des_idx].data_buf1_sz = SDXC_DES_BUFFER_MAX_LEN;
-		    	else
+			else
 				pdes[des_idx].data_buf1_sz = remain;
 
 			pdes[des_idx].buf_addr_ptr1 = sg_dma_address(&data->sg[i])
@@ -676,7 +679,7 @@ static void sunxi_mci_init_idma_des(struct sunxi_mmc_host* smc_host, struct mmc_
 			}
 			pdes[des_idx].config = config;
 			SMC_INFO(smc_host, "sg %d, frag %d, remain %d, des[%d](%08x): "
-		    		"[0] = %08x, [1] = %08x, [2] = %08x, [3] = %08x\n", i, j, remain,
+					"[0] = %08x, [1] = %08x, [2] = %08x, [3] = %08x\n", i, j, remain,
 				des_idx, (u32)&pdes[des_idx],
 				(u32)((u32*)&pdes[des_idx])[0], (u32)((u32*)&pdes[des_idx])[1],
 				(u32)((u32*)&pdes[des_idx])[2], (u32)((u32*)&pdes[des_idx])[3]);
@@ -777,8 +780,8 @@ int sunxi_mci_send_manual_stop(struct sunxi_mmc_host* smc_host, struct mmc_reque
 
 void sunxi_mci_dump_errinfo(struct sunxi_mmc_host* smc_host)
 {
-	void __iomem *mclk_base = NULL;  
-	
+	void __iomem *mclk_base = NULL;
+
 	SMC_ERR(smc_host, "smc %d err, cmd %d, %s%s%s%s%s%s%s%s%s%s !!\n",
 		smc_host->pdev->id, smc_host->mrq->cmd ? smc_host->mrq->cmd->opcode : -1,
 		smc_host->int_sum & SDXC_RespErr     ? " RE"     : "",
@@ -799,7 +802,7 @@ void sunxi_mci_dump_errinfo(struct sunxi_mmc_host* smc_host)
 		mclk_base = __io_address(SUNXI_CCM_BASE + 0x10 + 0x4 * smc_host->pdev->id);
 #endif
 		dumphex32(smc_host, "ccmu", mclk_base, 0x4);
-		dumphex32(smc_host, "gpio", IO_ADDRESS(SUNXI_PIO_BASE), 0x120);		
+		dumphex32(smc_host, "gpio", IO_ADDRESS(SUNXI_PIO_BASE), 0x120);
 }
 
 s32 sunxi_mci_wait_access_done(struct sunxi_mmc_host* smc_host)
@@ -905,6 +908,7 @@ out:
 	return ret;
 }
 
+#ifndef CONFIG_ARCH_SUN9IW1
 static void mclk_enable_disable(struct sunxi_mmc_host* smc_host,u32 enable)
 {
 #ifndef CONFIG_ARCH_SUN9IW1
@@ -920,18 +924,20 @@ static void mclk_enable_disable(struct sunxi_mmc_host* smc_host,u32 enable)
 
 	SMC_DBG(smc_host,"mclk 0x%08x 0x%08x\n", (u32)mclk_base, readl(mclk_base));
 }
-
+#endif
 
 /* static s32 sunxi_mci_set_clk(struct sunxi_mmc_host* smc_host, u32 clk);
  * set clock and the phase of output/input clock incording on
  * the different timing condition
  */
-static int sunxi_mci_set_clk(struct sunxi_mmc_host* smc_host, u32 clk)
+static int sunxi_mci_set_clk(struct sunxi_mmc_host* smc_host)
 {
 	struct clk *sclk = NULL;
-#if defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1) ||defined(CONFIG_ARCH_SUN8IW8P1)
+#if defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1) \
+		||defined(CONFIG_ARCH_SUN8IW8P1) || defined(CONFIG_ARCH_SUN8IW7P1) \
+		|| defined(CONFIG_ARCH_SUN8IW9P1)
 	struct clk* mclk2 = NULL;
-	u32 source_rate = 0;   
+	u32 source_rate = 0;
 	u32 sdmmc2mod_rate = 0;
 #endif
 	u32 mod_clk = 0;
@@ -944,36 +950,46 @@ static int sunxi_mci_set_clk(struct sunxi_mmc_host* smc_host, u32 clk)
 	s32 err;
 	u32 rate;
 	void __iomem *mclk_base = NULL;
+	u32 clk = 0;
+	char* sclk_name = NULL;
 
-	if (clk <= 400000) {
-		mod_clk = smc_host->mod_clk;
-		sclk = clk_get(&smc_host->pdev->dev, MMC_SRCCLK_HOSC);
+	mod_clk = smc_host->mod_clk;
+	if (smc_host->card_clk <= 400000) {
+		sclk_name = MMC_SRCCLK_HOSC;
+		sclk = clk_get(&smc_host->pdev->dev, sclk_name);
 	} else {
-		mod_clk = smc_host->mod_clk;
-		sclk = clk_get(&smc_host->pdev->dev, MMC_SRCCLK_PLL);
+		sclk_name = MMC_SRCCLK_PLL;
+		sclk = clk_get(&smc_host->pdev->dev, sclk_name);
 	}
 	if (NULL==sclk || IS_ERR(sclk)) {
-		SMC_ERR(smc_host, "Error to get source clock for clk %dHz\n", clk);
-		return -1;
+		SMC_ERR(smc_host, "Error to get source clock %s %d\n", sclk_name, (int)sclk);
+		return -1;    
 	}
 
-#if defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1) ||defined(CONFIG_ARCH_SUN8IW8P1)
-	if(smc_host->pdev->id == 2)
+#if defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1) \
+		|| defined(CONFIG_ARCH_SUN8IW8P1) || defined(CONFIG_ARCH_SUN8IW7P1) \
+		|| defined(CONFIG_ARCH_SUN8IW9P1)
+	if (smc_host->pdev->id == 2)
 	{
-		SMC_MSG(smc_host, "set 2mod clk parent %d\n",smc_host->pdata->used_2xmod);
-		SMC_MSG(smc_host, "set ddrmod clk parent %d\n",smc_host->pdata->used_ddrmode);
+		/*  1. MMC_2MOD_CLK's parent can be choosed by calling clk_set_parent();
+			2. smc_host->mclk's parent is fixed on MMC_2MOD_CLK;
+			3. MMC_2MOD_CLK's frequency can be changed by calling clk_set_rate().
+			4. when MMC_2MOD_CLK's frequency is same as its parent, controller uses 1x clock;
+			   when MMC_2MOD_CLK's frequency is half of its parent, contorller uses 2x clock;
+		*/
+		SMC_DBG(smc_host, "2xclk mode %d\n", smc_host->pdata->used_2xmod);
 		if (smc_host->pdata->used_2xmod == 1)
 		{
-			sunxi_mci_ntsr_onoff(smc_host,1);
+			sunxi_mci_ntsr_onoff(smc_host, 1);
 		}
 		mclk2 = clk_get(&smc_host->pdev->dev, MMC_2MOD_CLK);
 		if (NULL== mclk2 || IS_ERR(mclk2)) {
 			SMC_ERR(smc_host, "Error to get source clock for clk %dHz\n", clk);
 			return -1;
-			}
+		}
 		err = clk_set_parent(mclk2, sclk);
 		source_rate = clk_get_rate(sclk);
-		if (smc_host->pdata->used_2xmod == 1)//2xmod select
+		if (smc_host->pdata->used_2xmod == 1)
 		{
 			sdmmc2mod_rate = source_rate/2;
 		}
@@ -981,11 +997,11 @@ static int sunxi_mci_set_clk(struct sunxi_mmc_host* smc_host, u32 clk)
 		{
 			sdmmc2mod_rate = source_rate;
 		}
-		clk_set_rate(mclk2, sdmmc2mod_rate);
+		clk_set_rate(mclk2, sdmmc2mod_rate); /* in fact, we enable 2x clock mode by call this func. */
 		clk_put(mclk2);
 	}
 	else
-	#endif
+#endif
 	{
 		err = clk_set_parent(smc_host->mclk, sclk);
 	}
@@ -1004,11 +1020,15 @@ static int sunxi_mci_set_clk(struct sunxi_mmc_host* smc_host, u32 clk)
 #else
 		mclk_base = __io_address(SUNXI_CCM_BASE + 0x10 + 0x4 * smc_host->pdev->id);
 #endif
-		SMC_MSG(smc_host, "mclk 0x%08x 0x%08x\n", (u32)mclk_base, readl(mclk_base));
+		SMC_DBG(smc_host, "mclk 0x%08x 0x%08x\n", (u32)mclk_base, readl(mclk_base));
 	}
 
 	//disable mclk first before change mclk
-	mclk_enable_disable(smc_host,0);
+#ifdef CONFIG_ARCH_SUN9IW1
+	clk_disable_unprepare(smc_host->mclk);
+#else
+	mclk_enable_disable(smc_host, 0);
+#endif
 
 	err = clk_set_rate(smc_host->mclk, rate);
 	if (err) {
@@ -1018,74 +1038,112 @@ static int sunxi_mci_set_clk(struct sunxi_mmc_host* smc_host, u32 clk)
 		return -1;
 	}
 
+	//mclk_enable_disable(smc_host,1);
+#ifdef CONFIG_ARCH_SUN9IW1
+	clk_prepare_enable(smc_host->mclk);
+#else
 	mclk_enable_disable(smc_host,1);
+#endif
 
 	src_clk = clk_get_rate(sclk);
 	clk_put(sclk);
 
-	clk = smc_host->mod_clk = smc_host->card_clk = rate;
+	/* update clock info in smc_host */
+	clk = smc_host->card_clk = rate;
 
-	SMC_DBG(smc_host, "sdc%d set round clock %d,soure clk is %d\n", smc_host->pdev->id, rate,src_clk);
+	SMC_DBG(smc_host, "sdc%d set round clock %d, soure clk is %d\n", smc_host->pdev->id, rate, src_clk);
 	{
 #ifndef CONFIG_ARCH_SUN9IW1
 		mclk_base = __io_address(0x01c20088 + 0x4 * smc_host->pdev->id);
 #else
 		mclk_base = __io_address(SUNXI_CCM_BASE + 0x10 + 0x4 * smc_host->pdev->id);
 #endif
-		SMC_MSG(smc_host,"mclk 0x%08x 0x%08x\n", (u32)mclk_base, readl(mclk_base));
+		SMC_DBG(smc_host,"mclk 0x%08x 0x%08x\n", (u32)mclk_base, readl(mclk_base));
 	}
 	sunxi_mci_oclk_onoff(smc_host, 0, 0);
+
 	/* clear internal divider */
 	temp = mci_readl(smc_host, REG_CLKCR);
 	temp &= ~0xff;
-#if 0
-	if (smc_host->ddr && smc_host->bus_width == 8){
-		temp|=1;
-		SMC_DBG(smc_host,"div %x\n", temp);
-		smc_host->card_clk = smc_host->mod_clk / 2;
-		clk =  smc_host->card_clk;
-		SMC_DBG(smc_host,"card clk%d \n",smc_host->card_clk);
+
+	/* set internal divider */
+#if defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1) \
+		|| defined(CONFIG_ARCH_SUN8IW8P1) || defined(CONFIG_ARCH_SUN8IW7P1) \
+		|| defined(CONFIG_ARCH_SUN8IW9P1)
+	if (smc_host->pdata->used_2xmod)
+	{
+		if (smc_host->ddr) {
+			temp |= 1;
+			SMC_DBG(smc_host,"internal div %x\n", temp);
+			smc_host->card_clk = smc_host->mod_clk / 2;
+			clk = smc_host->card_clk;
+			SMC_DBG(smc_host,"card clk%d \n",smc_host->card_clk);
+		}
 	}
+	else
 #endif
+	{
+		if (smc_host->ddr && smc_host->bus_width == 8) {
+			temp |= 1;
+			SMC_DBG(smc_host,"internal div %x\n", temp);
+			smc_host->card_clk = smc_host->mod_clk / 2;
+			clk = smc_host->card_clk;
+			SMC_DBG(smc_host,"card clk%d \n",smc_host->card_clk);
+		}
+	}
+	
+#ifdef MMC_FPGA
+	{
+		/* support internal divide clock under fpga environment  */
+		temp = mci_readl(smc_host, REG_CLKCR);
+		temp &= ~0xff;
+	
+		temp |= 24000000 / smc_host->mod_clk / 2; // =24M/400K/2=0x1E
+		mci_writel(smc_host, REG_CLKCR, temp);
+		SMC_MSG(NULL, "--FPGA REG_CLKCR: 0x%08x \n", mci_readl(smc_host, REG_CLKCR));
+	}
+#endif 
+
 	mci_writel(smc_host, REG_CLKCR, temp);
 	sunxi_mci_oclk_onoff(smc_host, 0, 0);
 
-#if defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1)
+#if defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1) \
+		|| defined(CONFIG_ARCH_SUN8IW8P1) || defined(CONFIG_ARCH_SUN8IW7P1) \
+		|| defined(CONFIG_ARCH_SUN8IW9P1)
 
-if ( (  smc_host->pdev->id == 2) && (smc_host->pdata->used_2xmod == 1))
-{
-//2xmod phase
-}
-else
+	if ((smc_host->pdev->id == 2) && (smc_host->pdata->used_2xmod == 1))
+	{
+		//2xmod phase, user default value
+	}
+	else
 #endif
-{
-	if (clk <= 400000) {
-		dly = &mmc_clk_dly[MMC_CLK_400K];
-	} else if (clk <= 25000000) {
-		dly = &mmc_clk_dly[MMC_CLK_25M];
-	} else if (clk <= 50000000) {
-		if (smc_host->ddr) {
-			if (smc_host->bus_width == 8)
-				dly = &mmc_clk_dly[MMC_CLK_50MDDR_8BIT];
-			else
-				dly = &mmc_clk_dly[MMC_CLK_50MDDR];
-		} else {
+	{
+		if (clk <= 400000) {
+			dly = &mmc_clk_dly[MMC_CLK_400K];
+		} else if (clk <= 25000000) {
+			dly = &mmc_clk_dly[MMC_CLK_25M];
+		} else if (clk <= 50000000) {
+			if (smc_host->ddr) {
+				if (smc_host->bus_width == 8)
+					dly = &mmc_clk_dly[MMC_CLK_50MDDR_8BIT];
+				else
+					dly = &mmc_clk_dly[MMC_CLK_50MDDR];
+			} else {
+				dly = &mmc_clk_dly[MMC_CLK_50M];
+			}
+		} else if (clk <= 104000000) {
+			dly = &mmc_clk_dly[MMC_CLK_100M];
+		} else if (clk <= 208000000) {
+			dly = &mmc_clk_dly[MMC_CLK_200M];
+		} else
 			dly = &mmc_clk_dly[MMC_CLK_50M];
-		}
-	} else if (clk <= 104000000) {
-		dly = &mmc_clk_dly[MMC_CLK_100M];
-	} else if (clk <= 208000000) {
-		dly = &mmc_clk_dly[MMC_CLK_200M];
-	} else
-		dly = &mmc_clk_dly[MMC_CLK_50M];
-	oclk_dly = dly->oclk_dly;
-	sclk_dly = dly->sclk_dly;
-	sunxi_mci_set_clk_dly(smc_host, oclk_dly, sclk_dly);
-}
+		oclk_dly = dly->oclk_dly;
+		sclk_dly = dly->sclk_dly;
+		sunxi_mci_set_clk_dly(smc_host, oclk_dly, sclk_dly);
+	}
 	sunxi_mci_oclk_onoff(smc_host, 1, 0);
 	return 0;
 }
-
 
 static int sunxi_mci_request_mmcio(struct sunxi_mmc_host *smc_host)
 {
@@ -1470,26 +1528,47 @@ static int sunxi_mci_resource_request(struct sunxi_mmc_host *smc_host)
 		smc_host->regulator_voltage = SDC_WOLTAGE_3V3;// default 3.3V
 	}
 
-
-	if(smc_host->regulator_voltage == SDC_WOLTAGE_3V3){
-		//hs200 no use in 3.3v,so disable hs200 when use 3.3v
+	/* if SD/MMC is 1, do not decrease frequency. maybe the device is a sdio v3.0 wifi.
+		we should can control sdio wifi's freqiency through " ????? " in [mmc1_para] in sys_config.fex */
+	if ((smc_host->regulator_voltage == SDC_WOLTAGE_3V3) && (pdev->id != 1)) {
+		//hs200 no use in 3.3v, so disable hs200 when use 3.3v
 		smc_host->pdata->caps2 &= ~MMC_CAP2_HS200_1_8V_SDR;
+
 #if defined CONFIG_ARCH_SUN9IW1
-		smc_host->pdata->f_max = 48000000;
+		if (smc_host->pdata->f_max > 48000000)
+			smc_host->pdata->f_max = 48000000;
 #else
-		smc_host->pdata->f_max = 50000000;
+		if (smc_host->pdata->f_max > 50000000)
+			smc_host->pdata->f_max = 50000000;
 #endif
+		SMC_DBG(smc_host, "io voltage is not 1.8v, set max freq to %d\n", smc_host->pdata->f_max);
 	}
+
+#if defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1) \
+		|| defined(CONFIG_ARCH_SUN8IW8P1) || defined(CONFIG_ARCH_SUN8IW7P1) \
+		|| defined(CONFIG_ARCH_SUN8IW9P1)
+	if (smc_host->pdata->used_ddrmode == 0) {
+		smc_host->pdata->caps &= ~MMC_CAP_UHS_DDR50;
+		smc_host->pdata->caps &= ~MMC_CAP_1_8V_DDR;
+		SMC_DBG(smc_host, "card%d disable host ddr capability: 0x%x\n", smc_host->pdev->id, smc_host->pdata->caps);
+	} else
+		SMC_DBG(smc_host, "card%d keep host ddr capability: 0x%x\n", smc_host->pdev->id, smc_host->pdata->caps);
+
+	if (smc_host->pdata->used_2xmod == 0) {
+		smc_host->pdata->f_ddr_max = 30000000;
+	}
+#endif
 
 #ifdef CONFIG_ARCH_SUN9IW1
 	/* sd/mmc comm regster mapping */
 	smc_host->comm_reg = __io_address(SMC_COMM_BASE+0x4*smc_no);
 
 	if (sunxi_get_soc_ver() >= SUN9IW1P1_REV_B) {
-		SMC_MSG(smc_host, "--B-sdc %d - %d\n", smc_host->pdev->id, smc_host->pdata->f_max);
+		SMC_DBG(smc_host, "--B-sdc %d - %d\n", smc_host->pdev->id, smc_host->pdata->f_max);
 	} else {
-		smc_host->pdata->f_max = 48000000;
-		SMC_MSG(smc_host, "--A-sdc %d - %d\n", smc_host->pdev->id, smc_host->pdata->f_max);
+		if (smc_host->pdata->f_max > 48000000)
+			smc_host->pdata->f_max = 48000000;
+		SMC_DBG(smc_host, "--A-sdc %d - %d\n", smc_host->pdev->id, smc_host->pdata->f_max);
 	}
 #endif
 
@@ -1610,12 +1689,9 @@ static void sunxi_mci_restore_io(struct sunxi_mmc_host* smc_host)
 						smc_host->pdev->id, i);
 			return;
 		}
-
 	}
-
 #endif
 	SMC_DBG(smc_host, "mmc %d resume pins\n", smc_host->pdev->id);
-
 }
 
 
@@ -1778,7 +1854,7 @@ static irqreturn_t sunxi_mci_irq(int irq, void *dev_id)
 	raw_int   = mci_readl(smc_host, REG_RINTR);
 	msk_int   = mci_readl(smc_host, REG_MISTA);
 	if (!msk_int && !idma_int) {
-		SMC_MSG(smc_host, "sdc%d nop irq: ri %08x mi %08x ie %08x idi %08x\n",
+		SMC_DBG(smc_host, "sdc%d nop irq: ri %08x mi %08x ie %08x idi %08x\n",
 			smc_host->pdev->id, raw_int, msk_int, idma_inte, idma_int);
 		spin_unlock(&smc_host->lock);
 		return IRQ_HANDLED;
@@ -1902,18 +1978,43 @@ static void sunxi_mci_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 				usleep_range(1000, 1500);
 				smc_host->voltage = smc_host->regulator_voltage;
 
-#if defined(CONFIG_ARCH_SUN8IW5P1)
-				/**********power on***********/
-				if (mci_power_on(smc_host))
+#if defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1) \
+	|| defined(CONFIG_ARCH_SUN8IW7P1) || defined(CONFIG_ARCH_SUN8IW8P1) \
+	|| defined(CONFIG_ARCH_SUN8IW9P1)
+
+				if (smc_host->pdev->id == 0)
 				{
-					SMC_MSG(smc_host, "mci_power_on fail\n");
-				}
-				else
-				{
-					SMC_MSG(smc_host, "mci_power_on ok\n");
+				#ifdef KEEP_CARD0_POWER_SUPPLY
+					if (!smc_host->power_for_card) {
+						if (card_power_on(smc_host)) {
+							SMC_ERR(smc_host, "sdc%d card_power_on fail\n", smc_host->pdev->id);
+						} else {
+							SMC_DBG(smc_host, "sdc%d card_power_on ok\n", smc_host->pdev->id);
+							smc_host->power_for_card = 1;
+						}
+					} else {
+						SMC_DBG(smc_host, "sdc%d card power suppy is already on\n", smc_host->pdev->id);
+					}
+				#else
+					if (card_power_on(smc_host)) {
+						SMC_ERR(smc_host, "sdc%d card_power_on fail\n", smc_host->pdev->id);
+					} else {
+						SMC_DBG(smc_host, "sdc%d card_power_on ok\n", smc_host->pdev->id);
+					}
+				#endif
+				} else {
+					if (card_power_on(smc_host)) {
+						SMC_ERR(smc_host, "sdc%d card_power_on fail\n", smc_host->pdev->id);
+					} else {
+						SMC_DBG(smc_host, "sdc%d card_power_on ok\n", smc_host->pdev->id);
+					}
 				}
 #endif
 				sunxi_mci_restore_io(smc_host);
+
+#ifdef CONFIG_ARCH_SUN9IW1
+				sunxi_periph_reset_deassert(smc_host->mclk);
+#endif
 				err = clk_prepare_enable(smc_host->mclk);
 				if (err) {
 					SMC_ERR(smc_host, "Failed to enable sdc%d mclk\n",
@@ -1947,18 +2048,34 @@ static void sunxi_mci_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 #endif
 
 					clk_disable_unprepare(smc_host->mclk);
+#ifdef CONFIG_ARCH_SUN9IW1
+					sunxi_periph_reset_assert(smc_host->mclk);
+#endif
 					sunxi_mci_hold_io(smc_host);
-#if defined(CONFIG_ARCH_SUN8IW5P1)
-					/**********power off***********/
-					if(mci_power_off(smc_host))
+
+#if defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1) \
+	|| defined(CONFIG_ARCH_SUN8IW7P1) || defined(CONFIG_ARCH_SUN8IW8P1) \
+	|| defined(CONFIG_ARCH_SUN8IW9P1)
+
+					if (smc_host->pdev->id == 0)
 					{
-						SMC_MSG(smc_host, "mci_power_off fail\n");
+					#ifndef KEEP_CARD0_POWER_SUPPLY
+						if (card_power_off(smc_host)) {
+							SMC_ERR(smc_host, "sdc%d card_power_off fail\n", smc_host->pdev->id);
+						} else {
+							SMC_DBG(smc_host, "sdc%d card_power_off ok\n", smc_host->pdev->id);
+						}
+					#endif
 					}
 					else
 					{
-						SMC_MSG(smc_host, "mci_power_off ok\n");
+						if (card_power_off(smc_host)) {
+							SMC_ERR(smc_host, "sdc%d card_power_off fail\n", smc_host->pdev->id);
+						} else {
+							SMC_DBG(smc_host, "sdc%d card_power_off ok\n", smc_host->pdev->id);
+						}
 					}
-#endif		
+#endif
 					smc_host->power_on = 0;
 					sunxi_mci_set_vddio(smc_host, SDC_WOLTAGE_OFF);
 					usleep_range(1000, 1500);
@@ -2002,28 +2119,35 @@ static void sunxi_mci_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	mci_writel(smc_host, REG_GCTRL, temp);
 
 	/* set up clock */
-#if 0
-	// for ddr mode
 	if (ios->clock) {
-#else
-	if (ios->clock && ios->clock != last_clock[id]) {
-#endif
 		if (smc_host->ddr)
 			ios->clock = smc_host->pdata->f_ddr_max;
+
 		/* 8bit ddr, mod_clk = 2 * card_clk */
-		if (smc_host->ddr && smc_host->bus_width == 8)
-			smc_host->mod_clk = ios->clock << 1;
+#if defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1) \
+	||defined(CONFIG_ARCH_SUN8IW8P1) || defined(CONFIG_ARCH_SUN8IW7P1) \
+	|| defined(CONFIG_ARCH_SUN8IW9P1)
+
+		if (smc_host->pdata->used_2xmod == 1)
+		{
+			if (smc_host->ddr)
+				smc_host->mod_clk = ios->clock << 1;
+			else
+				smc_host->mod_clk = ios->clock;
+		}
 		else
-			smc_host->mod_clk = ios->clock;
+#endif
+		{
+			if (smc_host->ddr && smc_host->bus_width == 8)
+				smc_host->mod_clk = ios->clock << 1;
+			else
+				smc_host->mod_clk = ios->clock;
+		}
+
 		smc_host->card_clk = ios->clock;
-		#ifdef MMC_FPGA
-		smc_host->mod_clk = 24000000;
-		if (smc_host->card_clk > smc_host->mod_clk)
-			smc_host->card_clk = smc_host->mod_clk;
-		#endif
-		sunxi_mci_set_clk(smc_host, smc_host->card_clk);
+		sunxi_mci_set_clk(smc_host);
 		last_clock[id] = ios->clock;
-		usleep_range(50000, 55000);
+		//usleep_range(50000, 55000);
 	} else if (!ios->clock && last_clock[id]) {
 		last_clock[id] = 0;
 		sunxi_mci_update_clk(smc_host);
@@ -2079,6 +2203,18 @@ static void sunxi_mci_request(struct mmc_host *mmc, struct mmc_request *mrq)
 
 	smc_host->mrq = mrq;
 	if (data) {
+#ifdef CONFIG_ARCH_SUN9IW1
+		if(sunxi_soc_is_secure()){
+			if((data->flags & MMC_DATA_WRITE)
+				&&sunxi_check_secure_area(cmd->arg,data->blocks)){
+				mrq->cmd->error = -EINVAL;
+				SMC_ERR(smc_host, "smc %d cmd %d Can't write to secure area,start %d end %d\n",
+								smc_host->pdev->id,cmd->opcode & 0x3f,cmd->arg,cmd->arg+data->blocks-1);
+				mmc_request_done(mmc, mrq);
+				return;
+			}
+		}
+#endif
 		byte_cnt = data->blksz * data->blocks;
 		mci_writel(smc_host, REG_BLKSZ, data->blksz);
 		mci_writel(smc_host, REG_BCNTR, byte_cnt);
@@ -2289,7 +2425,7 @@ static int sunxi_mci_execute_tuning(struct mmc_host *mmc, u32 opcode)
 		 */
 		if (!cmd.error && !data.error) {
 			if (!memcmp(rcv_pattern, std_pattern, data.blksz)) {
-				SMC_MSG(smc_host, "sdc%d tuning ok, sclk_dly %d\n",
+				SMC_DBG(smc_host, "sdc%d tuning ok, sclk_dly %d\n",
 					smc_host->pdev->id, sample_dly);
 				if (!sample_win)
 					sample_min = sample_dly;
@@ -2369,7 +2505,7 @@ int sunxi_mci_check_r1_ready(struct mmc_host* mmc, unsigned ms)
 	do {
 		if (!(mci_readl(smc_host, REG_STAS) & SDXC_CardDataBusy))
 			break;
-	} while time_before(jiffies, expire);
+	} while (time_before(jiffies, expire));
 
 	if ((mci_readl(smc_host, REG_STAS) & SDXC_CardDataBusy)) {
 		SMC_MSG(smc_host, "wait r1 rdy %d ms timeout\n", ms);
@@ -2424,6 +2560,11 @@ static int sunxi_mci_proc_hostinfo(char *page, char **start, off_t off,
 	p += sprintf(p, " Sclk Delay: %d(%d.%dns)\n", smc_host->sclk_dly, sdly/10, odly%10);
 	p += sprintf(p, " Bus Width : %d\n", smc_host->bus_width);
 	p += sprintf(p, " DDR Mode  : %d\n", smc_host->ddr);
+#if defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1) \
+		|| defined(CONFIG_ARCH_SUN8IW8P1) || defined(CONFIG_ARCH_SUN8IW7P1) \
+		|| defined(CONFIG_ARCH_SUN8IW9P1)
+	p += sprintf(p, " 2xCLK Mode: %d\n", smc_host->pdata->used_ddrmode);
+#endif
 	p += sprintf(p, " Voltage   : %s\n", vol[smc_host->voltage]);
 	p += sprintf(p, " Present   : %d\n", smc_host->present);
 	p += sprintf(p, " CD Mode   : %s\n", cd_mode[smc_host->cd_mode]);
@@ -2797,6 +2938,9 @@ static int sunxi_mci_probe(struct platform_device *pdev)
 
 		tasklet_init(&smc_host->d3_det_tasklet, sunxi_mci_dat3_det, (unsigned long) smc_host);
 
+#ifdef CONFIG_ARCH_SUN9IW1
+		sunxi_periph_reset_deassert(smc_host->mclk);
+#endif
 		ret = clk_prepare_enable(smc_host->mclk);
 		if (ret)
 			SMC_ERR(smc_host, "Failed to enable sdc%d mclk\n", smc_host->pdev->id);
@@ -2810,7 +2954,7 @@ static int sunxi_mci_probe(struct platform_device *pdev)
 		mdelay(1);
 		smc_host->present = 1;
 		rval = mci_readl(smc_host, REG_RINTR);
-		SMC_MSG(smc_host, "+> REG_RINTR=0x%x\n", rval);
+		SMC_DBG(smc_host, "+> REG_RINTR=0x%x\n", rval);
 		if ((rval & SDXC_CardRemove)) {
 			SMC_MSG(smc_host, "data[3] detect Card Remove\n");
 			smc_host->present = 0;
@@ -2840,12 +2984,12 @@ static int sunxi_mci_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, mmc);
 	sunxi_host[pdev->id] = smc_host;
 
-	SMC_MSG(smc_host, "sdc%d Probe: base:0x%p irq:%u sg_cpu:%p(%x) ret %d.\n",
+	SMC_DBG(smc_host, "sdc%d Probe: base:0x%p irq:%u sg_cpu:%p(%x) ret %d.\n",
 		pdev->id, smc_host->reg_base, smc_host->irq,
 		smc_host->sg_cpu, smc_host->sg_dma, ret);
 
 	if (smc_host->cd_mode == CARD_DETECT_BY_D3 && smc_host->present == 0) {
-		SMC_MSG(smc_host, "sdc%d power init.\n", smc_host->pdev->id);
+		SMC_DBG(smc_host, "sdc%d power init.\n", smc_host->pdev->id);
 
 		sunxi_mci_init_host(smc_host);
 		enable_irq(smc_host->irq);
@@ -2853,8 +2997,9 @@ static int sunxi_mci_probe(struct platform_device *pdev)
 	} else if (smc_host->present == 0) {
 		/* if card is not present and the card detect mode is not CARD_DETECT_BY_D3,
 		we shutdown io voltage to save power. */
-		SMC_MSG(smc_host, "sdc%d: no card detected, try to shutdown io voltage.\n",
+		SMC_DBG(smc_host, "sdc%d: no card detected, try to shutdown io voltage.\n",
 			pdev->id);
+		sunxi_mci_hold_io(smc_host); /* disable gpio to avoid power leakage */
 		sunxi_mci_set_vddio(smc_host, SDC_WOLTAGE_OFF);
 		usleep_range(1000, 1500);
 		smc_host->voltage = SDC_WOLTAGE_OFF;
@@ -2953,6 +3098,9 @@ static int sunxi_mci_suspend(struct device *dev)
 
 			/* gate clock for lower power */
 			clk_disable_unprepare(smc_host->mclk);
+#ifdef CONFIG_ARCH_SUN9IW1
+			sunxi_periph_reset_assert(smc_host->mclk);
+#endif
 		}
 
 		if(ret == 0 && smc_host->cd_mode == CARD_DETECT_BY_D3){
@@ -2965,16 +3113,31 @@ static int sunxi_mci_suspend(struct device *dev)
 #endif
 
 			clk_disable_unprepare(smc_host->mclk);
+#ifdef CONFIG_ARCH_SUN9IW1
+			sunxi_periph_reset_assert(smc_host->mclk);
+#endif
 			sunxi_mci_hold_io(smc_host);
-#if defined(CONFIG_ARCH_SUN8IW5P1)
-			/**********power off***********/
-			if(mci_power_off(smc_host))
+#if defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1) \
+	|| defined(CONFIG_ARCH_SUN8IW7P1) || defined(CONFIG_ARCH_SUN8IW8P1) \
+	|| defined(CONFIG_ARCH_SUN8IW9P1)
+
+			if (smc_host->pdev->id == 0)
 			{
-				SMC_MSG(smc_host, "mci_power_off fail\n");
+			#ifndef KEEP_CARD0_POWER_SUPPLY
+				if (card_power_off(smc_host)) {
+					SMC_ERR(smc_host, "sdc%d card_power_off fail\n", pdev->id);
+				} else {
+					SMC_DBG(smc_host, "sdc%d card_power_off ok\n", pdev->id);
+				}
+			#endif
 			}
 			else
 			{
-				SMC_MSG(smc_host, "mci_power_off ok\n");
+				if (card_power_off(smc_host)) {
+					SMC_ERR(smc_host, "sdc%d card_power_off fail\n", pdev->id);
+				} else {
+					SMC_DBG(smc_host, "sdc%d card_power_off ok\n", pdev->id);
+				}
 			}
 #endif
 			sunxi_mci_set_vddio(smc_host, SDC_WOLTAGE_OFF);
@@ -3001,6 +3164,9 @@ static int sunxi_mci_resume(struct device *dev)
 		smc_host->suspend = 0;
 		if (mmc_card_keep_power(mmc)) {
 			/* enable clock for resotre */
+#ifdef CONFIG_ARCH_SUN9IW1
+			sunxi_periph_reset_deassert(smc_host->mclk);
+#endif
 			clk_prepare_enable(smc_host->mclk);
 
 #ifdef CONFIG_ARCH_SUN9IW1
@@ -3014,7 +3180,8 @@ static int sunxi_mci_resume(struct device *dev)
 		if (smc_host->cd_mode == CARD_DETECT_BY_GPIO_IRQ)
 			sunxi_mci_cd_cb((unsigned long)smc_host);
 
-		if (smc_host->cd_mode == CARD_DETECT_BY_D3) {
+		if (smc_host->cd_mode == CARD_DETECT_BY_D3)
+		{
 			u32 rval = 0;
 
 			sunxi_mci_set_vddio(smc_host, smc_host->regulator_voltage);
@@ -3022,18 +3189,43 @@ static int sunxi_mci_resume(struct device *dev)
 			smc_host->voltage = smc_host->regulator_voltage;
 			smc_host->power_on = 1;
 
-#if defined(CONFIG_ARCH_SUN8IW5P1)
-			/**********power on***********/
-			if(mci_power_on(smc_host))
+#if defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1) \
+	|| defined(CONFIG_ARCH_SUN8IW7P1) || defined(CONFIG_ARCH_SUN8IW7P1) \
+	|| defined(CONFIG_ARCH_SUN8IW9P1)
+
+			if (smc_host->pdev->id == 0)
 			{
-				SMC_MSG(smc_host, "mci_power_on fail\n");
-			}
-			else
-			{
-				SMC_MSG(smc_host, "mci_power_on ok\n");
+			#ifdef KEEP_CARD0_POWER_SUPPLY
+				if (!smc_host->power_for_card) {
+					if (card_power_on(smc_host)) {
+						SMC_ERR(smc_host, "sdc%d card_power_on fail\n", pdev->id);
+					} else {
+						SMC_DBG(smc_host, "sdc%d card_power_on ok\n", pdev->id);
+						smc_host->power_for_card = 1;
+					}
+				} else {
+					SMC_MSG(smc_host, "sdc%d card power suppy is already on\n", pdev->id);
+				}
+			#else
+				if (card_power_on(smc_host)) {
+					SMC_ERR(smc_host, "sdc%d card_power_on fail\n", pdev->id);
+				} else {
+					SMC_DBG(smc_host, "sdc%d card_power_on ok\n", pdev->id);
+				}
+			#endif
+			} else {
+				if (card_power_on(smc_host)) {
+					SMC_ERR(smc_host, "sdc%d card_power_on fail\n", pdev->id);
+				} else {
+					SMC_DBG(smc_host, "sdc%d card_power_on ok\n", pdev->id);
+				}
 			}
 #endif
+
 			sunxi_mci_restore_io(smc_host);
+#ifdef CONFIG_ARCH_SUN9IW1
+			sunxi_periph_reset_deassert(smc_host->mclk);
+#endif
 			ret = clk_prepare_enable(smc_host->mclk);
 			if (ret) {
 				SMC_ERR(smc_host, "Failed to enable sdc%d mclk\n",
@@ -3046,10 +3238,9 @@ static int sunxi_mci_resume(struct device *dev)
 					smc_host->comm_reg);
 #endif
 
-
 			mdelay(1);
 			rval = mci_readl(smc_host, REG_RINTR);
-			SMC_MSG(smc_host, ">> REG_RINTR=0x%x\n", rval);
+			SMC_DBG(smc_host, ">> REG_RINTR=0x%x\n", rval);
 			sunxi_mci_init_host(smc_host);
 		}
 
@@ -3082,10 +3273,8 @@ void shutdown_mmc(struct platform_device * pdev)
 	u32 ocr = 0;
 	u32 err = 0;
 	struct mmc_host *mmc = NULL;
-	struct sunxi_mmc_host *host_sunxi = NULL;
+	struct sunxi_mmc_host *smc_host = NULL;
 	u32 status = 0;
-
- 	SMC_MSG(NULL, "%s: card %d shut down mmc\n", __FUNCTION__, pdev->id);
 
 	if (pdev->id != 2) {
 		SMC_MSG(NULL, "%s: is not card 2, return\n", __FUNCTION__);
@@ -3094,23 +3283,23 @@ void shutdown_mmc(struct platform_device * pdev)
 
 	mmc = platform_get_drvdata(pdev);
 	if (mmc == NULL) {
-		SMC_ERR(NULL, "%s: mmc is NULL\n", __FUNCTION__);
+		SMC_MSG(NULL, "%s: mmc is NULL\n", __FUNCTION__);
 		goto out;
 	}
 
-	host_sunxi = mmc_priv(mmc);
-	if (host_sunxi == NULL) {
-		SMC_ERR(NULL, "%s: host_sunxi is NULL\n", __FUNCTION__);
+	smc_host = mmc_priv(mmc);
+	if (smc_host == NULL) {
+		SMC_MSG(NULL, "%s: smc_host is NULL\n", __FUNCTION__);
 		goto out;
 	}
 
 	//claim host to not allow androd read/write during shutdown
-	SMC_MSG(host_sunxi, "%s: claim host\n", __FUNCTION__);
+	SMC_DBG(smc_host, "%s: claim host\n", __FUNCTION__);
 	mmc_claim_host(mmc);
 
 	do {
 		if (mmc_send_status(mmc->card, &status) != 0) {
-			SMC_ERR(host_sunxi,"%s:set status failed\n", __FUNCTION__);
+			SMC_ERR(smc_host,"%s: send status failed\n", __FUNCTION__);
 			goto err_out;
 		}
 	} while(status != 0x00000900);
@@ -3118,7 +3307,7 @@ void shutdown_mmc(struct platform_device * pdev)
 	mmc_set_clock(mmc, 400000);
 	err = mmc_go_idle(mmc);
 	if (err) {
-		SMC_ERR(host_sunxi, "%s: mmc_go_idle err\n", __FUNCTION__);
+		SMC_ERR(smc_host, "%s: mmc_go_idle err\n", __FUNCTION__);
 		goto err_out;
 	}
 
@@ -3129,13 +3318,13 @@ void shutdown_mmc(struct platform_device * pdev)
 	//SMC_MSG(host_sunxi,"%s mmc_send_op_cond\n",__FUNCTION__);
 	err = mmc_send_op_cond(mmc, 0, &ocr);
 	if (err) {
-		SMC_ERR(host_sunxi, "%s: first mmc_send_op_cond err\n", __FUNCTION__);
+		SMC_ERR(smc_host, "%s: first mmc_send_op_cond err\n", __FUNCTION__);
 		goto err_out;
 	}
 
 	err = mmc_send_op_cond(mmc, ocr | (1 << 30), &ocr);
 	if (err) {
-		SMC_ERR(host_sunxi, "%s: mmc_send_op_cond err\n", __FUNCTION__);
+		SMC_ERR(smc_host, "%s: mmc_send_op_cond err\n", __FUNCTION__);
 		goto err_out;
 	}
 
@@ -3143,10 +3332,10 @@ void shutdown_mmc(struct platform_device * pdev)
 	goto out;
 
 err_out:
-	SMC_MSG(NULL, "%s: release host\n", __FUNCTION__);
+	SMC_DBG(smc_host, "%s: release host\n", __FUNCTION__);
 	mmc_release_host(mmc);
 out:
-	SMC_MSG(NULL, "%s: mmc shutdown exit\n", __FUNCTION__);
+	SMC_MSG(NULL, "%s: mmc %d shutdown exit..ok\n", __FUNCTION__, pdev->id);
 
 	return ;
 }
@@ -3201,10 +3390,15 @@ static struct sunxi_mmc_platform_data sunxi_mci_pdata[] = {
 		.ocr_avail = MMC_VDD_28_29 | MMC_VDD_29_30 | MMC_VDD_30_31 | MMC_VDD_31_32
 				| MMC_VDD_32_33 | MMC_VDD_33_34,
 		.caps = MMC_CAP_4_BIT_DATA | MMC_CAP_MMC_HIGHSPEED | MMC_CAP_SD_HIGHSPEED
+#if defined CONFIG_ARCH_SUN8IW1	|| defined CONFIG_ARCH_SUN9IW1
+			| MMC_CAP_UHS_SDR12 | MMC_CAP_UHS_SDR25 | MMC_CAP_UHS_SDR50 |MMC_CAP_UHS_SDR50
+//			| MMC_CAP_UHS_SDR12 | MMC_CAP_UHS_SDR25
+//			| MMC_CAP_UHS_DDR50
+#endif
 			| MMC_CAP_SDIO_IRQ,
 		.f_min = 150000,
 #if defined CONFIG_ARCH_SUN9IW1
-        .f_max = 48000000,
+        .f_max = 80000000,
 #else
 		.f_max = 50000000,
 #endif
@@ -3220,7 +3414,7 @@ static struct sunxi_mmc_platform_data sunxi_mci_pdata[] = {
 		.mmc_clk_dly[MMC_CLK_50M]  				= {MMC_CLK_50M,					5,0},
 		.mmc_clk_dly[MMC_CLK_50MDDR]			= {MMC_CLK_50MDDR,				3,4},
 		.mmc_clk_dly[MMC_CLK_50MDDR_8BIT]		= {MMC_CLK_50MDDR_8BIT,			3,4},
-		.mmc_clk_dly[MMC_CLK_100M]  			= {MMC_CLK_100M,				2,4},
+		.mmc_clk_dly[MMC_CLK_100M]  			= {MMC_CLK_100M,				2,3}, //80MHz
 		.mmc_clk_dly[MMC_CLK_200M]  			= {MMC_CLK_200M,				2,4},
 #else
 		.mmc_clk_dly[MMC_CLK_50M]  				= {MMC_CLK_50M,					3,4},
@@ -3234,20 +3428,30 @@ static struct sunxi_mmc_platform_data sunxi_mci_pdata[] = {
 		.ocr_avail = MMC_VDD_28_29 | MMC_VDD_29_30 | MMC_VDD_30_31 | MMC_VDD_31_32
 				| MMC_VDD_32_33 | MMC_VDD_33_34 | MMC_VDD_165_195,
 		.caps = MMC_CAP_4_BIT_DATA
-#if defined MMC_FPGA
+#ifndef MMC_FPGA
 			| MMC_CAP_NONREMOVABLE
 #endif
 			| MMC_CAP_MMC_HIGHSPEED | MMC_CAP_SD_HIGHSPEED
+
+#if defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1) \
+		||defined(CONFIG_ARCH_SUN8IW8P1) || defined(CONFIG_ARCH_SUN8IW7P1) \
+		|| defined(CONFIG_ARCH_SUN8IW9P1)
+
+			| MMC_CAP_1_8V_DDR /* HS-DDR mode */
+#endif
+
 #if defined CONFIG_ARCH_SUN8IW1	|| defined CONFIG_ARCH_SUN9IW1
 			| MMC_CAP_UHS_SDR12 | MMC_CAP_UHS_SDR25 | MMC_CAP_UHS_SDR50
-			| MMC_CAP_UHS_DDR50
-			| MMC_CAP_1_8V_DDR
+			//| MMC_CAP_UHS_DDR50
+			//| MMC_CAP_1_8V_DDR
 #endif
-			#ifndef MMC_FPGA
+
+#ifndef MMC_FPGA
 			| MMC_CAP_8_BIT_DATA
-			#endif
+#endif
 			| MMC_CAP_SDIO_IRQ
 			| MMC_CAP_SET_XPC_330 | MMC_CAP_DRIVER_TYPE_A,
+
 #if defined CONFIG_ARCH_SUN8IW1	|| defined CONFIG_ARCH_SUN9IW1
 		.caps2 = MMC_CAP2_HS200_1_8V_SDR,
 #endif
@@ -3255,13 +3459,16 @@ static struct sunxi_mmc_platform_data sunxi_mci_pdata[] = {
 #if defined CONFIG_ARCH_SUN9IW1
 		.f_max = 80000000,
 		.f_ddr_max = 40000000,
+#elif defined CONFIG_ARCH_SUN8IW5P1 || defined CONFIG_ARCH_SUN8IW6P1
+		.f_max = 50000000,
+		.f_ddr_max = 50000000,
 #else
 		.f_max = 50000000,
 		.f_ddr_max = 30000000,
 #endif
 
 #if defined CONFIG_ARCH_SUN9IW1
-		.dma_tl= 0x200f0010,
+		.dma_tl= 0x300f0010,
 #else
 		.dma_tl= 0x20070008,
 #endif
@@ -3272,7 +3479,7 @@ static struct sunxi_mmc_platform_data sunxi_mci_pdata[] = {
 		.mmc_clk_dly[MMC_CLK_50M]				= {MMC_CLK_50M,					5,4},
 		.mmc_clk_dly[MMC_CLK_50MDDR]			= {MMC_CLK_50MDDR,				3,2},
 		.mmc_clk_dly[MMC_CLK_50MDDR_8BIT]		= {MMC_CLK_50MDDR_8BIT,			2,2},
-		.mmc_clk_dly[MMC_CLK_100M]				= {MMC_CLK_100M,				2,3}, //80M
+		.mmc_clk_dly[MMC_CLK_100M]				= {MMC_CLK_100M,				2,2}, //80M
 		.mmc_clk_dly[MMC_CLK_200M]				= {MMC_CLK_200M,				2,4},
 #else
 		.mmc_clk_dly[MMC_CLK_50M]				= {MMC_CLK_50M,					3,4},
@@ -3448,14 +3655,23 @@ static int sunxi_mci_get_devinfo(void)
 			if (!strcmp(val.str, "none")) {
 				mmcinfo->regulator = NULL;
 				/* If here found that no regulator can be used for this card,
-				   we clear all of the UHS features support */
-				mmcinfo->caps &= ~(MMC_CAP_UHS_SDR12 | MMC_CAP_UHS_SDR25
-						| MMC_CAP_UHS_SDR50 | MMC_CAP_UHS_DDR50);
+				   we clear all of the UHS features support.
+				   But there is a excetpion. SD/MMC controller 1 is used for sdio wifi,
+				   If there is a sdio v3.0 wifi, we should make wifi io voltage power
+				   up with 1.8V and not configure "sdc_regulator" in [mmc1_para].
+				   During initial process, the driver do not switch io voltage and switch
+				   speed mode according to device capabilites. */
+				if (i != 1) {
+					mmcinfo->caps &= ~(MMC_CAP_UHS_SDR12 | MMC_CAP_UHS_SDR25
+							| MMC_CAP_UHS_SDR50 | MMC_CAP_UHS_DDR50);
+				}
 			} else
 				mmcinfo->regulator = val.str;
 		}
 
-#if defined(CONFIG_ARCH_SUN8IW5P1)
+#if defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1) \
+	|| defined(CONFIG_ARCH_SUN8IW7P1) || defined(CONFIG_ARCH_SUN8IW8P1) \
+	|| defined(CONFIG_ARCH_SUN8IW9P1)
 		/* get power information */
 		type = script_get_item(mmc_para, "sdc_power_supply", &val);
 		if (type != SCIRPT_ITEM_VALUE_TYPE_STR)
@@ -3467,81 +3683,109 @@ static int sunxi_mci_get_devinfo(void)
 		{
 			if (!strcmp(val.str, "none"))
 			{
-				mmcinfo->power_supply= NULL;
+				mmcinfo->power_supply = NULL;
+				SMC_MSG(NULL, "get mmc%d's sdc_power is null!\n", i);
 			}
 			else
 			{
 				mmcinfo->power_supply = val.str;
 			}
-			SMC_MSG(NULL, "get mmc%d's power  %s ok\n", i,mmcinfo->power_supply);
+			//SMC_MSG(NULL, "get mmc%d's power supply '%s' ok\n", i,mmcinfo->power_supply);
 		}
 #endif
 
-#if defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1)
+#if defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1) \
+		|| defined(CONFIG_ARCH_SUN8IW8P1) || defined(CONFIG_ARCH_SUN8IW7P1) \
+		|| defined(CONFIG_ARCH_SUN8IW9P1)
 		/* get 2xmode information */
 		type = script_get_item(mmc_para, "sdc_2xmode", &val);
 		if (type != SCIRPT_ITEM_VALUE_TYPE_INT) {
-			SMC_MSG(NULL, "get mmc%d's 2xmode fail\n", i);
+			//SMC_MSG(NULL, "get mmc%d's 2xmode fail\n", i);
 			mmcinfo->used_2xmod = 0;
 		} else {
 			mmcinfo->used_2xmod = val.val;
-			SMC_MSG(NULL, "get mmc%d's 2xmode ok, val = %d\n", i,mmcinfo->used_2xmod);
+			SMC_MSG(NULL, "get mmc%d's 2xmode ok, val = %d\n", i, mmcinfo->used_2xmod);
 		}
 		/* get ddrmode information */
 		type = script_get_item(mmc_para, "sdc_ddrmode", &val);
 		if (type != SCIRPT_ITEM_VALUE_TYPE_INT) {
-			SMC_MSG(NULL, "get mmc%d's ddrmode fail\n", i);
+			//SMC_MSG(NULL, "get mmc%d's ddrmode fail\n", i);
 			mmcinfo->used_ddrmode = 0;
 		} else {
 			mmcinfo->used_ddrmode = val.val;
-			SMC_MSG(NULL, "get mmc%d's ddrmode ok, val = %d\n", i,mmcinfo->used_ddrmode);
+			SMC_MSG(NULL, "get mmc%d's ddrmode ok, val = %d\n", i, mmcinfo->used_ddrmode);
 		}
 #endif
 
+		/* get f_max */
+		type = script_get_item(mmc_para, "sdc_f_max", &val);
+		if (type != SCIRPT_ITEM_VALUE_TYPE_INT) {
+			//SMC_MSG(NULL, "get mmc%d's sdc_f_max failed,use default sdc_f_max %d\n",i, mmcinfo->f_max);
+		}else{
+			if ((val.val>mmcinfo->f_max)||(val.val<mmcinfo->f_min)){
+				//SMC_MSG(NULL, "mmc%d's input sdc_f_max wrong,use default sdc_f_max %d\n", i,  mmcinfo->f_max);
+			}else{
+				mmcinfo->f_max = val.val;
+				SMC_MSG(NULL, "get mmc%d's sdc_f_max ok,sdc_f_max %d\n", i, mmcinfo->f_max);
+			}
+		}
 
-		/***************get dly information start*****************/
-		/* get used information */
+		/* get f_ddr_max */
+		type = script_get_item(mmc_para, "sdc_f_ddr_max", &val);
+		if (type != SCIRPT_ITEM_VALUE_TYPE_INT) {
+			//SMC_MSG(NULL, "get mmc%d's sdc_f_ddr_max failed,use default sdc_f_ddr_max %d\n",i, mmcinfo->f_ddr_max);
+		}else{
+			if((val.val>mmcinfo->f_ddr_max)||(val.val<mmcinfo->f_min)){
+				//SMC_MSG(NULL, "mmc%d's input sdc_f_ddr_max wrong,use default sdc_f_ddr_max %d\n", i,  mmcinfo->f_ddr_max);
+			}else{
+				mmcinfo->f_ddr_max = val.val;
+				SMC_MSG(NULL, "get mmc%d's sdc_f_ddr_max ok,sdc_f_ddr_max %d\n", i, mmcinfo->f_ddr_max);
+			}
+		}
+
+		/* get ex_dly_used information */
 		type = script_get_item(mmc_para, "sdc_ex_dly_used", &val);
 		if (type != SCIRPT_ITEM_VALUE_TYPE_INT) {
-			SMC_MSG(NULL, "get mmc%d's sdc_ex_dly_used failed,use default dly\n", i);
+			//SMC_MSG(NULL, "get mmc%d's sdc_ex_dly_used failed, use default dly\n", i);
 			continue;
 		}
-		if(val.val != 1){
-			SMC_MSG(NULL, "mmc%d's not use sdc_ex_dly,use default dly\n", i);
+		/* 1, manual mode: delay parameters are from sys_config.fex directly;
+		   2, auto mode  : delay parameters are from sys_config.fex, but it maybe changed during update firmware. */
+		if ((val.val != 1)&&(val.val != 2)) {
+			//SMC_MSG(NULL, "mmc%d's not use sdc_ex_dly, use default dly\n", i);
 			continue;
 		}
 
-		for(k = 0;k< MMC_CLK_MOD_NUM; k++){
-			/* get odly information */
+		/* get odly and sdly information */
+		for(k = 0;k< MMC_CLK_MOD_NUM; k++) {
 			char str_buf[30] = {0};
+
 			sprintf(str_buf,"sdc_odly_%s",speed_mod[k]);
 			type = script_get_item(mmc_para, str_buf, &val);
 			if (type != SCIRPT_ITEM_VALUE_TYPE_INT) {
-				SMC_MSG(NULL, "get mmc%d's %s failed,use default dly %d\n",i, str_buf, mmcinfo->mmc_clk_dly[k].oclk_dly);
+				//SMC_MSG(NULL, "get mmc%d's %s failed,use default dly %d\n",i, str_buf, mmcinfo->mmc_clk_dly[k].oclk_dly);
 			}else{
 				if((val.val>7)||(val.val<0)){
-					SMC_MSG(NULL, "mmc%d's input %s wrong,use default dly %d\n", i, str_buf, mmcinfo->mmc_clk_dly[k].oclk_dly);
+					//SMC_MSG(NULL, "mmc%d's input %s wrong,use default dly %d\n", i, str_buf, mmcinfo->mmc_clk_dly[k].oclk_dly);
 				}else{
 					mmcinfo->mmc_clk_dly[k].oclk_dly = val.val;
 					SMC_MSG(NULL, "get mmc%d's %s ok,oclk_dly %d\n", i, str_buf,mmcinfo->mmc_clk_dly[k].oclk_dly);
 				}
 			}
-			/* get sdly information */
+
 			sprintf(str_buf,"sdc_sdly_%s",speed_mod[k]);
 			type = script_get_item(mmc_para, str_buf, &val);
 			if (type != SCIRPT_ITEM_VALUE_TYPE_INT) {
-				SMC_MSG(NULL, "get mmc%d's %s failed,use default dly %d\n", i, str_buf, mmcinfo->mmc_clk_dly[k].sclk_dly);
+				//SMC_MSG(NULL, "get mmc%d's %s failed,use default dly %d\n", i, str_buf, mmcinfo->mmc_clk_dly[k].sclk_dly);
 			}else{
 				if((val.val>7)||(val.val<0)){
-					SMC_MSG(NULL, "mmc%d's input %s wrong,use default dly %d\n", i, str_buf, mmcinfo->mmc_clk_dly[k].sclk_dly);
+					//SMC_MSG(NULL, "mmc%d's input %s wrong,use default dly %d\n", i, str_buf, mmcinfo->mmc_clk_dly[k].sclk_dly);
 				}else{
 					mmcinfo->mmc_clk_dly[k].sclk_dly = val.val;
 					SMC_MSG(NULL, "get mmc%d's %s ok,sclk_dly %d\n", i, str_buf, mmcinfo->mmc_clk_dly[k].sclk_dly);
 				}
 			}
 		}
-		/***************get dly information end*****************/
-
 	}
 
 
@@ -3561,8 +3805,7 @@ static int __init sunxi_mci_init(void)
 
 	SMC_MSG(NULL, "%s\n", DRIVER_VERSION);
 
-	SMC_MSG(NULL, "sunxi_mci_init\n");
-	/* get devices information from sys_config1.fex */
+	/* get devices information from sys_config.fex */
 	if (sunxi_mci_get_devinfo()) {
 		SMC_MSG(NULL, "parse sys_cofnig.fex info failed\n");
 		return 0;

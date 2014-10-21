@@ -82,7 +82,9 @@ struct cpufreq_interactive_tunables {
 #if defined(CONFIG_ARCH_SUN9IW1P1)
 	#define DEFAULT_HISPEED_FREQ_BIG        (1296000)
 	#define DEFAULT_HISPEED_FREQ_LITTLE      (864000)
-#elif defined(CONFIG_ARCH_SUN8IW5P1)
+#elif defined(CONFIG_ARCH_SUN8IW6P1)
+	#define DEFAULT_HISPEED_FREQ_LITTLE      (864000)
+#elif defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW8P1)
 	#define DEFAULT_HISPEED_FREQ_LITTLE      (648000)
 #endif
 
@@ -132,7 +134,9 @@ struct cpufreq_interactive_tunables {
 #if defined(CONFIG_ARCH_SUN9IW1P1)
 	#define DEFAULT_INPUT_EVENT_FRFQ_BIG       (1296000)
 	#define DEFAULT_INPUT_EVENT_FRFQ_LITTLE    (1008000)
-#elif defined(CONFIG_ARCH_SUN8IW5P1)
+#elif defined(CONFIG_ARCH_SUN8IW6P1)
+	#define DEFAULT_INPUT_EVENT_FRFQ_LITTLE    (1008000)
+#elif defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW8P1)
 	#define DEFAULT_INPUT_EVENT_FRFQ_LITTLE     (816000)
 #endif
 
@@ -1511,7 +1515,7 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 			tunables->input_event_freq = DEFAULT_INPUT_EVENT_FRFQ_BIG;
 		else if (cpumask_test_cpu(policy->cpu, &interactive_slow_cpus))
 			tunables->input_event_freq = DEFAULT_INPUT_EVENT_FRFQ_LITTLE;
-#elif defined(CONFIG_ARCH_SUN8IW5P1)
+#elif defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1) || defined(CONFIG_ARCH_SUN8IW8P1)
 		tunables->input_event_freq = DEFAULT_INPUT_EVENT_FRFQ_LITTLE;
 #endif
 
@@ -1558,7 +1562,7 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 				tunables->hispeed_freq = DEFAULT_HISPEED_FREQ_BIG;
 			else if (cpumask_test_cpu(policy->cpu, &interactive_slow_cpus))
 				tunables->hispeed_freq = DEFAULT_HISPEED_FREQ_LITTLE;
-#elif defined(CONFIG_ARCH_SUN8IW5P1)
+#elif defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1) || defined(CONFIG_ARCH_SUN8IW8P1)
 			tunables->hispeed_freq = DEFAULT_HISPEED_FREQ_LITTLE;
 #endif
 		}

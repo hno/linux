@@ -18,16 +18,22 @@
 
 #ifdef CONFIG_ARCH_SUN9I
 #define TDM_NAME "s_i2s1"
+#elif defined CONFIG_ARCH_SUN8IW7
+#define TDM_NAME "pcm0"
 #else
 #define TDM_NAME "tdm0"
 #endif
 
 /*------------------------------------------------------------*/
 /* REGISTER definition */
-#ifdef CONFIG_ARCH_SUN9I
+#if defined CONFIG_ARCH_SUN9I
 #define SUNXI_DAUDIOBASE 							(0x08006000)
-#else
-	#define SUNXI_DAUDIOBASE 						(0x01c23000)
+#endif
+#if defined (CONFIG_ARCH_SUN8IW8) || defined (CONFIG_ARCH_SUN8IW7)
+#define SUNXI_DAUDIOBASE 							(0x01c22000)
+#endif
+#if defined CONFIG_ARCH_SUN8IW6
+#define SUNXI_DAUDIOBASE 						(0x01c23000)
 #endif
 	#define SUNXI_DAUDIOCTL 	  					(0x00)
 	#define SUNXI_DAUDIOCTL_BCLKOUT					(1<<18)

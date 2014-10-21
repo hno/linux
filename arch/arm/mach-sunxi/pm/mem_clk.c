@@ -139,9 +139,10 @@ __s32 mem_clk_setdiv(struct clk_div_t *clk_div)
 	//set ahb1/apb1 clock divide ratio
 	//first, config ratio; 
 	*(volatile __u32 *)(&CmuReg->Ahb1Div) = (((clk_div->ahb_apb_div)&(~0x3000)) | (0x1000));
-	delay_us(10);
+	delay_us(5);
 	//sec, config src.
 	*(volatile __u32 *)(&CmuReg->Ahb1Div) = (clk_div->ahb_apb_div);
+	delay_us(5);
 	//notice: pll6 is enabled by cpus.
 	//the relationship between pll6&mbus&dram?
 
@@ -265,9 +266,15 @@ __s32 mem_clk_set_misc(struct clk_misc_t *clk_misc)
 #endif
 
 #ifdef CONFIG_ARCH_SUN8IW6P1
-	CmuReg->PllxBias[6]	=	clk_misc->Pll_C1_Bias;	 
+	CmuReg->PllC1CpuxBias	=	clk_misc->Pll_C1_Bias;	 
 	CmuReg->PllC1Tun	=	clk_misc->PllC1Tun;	
 	CmuReg->PllC1Ctl	=	clk_misc->PllC1Ctl;	
+	CmuReg->PllVideo0Bias		= clk_misc->PllVideo0Bias			;           //0x228,  pll vedio bias reg
+	CmuReg->PllVeBias		= clk_misc->PllVeBias				;           //0x22c,  pll ve    bias reg
+	CmuReg->PllVideo0Reg0Pattern		= clk_misc->PllVideo0Reg0Pattern			;           //0x288,  pll vedio pattern reg
+	CmuReg->PllVideo0Reg1Pattern		= clk_misc->PllVideo0Reg1Pattern			;           //0x288,  pll vedio pattern reg
+	CmuReg->Pll3Ctl			= clk_misc->Pll3Ctl				;	    //0x10, vedio
+	CmuReg->Pll4Ctl			= clk_misc->Pll4Ctl				;	    //0x18, ve
 #endif	
 
 	//config axi ratio to 1+1 = 2;
@@ -297,9 +304,15 @@ __s32 mem_clk_get_misc(struct clk_misc_t *clk_misc)
 	clk_misc->pll1_tun	=	CmuReg->Pll1Tun;	
 
 #ifdef CONFIG_ARCH_SUN8IW6P1
-	clk_misc->Pll_C1_Bias	=	CmuReg->PllxBias[6];	 
-	clk_misc->PllC1Tun	=	CmuReg->PllC1Tun;	
-	clk_misc->PllC1Ctl	=	CmuReg->PllC1Ctl;	
+	clk_misc->Pll_C1_Bias		=	CmuReg->PllC1CpuxBias;	 
+	clk_misc->PllC1Tun		=	CmuReg->PllC1Tun;	
+	clk_misc->PllC1Ctl		=	CmuReg->PllC1Ctl;	
+	clk_misc->PllVideo0Bias		= CmuReg->PllVideo0Bias			;           //0x228,  pll video bias reg
+	clk_misc->PllVeBias		= CmuReg->PllVeBias			;           //0x22c,  pll ve    bias reg
+	clk_misc->PllVideo0Reg0Pattern	= CmuReg->PllVideo0Reg0Pattern		;           //0x288,  pll video pattern reg
+	clk_misc->PllVideo0Reg1Pattern	= CmuReg->PllVideo0Reg1Pattern		;           //0x288,  pll video pattern reg
+	clk_misc->Pll3Ctl		= CmuReg->Pll3Ctl			;           //0x10, video
+	clk_misc->Pll4Ctl		= CmuReg->Pll4Ctl			;           //0x18, ve
 #endif	
 	
 #ifdef CONFIG_ARCH_SUN8IW5P1	
@@ -401,6 +414,8 @@ __u32 mem_clk_get_cpu_freq(void)
 #ifdef CONFIG_ARCH_SUN9IW1P1
 static AXI0_CFG_REG_t CmuReg_Axi0_Cfg_tmp;
 static PLL_C0_CFG_REG_t CmuReg_Pll_C0_Cfg_tmp;
+static AXI1_CFG_REG_t CmuReg_Axi1_Cfg_tmp;
+static PLL_C1_CFG_REG_t CmuReg_Pll_C1_Cfg_tmp;
 static CPU_CLK_SRC_REG_t CmuReg_Cpu_Clk_Src_tmp;
 #define MCTL_COM_BASE   0xf1c62000
 #define MC_RMCR         (MCTL_COM_BASE + 0x10)
@@ -728,7 +743,13 @@ __s32 mem_clk_setdiv(struct clk_div_t *clk_div)
 	CmuReg = (__ccmu_reg_list_t *)(AW_CCM_BASE);
 
 	//restore axi division.
-	*(volatile __u32 *)&CmuReg->Axi0_Cfg    = clk_div->Axi0_Cfg	;  
+	if(get_cur_cluster_id()){
+	    *(volatile __u32 *)&CmuReg->Axi1_Cfg    = clk_div->Axi1_Cfg	;  
+	}else{
+	    *(volatile __u32 *)&CmuReg->Axi0_Cfg    = clk_div->Axi0_Cfg	;  
+	}
+	asm volatile ("dsb");
+	asm volatile ("isb");
 	
 	return 0;
 }
@@ -751,8 +772,11 @@ __s32 mem_clk_getdiv(struct clk_div_t  *clk_div)
 	}
 	CmuReg = (__ccmu_reg_list_t *)IO_ADDRESS(AW_CCM_BASE);
 	    
-	clk_div->Axi0_Cfg	=	*(volatile __u32 *)&CmuReg->Axi0_Cfg;           
-     
+	if(get_cur_cluster_id()){
+	    clk_div->Axi1_Cfg	=	*(volatile __u32 *)&CmuReg->Axi1_Cfg;           
+	}else{
+	    clk_div->Axi0_Cfg	=	*(volatile __u32 *)&CmuReg->Axi0_Cfg;           
+	}
 	return 0;
 }
 
@@ -772,12 +796,19 @@ __s32 mem_clk_getdiv(struct clk_div_t  *clk_div)
 __s32 mem_clk_set_pll_factor(struct pll_factor_t *pll_factor)
 {
 	CmuReg = (__ccmu_reg_list_t *)(AW_CCM_BASE);
-	CmuReg_Pll_C0_Cfg_tmp.dwval = CmuReg->Pll_C0_Cfg.dwval;
-	//set pll factor: notice: when raise freq, N must be the last to set
-	CmuReg_Pll_C0_Cfg_tmp.bits.pll_postdiv_m	= pll_factor->FactorM;
-	CmuReg_Pll_C0_Cfg_tmp.bits.pll_out_ext_divp	= pll_factor->FactorP;
-	CmuReg_Pll_C0_Cfg_tmp.bits.pll_factor_n		= pll_factor->FactorN;
-	CmuReg->Pll_C0_Cfg.dwval = CmuReg_Pll_C0_Cfg_tmp.dwval;
+	if(get_cur_cluster_id()){
+	    CmuReg_Pll_C1_Cfg_tmp.dwval = CmuReg->Pll_C1_Cfg.dwval;
+	    //set pll factor: notice: when raise freq, N must be the last to set
+	    CmuReg_Pll_C1_Cfg_tmp.bits.pll_postdiv_m	= pll_factor->FactorM;
+	    CmuReg_Pll_C1_Cfg_tmp.bits.pll_out_ext_divp	= pll_factor->FactorP;
+	    CmuReg_Pll_C1_Cfg_tmp.bits.pll_factor_n		= pll_factor->FactorN;
+	    CmuReg->Pll_C1_Cfg.dwval = CmuReg_Pll_C1_Cfg_tmp.dwval;
+	}else{
+	    CmuReg_Pll_C0_Cfg_tmp.bits.pll_postdiv_m	= pll_factor->FactorM;
+	    CmuReg_Pll_C0_Cfg_tmp.bits.pll_out_ext_divp	= pll_factor->FactorP;
+	    CmuReg_Pll_C0_Cfg_tmp.bits.pll_factor_n		= pll_factor->FactorN;
+	    CmuReg->Pll_C0_Cfg.dwval = CmuReg_Pll_C0_Cfg_tmp.dwval;
+	}	
 	
 	return 0;
 }
@@ -797,10 +828,17 @@ __s32 mem_clk_set_pll_factor(struct pll_factor_t *pll_factor)
 __s32 mem_clk_get_pll_factor(struct pll_factor_t *pll_factor)
 {
 	CmuReg = (__ccmu_reg_list_t *)IO_ADDRESS(AW_CCM_BASE);
-	CmuReg_Pll_C0_Cfg_tmp.dwval = CmuReg->Pll_C0_Cfg.dwval;
-	pll_factor->FactorN = CmuReg_Pll_C0_Cfg_tmp.bits.pll_factor_n;
-	pll_factor->FactorM = CmuReg_Pll_C0_Cfg_tmp.bits.pll_postdiv_m;
-	pll_factor->FactorP = CmuReg_Pll_C0_Cfg_tmp.bits.pll_out_ext_divp;
+	if(get_cur_cluster_id()){
+	    CmuReg_Pll_C1_Cfg_tmp.dwval = CmuReg->Pll_C1_Cfg.dwval;
+	    pll_factor->FactorN = CmuReg_Pll_C1_Cfg_tmp.bits.pll_factor_n;
+	    pll_factor->FactorM = CmuReg_Pll_C1_Cfg_tmp.bits.pll_postdiv_m;
+	    pll_factor->FactorP = CmuReg_Pll_C1_Cfg_tmp.bits.pll_out_ext_divp;
+	}else{
+	    CmuReg_Pll_C0_Cfg_tmp.dwval = CmuReg->Pll_C0_Cfg.dwval;
+	    pll_factor->FactorN = CmuReg_Pll_C0_Cfg_tmp.bits.pll_factor_n;
+	    pll_factor->FactorM = CmuReg_Pll_C0_Cfg_tmp.bits.pll_postdiv_m;
+	    pll_factor->FactorP = CmuReg_Pll_C0_Cfg_tmp.bits.pll_out_ext_divp;
+	}	
 	
 	return 0;
 }
@@ -834,7 +872,12 @@ __s32 mem_clk_set_misc(struct clk_misc_t *clk_misc)
 	CmuReg->Pll_Video1_Pat_Cfg.dwval= clk_misc->Pll_Video1_Pat_Cfg    	;       //0x0118
 	CmuReg->Pll_Video2_Pat_Cfg.dwval= clk_misc->Pll_Video2_Pat_Cfg    	;       //0x011c
 	//3rd: cfg
-	CmuReg->Pll_C1_Cfg.dwval	= clk_misc->Pll_C1_Cfg     	  	;    	//0x0004
+
+	if(get_cur_cluster_id()){
+	    CmuReg->Pll_C0_Cfg.dwval	= clk_misc->Pll_C0_Cfg     	  	;    	//0x0000
+	}else{
+	    CmuReg->Pll_C1_Cfg.dwval	= clk_misc->Pll_C1_Cfg     	  	;    	//0x0004
+	}
 	CmuReg->Pll_Video1_Cfg.dwval	= clk_misc->Pll_Video1_Cfg     	  	;    	//0x0018
 	CmuReg->Pll_Video2_Cfg.dwval	= clk_misc->Pll_Video2_Cfg    	  	;    	//0x001c
 
@@ -842,9 +885,33 @@ __s32 mem_clk_set_misc(struct clk_misc_t *clk_misc)
 	//need set axi division before change pll1 to 408M, 
 	//config axi ratio to 1+1 = 2;
 	//axi can not exceed 300M;
-	CmuReg_Axi0_Cfg_tmp.dwval = CmuReg->Axi0_Cfg.dwval;
-	CmuReg_Axi0_Cfg_tmp.bits.axi0_clk_div_ratio = 1;
-	CmuReg->Axi0_Cfg.dwval = CmuReg_Axi0_Cfg_tmp.dwval;
+	//need to update axi divide ratio.
+	if(get_cur_cluster_id()){
+	    *(volatile __u32 *)&CmuReg->Axi1_Cfg = 0x102; //atb=2; axi div = 3;
+	}else{
+	    *(volatile __u32 *)&CmuReg->Axi0_Cfg = 0x102; //atb=2; axi div = 3;
+	}
+	asm volatile ("dsb");
+	asm volatile ("isb");
+	
+	if(get_cur_cluster_id()){
+	    *(volatile __u32 *)&CmuReg->Axi1_Cfg = 0x203; //atb=4; axi div = 4;
+	}else{
+	    *(volatile __u32 *)&CmuReg->Axi0_Cfg = 0x203; //atb=4; axi div = 4;
+	}
+	asm volatile ("dsb");
+	asm volatile ("isb");
+	
+	if(get_cur_cluster_id()){
+	    CmuReg_Axi1_Cfg_tmp.dwval = CmuReg->Axi1_Cfg.dwval;
+	    CmuReg_Axi1_Cfg_tmp.bits.axi1_clk_div_ratio = 1;
+	    CmuReg->Axi1_Cfg.dwval = CmuReg_Axi1_Cfg_tmp.dwval;
+	}else{
+	    CmuReg_Axi0_Cfg_tmp.dwval = CmuReg->Axi0_Cfg.dwval;
+	    CmuReg_Axi0_Cfg_tmp.bits.axi0_clk_div_ratio = 1;
+	    CmuReg->Axi0_Cfg.dwval = CmuReg_Axi0_Cfg_tmp.dwval;
+	}
+
 	return 0;
 }
 
@@ -873,6 +940,7 @@ __s32 mem_clk_get_misc(struct clk_misc_t *clk_misc)
 	clk_misc->Pll_C1_Tun            = 	CmuReg->Pll_C1_Tun.dwval	;       //0x00e4
 	clk_misc->Pll_Video1_Pat_Cfg    = 	CmuReg->Pll_Video1_Pat_Cfg.dwval;       //0x0118
 	clk_misc->Pll_Video2_Pat_Cfg    = 	CmuReg->Pll_Video2_Pat_Cfg.dwval;       //0x011c
+	clk_misc->Pll_C0_Cfg     	= 	CmuReg->Pll_C0_Cfg.dwval	;    	//0x0000
 	clk_misc->Pll_C1_Cfg     	= 	CmuReg->Pll_C1_Cfg.dwval	;    	//0x0004
 	clk_misc->Pll_Video1_Cfg     	= 	CmuReg->Pll_Video1_Cfg.dwval	;    	//0x0018
 	clk_misc->Pll_Video2_Cfg    	= 	CmuReg->Pll_Video2_Cfg.dwval	;    	//0x001c
@@ -893,29 +961,43 @@ __s32 mem_clk_get_misc(struct clk_misc_t *clk_misc)
 */
 __u32 mem_clk_get_cpu_freq(void)
 {
-	__u32 FactorN  = 1;
-	__u32 FactorK  = 1;
-	__u32 FactorM  = 1;
-	__u32 FactorP  = 1;
-	__u32 reg_val  = 0;
-	__u32 cpu_freq = 0;
-	
-	CmuReg_Cpu_Clk_Src_tmp.dwval = CmuReg->Cpu_Clk_Src.dwval;
-	//get runtime freq: clk src + divider ratio
-	//src selection
-	reg_val = CmuReg_Cpu_Clk_Src_tmp.bits.cpu_c0_clk_src_sel;
-	if(0 == reg_val){
-	    //hosc, 24Mhz
-	    cpu_freq = 24000; 			//unit is khz
-	}else if(1 == reg_val){
+    __u32 FactorN  = 1;
+    __u32 FactorK  = 1;
+    __u32 FactorM  = 1;
+    __u32 FactorP  = 1;
+    __u32 reg_val  = 0;
+    __u32 cpu_freq = 0;
+
+    CmuReg_Cpu_Clk_Src_tmp.dwval = CmuReg->Cpu_Clk_Src.dwval;
+    //get runtime freq: clk src + divider ratio
+    //src selection
+    if(get_cur_cluster_id()){
+	reg_val = CmuReg_Cpu_Clk_Src_tmp.bits.cpu_c1_clk_src_sel;
+    }else{
+	    reg_val = CmuReg_Cpu_Clk_Src_tmp.bits.cpu_c0_clk_src_sel;
+	}
+
+    if(0 == reg_val){
+	//hosc, 24Mhz
+	cpu_freq = 24000; 			//unit is khz
+    }else if(1 == reg_val){
+	if(get_cur_cluster_id()){
+	    CmuReg_Pll_C1_Cfg_tmp.dwval = CmuReg->Pll_C1_Cfg.dwval;
+	    FactorN = CmuReg_Pll_C1_Cfg_tmp.bits.pll_factor_n;
+	    FactorM = (CmuReg_Pll_C1_Cfg_tmp.bits.pll_postdiv_m) + 1;
+	    FactorP = (0==CmuReg_Pll_C1_Cfg_tmp.bits.pll_out_ext_divp)?1:4;
+	}else{
 	    CmuReg_Pll_C0_Cfg_tmp.dwval = CmuReg->Pll_C0_Cfg.dwval;
 	    FactorN = CmuReg_Pll_C0_Cfg_tmp.bits.pll_factor_n;
 	    FactorM = (CmuReg_Pll_C0_Cfg_tmp.bits.pll_postdiv_m) + 1;
 	    FactorP = (0==CmuReg_Pll_C0_Cfg_tmp.bits.pll_out_ext_divp)?1:4;
-	    cpu_freq = raw_lib_udiv(24000*FactorN*FactorK, FactorP*FactorM);
 	}
-	//printk("cpu_freq = dec(%d). \n", cpu_freq);
+	cpu_freq = raw_lib_udiv(24000*FactorN*FactorK, FactorP*FactorM);
+    }
+    asm volatile ("dsb");
+    asm volatile ("isb");
+    //printk("cpu_freq = dec(%d). \n", cpu_freq);
 
-	return cpu_freq;
+    return cpu_freq;
 }
 #endif

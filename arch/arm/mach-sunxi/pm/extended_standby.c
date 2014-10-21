@@ -43,8 +43,8 @@ static bool calculate_pll(int index, scene_extended_standby_t *standby_data)
 
 	switch (index) {
 	case 0: /* PLL1 */
-		dividend = standby_data->pll_factor[index].n * standby_data->pll_factor[index].k;
-		divisor = standby_data->pll_factor[index].m * standby_data->pll_factor[index].p;
+		dividend = standby_data->extended_standby_data.pll_factor[index].n * standby_data->extended_standby_data.pll_factor[index].k;
+		divisor = standby_data->extended_standby_data.pll_factor[index].m * standby_data->extended_standby_data.pll_factor[index].p;
 		standby_rate = do_div(dividend, divisor);
 
 		dividend = temp_standby_data.pll_factor[index].n * temp_standby_data.pll_factor[index].k;
@@ -55,8 +55,8 @@ static bool calculate_pll(int index, scene_extended_standby_t *standby_data)
 		else
 			return false;
 	case 1: /* PLL2 */
-		dividend = standby_data->pll_factor[index].n;
-		divisor = standby_data->pll_factor[index].m * standby_data->pll_factor[index].p;
+		dividend = standby_data->extended_standby_data.pll_factor[index].n;
+		divisor = standby_data->extended_standby_data.pll_factor[index].m * standby_data->extended_standby_data.pll_factor[index].p;
 		standby_rate =  do_div(dividend, divisor);
 
 		dividend = temp_standby_data.pll_factor[index].n;
@@ -68,8 +68,8 @@ static bool calculate_pll(int index, scene_extended_standby_t *standby_data)
 			return false;
 	case 4: /* PLL5 */
 	case 8: /* MIPI */
-		dividend = standby_data->pll_factor[index].n * standby_data->pll_factor[index].k;
-		divisor = standby_data->pll_factor[index].m;
+		dividend = standby_data->extended_standby_data.pll_factor[index].n * standby_data->extended_standby_data.pll_factor[index].k;
+		divisor = standby_data->extended_standby_data.pll_factor[index].m;
 		standby_rate = do_div(dividend, divisor);
 
 		dividend = temp_standby_data.pll_factor[index].n * temp_standby_data.pll_factor[index].k;
@@ -80,7 +80,7 @@ static bool calculate_pll(int index, scene_extended_standby_t *standby_data)
 		else
 			return false;
 	case 5: /* PLL6 */
-		dividend = standby_data->pll_factor[index].n * standby_data->pll_factor[index].k;
+		dividend = standby_data->extended_standby_data.pll_factor[index].n * standby_data->extended_standby_data.pll_factor[index].k;
 		divisor = 2;
 		standby_rate = do_div(dividend, divisor);
 
@@ -96,8 +96,8 @@ static bool calculate_pll(int index, scene_extended_standby_t *standby_data)
 	case 7: /* PLL8 */
 	case 9: /* PLL9 */
 	case 10: /* PLL10 */
-		dividend = standby_data->pll_factor[index].n;
-		divisor = standby_data->pll_factor[index].m;
+		dividend = standby_data->extended_standby_data.pll_factor[index].n;
+		divisor = standby_data->extended_standby_data.pll_factor[index].m;
 		standby_rate = do_div(dividend, divisor);
 
 		dividend = temp_standby_data.pll_factor[index].n;
@@ -116,12 +116,12 @@ static bool calculate_bus(int index, scene_extended_standby_t *standby_data)
 {
 	switch (index) {
 	case 0: /* APB2 */
-		if(standby_data->bus_factor[index].src > temp_standby_data.bus_factor[index].src)
+		if(standby_data->extended_standby_data.bus_factor[index].src > temp_standby_data.bus_factor[index].src)
 			return true;
 		else
 			return false;
 	case 2: /* AHB1 */
-		if(standby_data->bus_factor[index].src > temp_standby_data.bus_factor[index].src)
+		if(standby_data->extended_standby_data.bus_factor[index].src > temp_standby_data.bus_factor[index].src)
 			return true;
 		else
 			return false;
@@ -140,8 +140,8 @@ static bool calculate_pll(int index, scene_extended_standby_t *standby_data)
 
 	switch (index) {
 	case 1: /* PLL2 */
-		dividend = standby_data->pll_factor[index].n;
-		divisor = standby_data->pll_factor[index].m * standby_data->pll_factor[index].p;
+		dividend = standby_data->extended_standby_data.pll_factor[index].n;
+		divisor = standby_data->extended_standby_data.pll_factor[index].m * standby_data->extended_standby_data.pll_factor[index].p;
 		standby_rate =  do_div(dividend, divisor);
 
 		dividend = temp_standby_data.pll_factor[index].n;
@@ -154,8 +154,8 @@ static bool calculate_pll(int index, scene_extended_standby_t *standby_data)
 	case 0: /* PLL1 */
 	case 4: /* PLL5 */
 	case 8: /* MIPI */
-		dividend = standby_data->pll_factor[index].n * standby_data->pll_factor[index].k;
-		divisor = standby_data->pll_factor[index].m;
+		dividend = standby_data->extended_standby_data.pll_factor[index].n * standby_data->extended_standby_data.pll_factor[index].k;
+		divisor = standby_data->extended_standby_data.pll_factor[index].m;
 		standby_rate = do_div(dividend, divisor);
 
 		dividend = temp_standby_data.pll_factor[index].n * temp_standby_data.pll_factor[index].k;
@@ -166,7 +166,7 @@ static bool calculate_pll(int index, scene_extended_standby_t *standby_data)
 		else
 			return false;
 	case 5: /* PLL6 */
-		dividend = standby_data->pll_factor[index].n * standby_data->pll_factor[index].k;
+		dividend = standby_data->extended_standby_data.pll_factor[index].n * standby_data->extended_standby_data.pll_factor[index].k;
 		divisor = 2;
 		standby_rate = do_div(dividend, divisor);
 
@@ -182,8 +182,8 @@ static bool calculate_pll(int index, scene_extended_standby_t *standby_data)
 	case 7: /* PLL8 */
 	case 9: /* PLL9 */
 	case 10: /* PLL10 */
-		dividend = standby_data->pll_factor[index].n;
-		divisor = standby_data->pll_factor[index].m;
+		dividend = standby_data->extended_standby_data.pll_factor[index].n;
+		divisor = standby_data->extended_standby_data.pll_factor[index].m;
 		standby_rate = do_div(dividend, divisor);
 
 		dividend = temp_standby_data.pll_factor[index].n;
@@ -202,12 +202,12 @@ static bool calculate_bus(int index, scene_extended_standby_t *standby_data)
 {
 	switch (index) {
 	case 0: /* APB2 */
-		if(standby_data->bus_factor[index].src > temp_standby_data.bus_factor[index].src)
+		if(standby_data->extended_standby_data.bus_factor[index].src > temp_standby_data.bus_factor[index].src)
 			return true;
 		else
 			return false;
 	case 2: /* AHB1 */
-		if(standby_data->bus_factor[index].src > temp_standby_data.bus_factor[index].src)
+		if(standby_data->extended_standby_data.bus_factor[index].src > temp_standby_data.bus_factor[index].src)
 			return true;
 		else
 			return false;
@@ -216,6 +216,108 @@ static bool calculate_bus(int index, scene_extended_standby_t *standby_data)
 		return true;
 	}
 }
+#elif defined CONFIG_ARCH_SUN9IW1P1
+static bool calculate_pll(int index, scene_extended_standby_t *standby_data)
+{
+	__u32 standby_rate;
+	__u32 temp_standby_rata;
+	__u32 dividend;
+	__u32 divisor;
+
+	switch (index) {
+	case 0: /* PLL1 PLL_C0CPUX=24M*N/P */
+	case 1: /* PLL2 PLL_C1CPUX */
+		dividend = standby_data->extended_standby_data.pll_factor[index].n;
+		divisor = standby_data->extended_standby_data.pll_factor[index].p;
+		standby_rate =  do_div(dividend, divisor);
+
+		dividend = temp_standby_data.pll_factor[index].n;
+		divisor = temp_standby_data.pll_factor[index].p;
+		temp_standby_rata = do_div(dividend, divisor);
+		if (standby_rate > temp_standby_rata)
+			return true;
+		else
+			return false;
+	case 2: /* PLL3 PLL_Audio=24M*N/(input_div+1)/(output_div+1)/(P+1) */
+		dividend = standby_data->extended_standby_data.pll_factor[index].n;
+		divisor = (standby_data->extended_standby_data.pll_factor[index].divi+1) * \
+			(standby_data->extended_standby_data.pll_factor[index].divo+1) * (standby_data->extended_standby_data.pll_factor[index].p+1);
+		standby_rate =  do_div(dividend, divisor);
+
+		dividend = temp_standby_data.pll_factor[index].n;
+		divisor = (temp_standby_data.pll_factor[index].divi+1) * \
+			(temp_standby_data.pll_factor[index].divo+1) * (temp_standby_data.pll_factor[index].p+1);
+		temp_standby_rata = do_div(dividend, divisor);
+		if (standby_rate > temp_standby_rata)
+			return true;
+		else
+			return false;
+	case 3:  /* PLL4  PLL_peri0=24M*N/(input_div+1)/(output_div+1) */
+	case 4:  /* PLL5  PLL_VE    */
+	case 5:  /* PLL6  PLL_DDR   */
+	case 8:  /* PLL9  PLL_GPU   */
+	case 9:  /* PLL10 PLL_DE    */
+	case 10: /* pLL11 PLL_ISP   */
+	case 11: /* PLL12 PLL_peri1 */
+		dividend = standby_data->extended_standby_data.pll_factor[index].n;
+		divisor = (standby_data->extended_standby_data.pll_factor[index].divi+1) * (standby_data->extended_standby_data.pll_factor[index].divo+1);
+		standby_rate = do_div(dividend, divisor);
+
+		dividend = temp_standby_data.pll_factor[index].n;
+		divisor = (temp_standby_data.pll_factor[index].divi+1) * (temp_standby_data.pll_factor[index].divo+1);
+		temp_standby_rata = do_div(dividend, divisor);
+		if (standby_rate > temp_standby_rata)
+			return true;
+		else
+			return false;
+	case 6: /* PLL7 PLL_Video0=24M*N/(input_div+1) */
+		dividend = standby_data->extended_standby_data.pll_factor[index].n;
+		divisor = (standby_data->extended_standby_data.pll_factor[index].divi+1);
+		standby_rate = do_div(dividend, divisor);
+
+		dividend = temp_standby_data.pll_factor[index].n;
+		divisor = (temp_standby_data.pll_factor[index].divi+1);
+		temp_standby_rata = do_div(dividend, divisor);
+		if (standby_rate > temp_standby_rata)
+			return true;
+		else
+			return false;
+	case 7: /* PLL8 PLL_Video1=24M*N/(input_div+1)/P */
+		dividend = standby_data->extended_standby_data.pll_factor[index].n;
+		divisor = (standby_data->extended_standby_data.pll_factor[index].divi+1) * standby_data->extended_standby_data.pll_factor[index].p;
+		standby_rate =  do_div(dividend, divisor);
+
+		dividend = temp_standby_data.pll_factor[index].n;
+		divisor = (temp_standby_data.pll_factor[index].divi+1) * temp_standby_data.pll_factor[index].p;
+		temp_standby_rata = do_div(dividend, divisor);
+		if (standby_rate > temp_standby_rata)
+			return true;
+		else
+			return false;
+	default:
+		return true;
+	}
+}
+
+static bool calculate_bus(int index, scene_extended_standby_t *standby_data)
+{
+	switch (index) {
+	case 0: /* APB2 */
+		if(standby_data->extended_standby_data.bus_factor[index].src > temp_standby_data.bus_factor[index].src)
+			return true;
+		else
+			return false;
+	case 2: /* AHB1 */
+		if(standby_data->extended_standby_data.bus_factor[index].src > temp_standby_data.bus_factor[index].src)
+			return true;
+		else
+			return false;
+		break;
+	default:
+		return true;
+	}
+}
+
 #else
 static bool calculate_pll(int index, scene_extended_standby_t *standby_data)
 {
@@ -244,52 +346,53 @@ static int copy_extended_standby_data(scene_extended_standby_t *standby_data)
 		memset(&temp_standby_data.pll_factor, 0, sizeof(temp_standby_data.pll_factor));
 		memset(&temp_standby_data.bus_factor, 0, sizeof(temp_standby_data.bus_factor));
 	} else {
-		if ((0 != temp_standby_data.id) && (!((standby_data->id) & (temp_standby_data.id)))) {
-			temp_standby_data.id |= standby_data->id;
-			temp_standby_data.pwr_dm_en |= standby_data->pwr_dm_en;
-			temp_standby_data.osc_en |= standby_data->osc_en;
-			temp_standby_data.init_pll_dis &= standby_data->init_pll_dis;
-			temp_standby_data.exit_pll_en |= standby_data->exit_pll_en;
-			if (0 != standby_data->pll_change) {
+		if ((0 != temp_standby_data.id) && (!((standby_data->extended_standby_data.id) & (temp_standby_data.id)))) {
+			temp_standby_data.id |= standby_data->extended_standby_data.id;
+			temp_standby_data.pwr_dm_en |= standby_data->extended_standby_data.pwr_dm_en;
+			temp_standby_data.osc_en |= standby_data->extended_standby_data.osc_en;
+			temp_standby_data.init_pll_dis &= standby_data->extended_standby_data.init_pll_dis;
+			temp_standby_data.exit_pll_en |= standby_data->extended_standby_data.exit_pll_en;
+			if (0 != standby_data->extended_standby_data.pll_change) {
 				for (i=0; i<PLL_NUM; i++) {
-					if (standby_data->pll_change & (0x1<<i)) {
+					if (standby_data->extended_standby_data.pll_change & (0x1<<i)) {
 						if (!(temp_standby_data.pll_change & (0x1<<i)))
-							temp_standby_data.pll_factor[i] = standby_data->pll_factor[i];
+							temp_standby_data.pll_factor[i] = standby_data->extended_standby_data.pll_factor[i];
 						else if(calculate_pll(i, standby_data))
-							temp_standby_data.pll_factor[i] = standby_data->pll_factor[i];
+							temp_standby_data.pll_factor[i] = standby_data->extended_standby_data.pll_factor[i];
 					}
 				}
-				temp_standby_data.pll_change |= standby_data->pll_change;
+				temp_standby_data.pll_change |= standby_data->extended_standby_data.pll_change;
 			}
-			if (0 != standby_data->bus_change) {
+			if (0 != standby_data->extended_standby_data.bus_change) {
 				for (i=0; i<BUS_NUM; i++) {
-					if (standby_data->bus_change & (0x1<<i)) {
+					if (standby_data->extended_standby_data.bus_change & (0x1<<i)) {
 						if (!(temp_standby_data.bus_change & (0x1<<i)))
-							temp_standby_data.bus_factor[i] = standby_data->bus_factor[i];
+							temp_standby_data.bus_factor[i] = standby_data->extended_standby_data.bus_factor[i];
 						else if(calculate_bus(i, standby_data))
-							temp_standby_data.bus_factor[i] = standby_data->bus_factor[i];
+							temp_standby_data.bus_factor[i] = standby_data->extended_standby_data.bus_factor[i];
 					}
 				}
-				temp_standby_data.bus_change |= standby_data->bus_change;
+				temp_standby_data.bus_change |= standby_data->extended_standby_data.bus_change;
 			}
 		} else if ((0 == temp_standby_data.id)) {
-			temp_standby_data.id = standby_data->id;
-			temp_standby_data.pwr_dm_en = standby_data->pwr_dm_en;
-			temp_standby_data.osc_en = standby_data->osc_en;
-			temp_standby_data.init_pll_dis = standby_data->init_pll_dis;
-			temp_standby_data.exit_pll_en = standby_data->exit_pll_en;
-			temp_standby_data.pll_change = standby_data->pll_change;
-			if (0 != standby_data->pll_change) {
+
+			temp_standby_data.id = standby_data->extended_standby_data.id;
+			temp_standby_data.pwr_dm_en = standby_data->extended_standby_data.pwr_dm_en;
+			temp_standby_data.osc_en = standby_data->extended_standby_data.osc_en;
+			temp_standby_data.init_pll_dis = standby_data->extended_standby_data.init_pll_dis;
+			temp_standby_data.exit_pll_en = standby_data->extended_standby_data.exit_pll_en;
+			temp_standby_data.pll_change = standby_data->extended_standby_data.pll_change;
+			if (0 != standby_data->extended_standby_data.pll_change) {
 				for (i=0; i<PLL_NUM; i++) {
-					temp_standby_data.pll_factor[i] = standby_data->pll_factor[i];
+					temp_standby_data.pll_factor[i] = standby_data->extended_standby_data.pll_factor[i];
 				}
 			} else
 				memset(&temp_standby_data.pll_factor, 0, sizeof(temp_standby_data.pll_factor));
 
-			temp_standby_data.bus_change = standby_data->bus_change;
-			if (0 != standby_data->bus_change) {
+			temp_standby_data.bus_change = standby_data->extended_standby_data.bus_change;
+			if (0 != standby_data->extended_standby_data.bus_change) {
 				for (i=0; i<BUS_NUM; i++) {
-					temp_standby_data.bus_factor[i] = standby_data->bus_factor[i];
+					temp_standby_data.bus_factor[i] = standby_data->extended_standby_data.bus_factor[i];
 				}
 			} else
 				memset(&temp_standby_data.bus_factor, 0, sizeof(temp_standby_data.bus_factor));
@@ -308,6 +411,7 @@ const extended_standby_manager_t *get_extended_standby_manager(void)
 {
 	unsigned long irqflags;
 	extended_standby_manager_t *manager_data = NULL;
+
 	spin_lock_irqsave(&data_lock, irqflags);
 	manager_data = &extended_standby_manager;
 	spin_unlock_irqrestore(&data_lock, irqflags);
@@ -331,6 +435,10 @@ bool set_extended_standby_manager(scene_extended_standby_t *local_standby)
 	unsigned long irqflags;
 
 	EXSTANDBY_DBG("enter %s\n", __func__);
+
+	if (local_standby && 0 == local_standby->extended_standby_data.pwr_dm_en) {
+	    return true;
+	}
 
 	if (!local_standby) {
 		spin_lock_irqsave(&data_lock, irqflags);
@@ -366,6 +474,7 @@ bool set_extended_standby_manager(scene_extended_standby_t *local_standby)
 int extended_standby_enable_wakeup_src(cpu_wakeup_src_e src, int para)
 {
 	unsigned long irqflags;
+
 	spin_lock_irqsave(&data_lock, irqflags);
 	extended_standby_manager.event |= src;
 	if (CPUS_GPIO_SRC & src) {
@@ -489,6 +598,8 @@ int extended_standby_check_wakeup_state(cpu_wakeup_src_e src, int para)
  */
 int extended_standby_show_state(void)
 {
+#ifdef CONFIG_ARCH_SUN8IW6P1
+#else
 	unsigned long irqflags;
 	int i;
 
@@ -502,11 +613,19 @@ int extended_standby_show_state(void)
 		printk("extended_standby id = 0x%lx\n", extended_standby_manager.pextended_standby->id);
 		if (0 != extended_standby_manager.pextended_standby->pll_change) {
 			for (i=0; i<PLL_NUM; i++) {
+#if (defined CONFIG_ARCH_SUN8IW1P1) || (defined CONFIG_ARCH_SUN8IW3P1) || (defined CONFIG_ARCH_SUN8IW5P1)
 				EXSTANDBY_DBG("pll%i: n=%d k=%d m=%d p=%d\n", i, \
 						extended_standby_manager.pextended_standby->pll_factor[i].n, \
 						extended_standby_manager.pextended_standby->pll_factor[i].k, \
 						extended_standby_manager.pextended_standby->pll_factor[i].m, \
 						extended_standby_manager.pextended_standby->pll_factor[i].p);
+#elif (defined CONFIG_ARCH_SUN9IW1P1)
+				EXSTANDBY_DBG("pll%i: n=%d p=%d divi=%d divo=%d\n", i, \
+					extended_standby_manager.pextended_standby->pll_factor[i].n, \
+					extended_standby_manager.pextended_standby->pll_factor[i].p, \
+					extended_standby_manager.pextended_standby->pll_factor[i].divi, \
+					extended_standby_manager.pextended_standby->pll_factor[i].divo);
+#endif
 			}
 		}
 		if (0 != extended_standby_manager.pextended_standby->bus_change) {
@@ -522,7 +641,7 @@ int extended_standby_show_state(void)
 	}
 
 	spin_unlock_irqrestore(&data_lock, irqflags);
-
+#endif
 	return 0;
 }
 

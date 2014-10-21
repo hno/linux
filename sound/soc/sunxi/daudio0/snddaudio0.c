@@ -108,7 +108,7 @@ static struct snd_soc_dai_driver snddaudio_dai = {
 	/* pcm operations */
 	.ops = &snddaudio_dai_ops,	
 };
-EXPORT_SYMBOL(snddaudio_dai);
+//EXPORT_SYMBOL(snddaudio_dai);
 	
 static int snddaudio_soc_probe(struct snd_soc_codec *codec)
 {
@@ -172,7 +172,7 @@ static int __init snddaudio_codec_init(void)
 
 	type = script_get_item(TDM_NAME, "daudio_used", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[I2S] type err!\n");
+        pr_err("[I2S]:%s,line:%d type err!\n", __func__, __LINE__);
     }
 
 	daudio_used = val.val;
@@ -184,7 +184,7 @@ static int __init snddaudio_codec_init(void)
 		if ((err = platform_driver_register(&snddaudio_codec_driver)) < 0)
 			return err;
 	} else {
-       printk("[I2S]snddaudio cannot find any using configuration for controllers, return directly!\n");
+       pr_err("[I2S]snddaudio cannot find any using configuration for controllers, return directly!\n");
        return 0;
     }
 	

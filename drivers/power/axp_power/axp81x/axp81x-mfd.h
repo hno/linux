@@ -110,11 +110,11 @@ static int  axp81x_init_chip(struct axp_dev *chip)
 	/*read chip id*/	//???which int should enable must check with SD4
 	err =  __axp_read(&devaddr, chip->client, AXP81X_IC_TYPE, &chip_id, false);
 	if (err) {
-	    printk("[AXP81X-MFD] try to read chip id failed!\n");
+		printk("[AXP81X-MFD] try to read chip id failed!\n");
 		return err;
 	}
-	dev_info(chip->dev, "AXP (CHIP ID: 0x%02x) detected\n", chip_id);
-	if((chip_id & 0xff) == 0x41)
+
+	if((chip_id & 0xff) == 0x51)
 		chip->type = AXP81X;
 	else
 		chip->type = 0;
@@ -159,29 +159,43 @@ static ssize_t axp81x_reg_store(struct device *dev,
 	return count;
 }
 
+static unsigned int data2 = 2;
 static ssize_t axp81x_regs_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	uint8_t val[2];
+	uint8_t val;
+	int count = 0, i = 0;
 
-	axp_reads(dev,axp_reg_addr,2,val);
-	return sprintf(buf,"REG[0x%x]=0x%x,REG[0x%x]=0x%x\n",axp_reg_addr,val[0],axp_reg_addr+1,val[1]);
+	for (i=0; i<data2; i++) {
+		axp_read(dev, axp_reg_addr+i, &val);
+		count += sprintf(buf+count,"REG[0x%x]=0x%x\n",axp_reg_addr+i,val);
+	}
+	return count;
 }
 
 static ssize_t axp81x_regs_store(struct device *dev,
 				struct device_attribute *attr, const char *buf, size_t count)
 {
-	int tmp;
+	unsigned int data1 = 0;
 	uint8_t val[3];
+	char *endp;
 
-	tmp = simple_strtoul(buf, NULL, 16);
-	if( tmp < 256 )
-		axp_reg_addr = tmp;
+	data1 = simple_strtoul(buf, &endp, 16);
+	if (*endp != ' ') {
+		printk("%s: %d\n", __func__, __LINE__);
+		return -EINVAL;
+	}
+	buf = endp + 1;
+
+	data2 = simple_strtoul(buf, &endp, 10);
+
+	if( data1 < 256 )
+		axp_reg_addr = data1;
 	else {
-		axp_reg_addr= (tmp >> 16) & 0xFF;
-		val[0] = (tmp >> 8) & 0xFF;
+		axp_reg_addr= (data1 >> 16) & 0xFF;
+		val[0] = (data1 >> 8) & 0xFF;
 		val[1] = axp_reg_addr + 1;
-		val[2] = tmp & 0xFF;
+		val[2] = data1 & 0xFF;
 		axp_writes(dev,axp_reg_addr,3,val);
 	}
 	return count;

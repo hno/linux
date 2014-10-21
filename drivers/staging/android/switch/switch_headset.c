@@ -37,7 +37,7 @@
 #undef SWITCH_DBG
 
 #if (0)
-    #define SWITCH_DBG(format,args...)  printk("[SWITCH] "format,##args)    
+    #define SWITCH_DBG(format,args...)  pr_err("[SWITCH] "format,##args)    
 #else
     #define SWITCH_DBG(...)    
 #endif
@@ -527,7 +527,7 @@ static void codec_init_events(struct work_struct *work)
 	msleep(200);
 	sunxi_hbias_enable();
 
-	printk("====codec_init_events===\n");
+	pr_debug("====codec_init_events===\n");
 }
 
 static void switch_resume_events(struct work_struct *work)
@@ -623,7 +623,7 @@ static int gpio_switch_probe(struct platform_device *pdev)
 
 	switch_data = kzalloc(sizeof(struct gpio_switch_data), GFP_KERNEL);
 	if (!switch_data) {
-		printk("%s,line:%d\n", __func__, __LINE__);
+		pr_err("%s,line:%d\n", __func__, __LINE__);
 		return -ENOMEM;
 	}
 
@@ -644,7 +644,7 @@ static int gpio_switch_probe(struct platform_device *pdev)
  	/* create input device */
     switch_data->key = input_allocate_device();
     if (!switch_data->key) {
-        printk(KERN_ERR "gpio_switch_probe: not enough memory for input device\n");
+        pr_err(KERN_ERR "gpio_switch_probe: not enough memory for input device\n");
         ret = -ENOMEM;
         goto err_input_allocate_device;
     }
@@ -662,7 +662,7 @@ static int gpio_switch_probe(struct platform_device *pdev)
 
     ret = input_register_device(switch_data->key);
     if (ret) {
-        printk(KERN_ERR "gpio_switch_probe: input_register_device failed\n");
+        pr_err(KERN_ERR "gpio_switch_probe: input_register_device failed\n");
         goto err_input_register_device;
     }
 
@@ -679,28 +679,28 @@ static int gpio_switch_probe(struct platform_device *pdev)
 	ret = request_irq(SUNXI_IRQ_CODEC, audio_hmic_irq, 0, "audio_hmic_irq", switch_data); 
 #endif
 	if (ret < 0) {
-		printk("request irq err\n");
+		pr_err("request irq err\n");
 		ret = -EINVAL;
 		goto err_request_irq;
 	}
 	
 	resume_switch_work_queue = create_singlethread_workqueue("switch_resume");
 	if (resume_switch_work_queue == NULL) {
-		printk("[switch_headset] try to create workqueue for codec failed!\n");
+		pr_err("[switch_headset] try to create workqueue for codec failed!\n");
 		ret = -ENOMEM;
 		goto err_switch_work_queue;
 	}
 
 	type = script_get_item("audio0", "headphone_direct_used", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-		printk("[audiocodec] type err!\n");
+		pr_err("[audiocodec] type err!\n");
 	} else {
 		g_headphone_direct_used = val.val;
 	}
 
 	type = script_get_item("audio0", "headphone_mute_used", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-	        printk("[audiocodec] headphone_mute_used type err!\n");
+	        pr_err("[audiocodec] headphone_mute_used type err!\n");
 	} else {
 		g_headphone_mute_used = val.val;
 	}
@@ -709,13 +709,13 @@ static int gpio_switch_probe(struct platform_device *pdev)
 		/*get the default headphone mute val(close)*/
 		type = script_get_item("audio0", "audio_mute_ctrl", &item_mute);
 		if (SCIRPT_ITEM_VALUE_TYPE_PIO != type) {
-			printk("script_get_item return type err\n");
+			pr_err("script_get_item return type err\n");
 			return -EFAULT;
 		}
 		/*request gpio*/
 		req_mute_status = gpio_request(item_mute.gpio.gpio, NULL);
 		if (0 != req_mute_status) {
-			printk("request gpio headphone mute failed!\n");
+			pr_err("request gpio headphone mute failed!\n");
 		}
 		gpio_direction_output(item_mute.gpio.gpio, 1);
 		/*config gpio info of headphone_mute_used, the default pa config is close(check sys_config.fex).*/
@@ -746,7 +746,7 @@ static int switch_suspend(struct platform_device *pdev,pm_message_t state)
 {
 	/* check if called in talking standby */
 	if (check_scene_locked(SCENE_TALKING_STANDBY) == 0) {
-		printk("In talking standby, do not suspend!!\n");
+		pr_err("In talking standby, do not suspend!!\n");
 		return 0;
 	}
 	if (g_headphone_mute_used) {

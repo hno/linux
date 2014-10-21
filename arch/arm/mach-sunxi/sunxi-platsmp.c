@@ -35,6 +35,7 @@
 #include <asm/smp_scu.h>
 #include <asm/hardware/gic.h>
 #include <mach/cpuidle-sunxi.h>
+#include <mach/sunxi-chip.h>
 
 #include <mach/platform.h>
 #ifdef CONFIG_HOTPLUG
@@ -83,6 +84,23 @@ void sunxi_smp_init_cpus(void)
 
 	ncores = get_nr_cores();
 	pr_debug("[%s] ncores=%d\n", __func__, ncores);
+
+	#ifdef CONFIG_ARCH_SUN8IW7
+	{
+		unsigned int chip_ver = sunxi_get_soc_ver();
+		/* parse hardware parameter */
+		switch(chip_ver) {
+			case SUN8IW7P1_REV_A:
+				nr_cpu_ids = 4;
+				break;
+			case SUN8IW7P2_REV_A:
+			default:
+				nr_cpu_ids = 2;
+				break;
+		}
+		pr_debug("chip version is:0x%x, number of possible cores is:%d\n", chip_ver, nr_cpu_ids);
+	}
+	#endif
 
 	/*
 	 * sanity check, the cr_cpu_ids is configured form CONFIG_NR_CPUS

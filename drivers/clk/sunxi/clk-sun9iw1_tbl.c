@@ -2795,5 +2795,5 @@ static void sunxi_clk_factor_initlimits(void)
     pll9_max=factor_pll9_tbl[ARRAY_SIZE(factor_pll9_tbl)-1].freq;
     pll10_max=factor_pll10_tbl[ARRAY_SIZE(factor_pll10_tbl)-1].freq;
     pll11_max=factor_pll11_tbl[ARRAY_SIZE(factor_pll11_tbl)-1].freq;    
-    pll12_max=factor_pll11_tbl[ARRAY_SIZE(factor_pll11_tbl)-1].freq; 
+    pll12_max=factor_pll12_tbl[ARRAY_SIZE(factor_pll12_tbl)-1].freq; 
 }

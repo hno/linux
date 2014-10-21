@@ -178,8 +178,9 @@ static int gsensor_detect(struct i2c_client *client, struct i2c_board_info *info
 	
 	dprintk(DEBUG_INIT, "%s enter \n", __func__);
 	
-	if (!i2c_check_functionality(adapter, I2C_FUNC_SMBUS_BYTE_DATA))
-        return -ENODEV;
+	ret = i2c_check_functionality(adapter, I2C_FUNC_SMBUS_BYTE_DATA);
+	if (!ret)
+        	return -ENODEV;
     
 	if(twi_id == adapter->nr){
             pr_info("%s: addr= %x\n",__func__,client->addr);
@@ -626,9 +627,10 @@ static void mma7660_late_resume(struct early_suspend *h)
 	int result;
 	dprintk(DEBUG_SUSPEND, "mma7660 late resume\n");
 	
-	if (SUPER_STANDBY == standby_type) {
+	if (SUPER_STANDBY == standby_type)
 		queue_work(mma7660_resume_wq, &mma7660_resume_work);
-	} else {
+
+	if (NORMAL_STANDBY == standby_type) {
 		mutex_lock(&mma7660_data.init_mutex);
 		mma7660_data.suspend_indator = 0;
 		result = i2c_smbus_write_byte_data(mma7660_i2c_client,
@@ -648,7 +650,8 @@ static int mma7660_resume(struct i2c_client *client)
 	
 	if (SUPER_STANDBY == standby_type) {
 		queue_work(mma7660_resume_wq, &mma7660_resume_work);
-	}else{
+	}
+	if (SUPER_STANDBY == standby_type) {
 		mutex_lock(&mma7660_data.init_mutex);
 		mma7660_data.suspend_indator = 0;
 		result = i2c_smbus_write_byte_data(mma7660_i2c_client,

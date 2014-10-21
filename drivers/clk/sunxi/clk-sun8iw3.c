@@ -957,7 +957,7 @@ SUNXI_CLK_FACTORS(pll1,   8,  5,  4,  2,  0,  2,  16, 2,  0,   0,   0,   0,    0
 SUNXI_CLK_FACTORS(pll2,   8,  7,  0,  0,  0,  5,  16, 4,  0,   0,   0,   0,    0,    0,   0,     31,    0,     0,       0,        0);
 SUNXI_CLK_FACTORS(video,  8,  7,  0,  0,  0,  4,  0,  0,  0,   0,   0,   0,    1,    25,  24,    31,    0,     0,       PLL_VIDEOPAT,0xd1303333);
 SUNXI_CLK_FACTORS(media,  8,  7,  0,  0,  0,  4,  0,  0,  0,   0,   0,   0,    1,    25,  24,    31,    0,     0,       0,        0);
-SUNXI_CLK_FACTORS(pll5,   8,  5,  4,  2,  0,  2,  0,  0,  0,   0,   0,   0,    0,    0,   0,     31,    0,     0,       0,        0);
+SUNXI_CLK_FACTORS_UPDATE(pll5,   8,  5,  4,  2,  0,  2,  0,  0,  0,   0,   0,   0,    0,    0,   0,     31,    0,     0,       0,        0 ,  20 );
 SUNXI_CLK_FACTORS(pll6,   8,  5,  4,  2,  0,  0,  0,  0,  0,   0,   0,   0,    0,    0,   0,     31,    0,     0,       0,        0);
 SUNXI_CLK_FACTORS(mipi,   8,  4,  4,  2,  0,  4,  0,  0,  0,   0,   0,   0,    0,    0,   0,     31,    0,     0,       PLL_MIPIPAT, 0xd1303333);
 

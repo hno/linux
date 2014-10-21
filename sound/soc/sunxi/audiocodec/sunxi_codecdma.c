@@ -40,9 +40,9 @@ static const struct snd_pcm_hardware sunxi_pcm_play_hardware = {
 	.rate_max		= 192000,
 	.channels_min		= 1,
 	.channels_max		= 2,
-	.buffer_bytes_max	= 128*1024,    /* value must be (2^n)Kbyte size */
+	.buffer_bytes_max	= 1024*1024,    /* value must be (2^n)Kbyte size */
 	.period_bytes_min	= 256,
-	.period_bytes_max	= 1024*16,
+	.period_bytes_max	= 1024*128,
 	.periods_min		= 2,
 	.periods_max		= 8,
 	.fifo_size		= 128,
@@ -58,9 +58,9 @@ static const struct snd_pcm_hardware sunxi_pcm_capture_hardware = {
 	.rate_max		= 192000,
 	.channels_min		= 1,
 	.channels_max		= 2,
-	.buffer_bytes_max	= 128*1024,    /* value must be (2^n)Kbyte size */
+	.buffer_bytes_max	= 1024*1024,    /* value must be (2^n)Kbyte size */
 	.period_bytes_min	= 256,
-	.period_bytes_max	= 1024*16,
+	.period_bytes_max	= 1024*128,
 	.periods_min		= 2,
 	.periods_max		= 8,
 	.fifo_size		= 128,
@@ -115,6 +115,14 @@ static int sunxi_pcm_hw_params(struct snd_pcm_substream *substream,
 		memset(0xf0002000, 0, 0x4000-0x00002000);
 	}
 #endif
+#endif
+/*for a33*/
+#if defined CONFIG_ARCH_SUN8IW5
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		substream->dma_buffer.addr = 0x00001560;//0x00002000;
+		substream->dma_buffer.area = (unsigned char *)0xf0001560;//0xf0002000;  1580 ok
+		memset((void *)0xf0001560, 0, 0x4000-0x00001560);
+	}
 #endif
 
 	snd_pcm_set_runtime_buffer(substream, &substream->dma_buffer);

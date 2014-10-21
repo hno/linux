@@ -1,5 +1,7 @@
 #include <linux/string.h>
 #include <asm/unistd.h>
+#include <linux/vmalloc.h>
+#include <linux/errno.h>
 
 #include "ini.h"
 
@@ -31,11 +33,19 @@ Note:
 *************************************************************/
 int ini_get_key(char *filedata, char * section, char * key, char * value)
 {
-	char buf1[MAX_CFG_BUF + 1], buf2[MAX_CFG_BUF + 1];
+	char *buf1, *buf2;
 	char *key_ptr, *val_ptr;
 	int  n, ret;
 	int dataoff = 0;
 	int i = 0;
+	
+	buf1 = (char *)vmalloc(MAX_CFG_BUF + 1);
+	if (buf1 == NULL)
+		return -ENOMEM;
+	buf2 = (char *)vmalloc(MAX_CFG_BUF + 1); {
+		vfree(buf1);
+		return -ENOMEM;
+	}
 	
 	*value='\0';
 	
@@ -118,6 +128,8 @@ int ini_get_key(char *filedata, char * section, char * key, char * value)
 	ret = CFG_OK; 
 r_cfg_end: 
 	//if(fp != NULL) fclose(fp); 
+	vfree(buf1);
+	vfree(buf2);
 	return ret; 
 } 
 /*************************************************************

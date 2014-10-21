@@ -22,28 +22,36 @@ choice
           sunxi
           |-- sun4i  ----------------- ------------arch sun4i: cortex-a8 serial chips
           |   |-- sun4iw1   --------------- wafer1
-          |   |   `-- sun4iw1p1  ----- a10
+          |   |   `-- sun4iw1p1  ----- A10
           |   `-- sun4iw2   --------------- wafer2
-          |       |-- sun4iw2p1  ----- a13
-          |       |-- sun4iw2p2  ----- a12
-          |       `-- sun4iw2p3  ----- a10s
+          |       |-- sun4iw2p1  ----- A13
+          |       |-- sun4iw2p2  ----- A12
+          |       `-- sun4iw2p3  ----- A10s
           |-- sun8i  ----------------------------- arch sun8i: cortex-a7 smp serial chips
           |   |-- sun8iw1  --------------- wafer1
-          |   |   |-- sun8iw1p1  ----- a31
-          |   |   `-- sun8iw1p2  ----- a31s
+          |   |   |-- sun8iw1p1  ----- A31
+          |   |   `-- sun8iw1p2  ----- A31s
           |   |-- sun8iw2  --------------- wafer2
-          |   |   |-- sun8iw2p1  ----- a20
+          |   |   |-- sun8iw2p1  ----- A20
           |   |   `-- sun8iw2p2
           |   |-- sun8iw3  --------------- wafer3
-          |   |   |-- sun8iw3p1  ----- a23
+          |   |   |-- sun8iw3p1  ----- A23
           |   |   `-- sun8iw3p2
           |   |-- sun8iw5
-	  |   |   `-- sun8iw5p1  ----- a33
-	  |   `-- sun8iw6
-	  |       `-- sun8iw6p1
-          `-- sun9i
+          |   |   `-- sun8iw5p1  ----- A33
+          |   |-- sun8iw6
+          |   |   `-- sun8iw6p1  ----- A83
+          |   |-- sun8iw7
+          |   |   `-- sun8iw6p7  ----- I20
+          |   |-- sun8iw8
+          |   |   |-- sun8iw8p1  ----- V30
+          |   |   `-- sun8iw8p2  ----- V33
+          |   `-- sun8iw9
+          |       `-- sun8iw9p1  ----- 
+          |
+          `-- sun9i  ----------------------------- arch sun9i: cortex-a15 smp serial chips
               `-- sun9iw1
-                  |-- sun9iw1p1
+                  |-- sun9iw1p1  ----- A80
                   `-- sun9iw1p2
 
 config ARCH_SUN8I
@@ -96,33 +104,44 @@ choice
 	 Select the wafer with arch sun8i
 
 config ARCH_SUN8IW1
-	bool "Allwinner A3x SOCs(sun8w1)"
+	bool "Allwinner A3x SOCs(sun8iw1)"
 	help
 	  Allwinner A3x SOCs
 
 config ARCH_SUN8IW3
-	bool "Allwinner A2x SOCs(sun8w3)"
+	bool "Allwinner A2x SOCs(sun8iw3)"
 	help
 	  Allwinner A2x SOCs
 
 config ARCH_SUN8IW5
-	bool "Allwinner Axx SOCs(sun8w5)"
+	bool "Allwinner A33 SOCs(sun8iw5)"
 	help
-	  Allwinner Axx SOCs
+	  Allwinner A33 SOCs
 
 config ARCH_SUN8IW6
-        bool "Allwinner Axx SOCs(sun8w6)"
+        bool "Allwinner A83 SOCs(sun8iw6)"
         help
-          Allwinner Axx SOCs
+          Allwinner A83 SOCs
 
 config ARCH_SUN8IW7
         bool "Allwinner Axx SOCs(sun8w7)"
         help
           Allwinner Axx SOCs
+
+config ARCH_SUN8IW8
+        bool "Allwinner V3x SOCs(sun8iw8)"
+        help
+          Allwinner V3x SOCs
+
+config ARCH_SUN8IW9
+        bool "Allwinner Axx SOCs(sun8iw9)"
+        help
+          Allwinner Axx SOCs
+
 endchoice
 config SUN8I_CCI
 	bool "Cache Coherent Interconnect support"
-	depends on ARCH_SUN8IW6
+	depends on ARCH_SUN8IW6 || ARCH_SUN8IW9
 	default n
 	help
 	  Enable Cache Coherent Interconnect support
@@ -149,9 +168,9 @@ config SUN9I_CCI
 	default n
 	help
 	  Enable Cache Coherent Interconnect support
-config DRAMFREQ_RESERVE_MEM
-	bool "Reserve dramfreq memory at first & middle 4K"
-	depends on ARCH_SUN9I && DEVFREQ_DRAM_FREQ
+config DRAM_TRAINING_RESERVE_MEM
+	bool "Reserve dram training memory at first & middle 4K"
+	depends on ARCH_SUN9I
 	default n
 	help
 	  Enable dramfreq reserve mem support
@@ -172,12 +191,12 @@ choice
 	 Select the soc for system
 
 config ARCH_SUN8IW1P1
-	bool "Allwinner A31 chip(sun8w1p1-A31)"
+	bool "Allwinner A31 chip(sun8iw1p1-A31)"
 	help
 	  Allwinner A31 chip
 
 config ARCH_SUN8IW1P2
-	bool "Allwinner A31s chip(sun8w1p2-A31s)"
+	bool "Allwinner A31s chip(sun8iw1p2-A31s)"
 	help
 	  Allwinner A31s chip
 endchoice
@@ -194,7 +213,7 @@ choice
 	 Select the chip with wafer sun8iw3
 
 config ARCH_SUN8IW3P1
-	bool "Allwinner A23 chip(sun8w3p1)"
+	bool "Allwinner A23 chip(sun8iw3p1)"
 	help
 	  Allwinner A23 chip
 endchoice
@@ -211,7 +230,7 @@ choice
 	 Select the chip with wafer sun8iw5
 
 config ARCH_SUN8IW5P1
-	bool "Allwinner Axx chip(sun8w5p1)"
+	bool "Allwinner A33 chip(sun8iw5p1)"
 	help
 	  Allwinner Axx chip
 endchoice
@@ -235,9 +254,33 @@ choice
          Select the chip with wafer sun8iw6
 
 config ARCH_SUN8IW6P1
-        bool "Allwinner Axx chip(sun8w6p1)"
+        bool "Allwinner Axx chip(sun8iw6p1)"
         help
           Allwinner Axx chip
+endchoice
+endif
+
+config SUNXI_GIC_ACCESS_SS
+    bool "Enable Sunxi GIC Access SS Protect"
+    depends on ARCH_SUN8IW6
+    default y
+    help
+        Support for Sunxi GIC Access SS Protect
+#
+#
+# Select the chip with wafer sun8iw6
+#
+if ARCH_SUN8IW8
+choice
+        prompt "Select the chip with wafer sun8iw8"
+        default ARCH_SUN8IW8P1
+        help
+         Select the chip with wafer sun8iw8
+
+config ARCH_SUN8IW8P1
+        bool "Allwinner V30 chip(sun8iw8p1)"
+        help
+          Allwinner V30 chip
 endchoice
 endif
 
@@ -256,6 +299,23 @@ config ARCH_SUN8IW7P1
         bool "Allwinner Axx chip(sun8w7p1)"
         help
           Allwinner Axx chip
+endchoice
+endif
+
+#
+# Select the chip with wafer sun8iw9
+#
+if ARCH_SUN8IW9
+choice
+	prompt "Select the chip with wafer sun8iw9"
+	default ARCH_SUN8IW9P1
+	help
+	 Select the chip with wafer sun8iw9
+
+config ARCH_SUN8IW9P1
+	bool "Allwinner Axx chip(sun8iw9p1)"
+	help
+	  Allwinner Axx chip
 endchoice
 endif
 
@@ -305,12 +365,12 @@ config SUN9IW1_PERF5_BOARD
        default n
     help
         Support for SUN9IW1 PERF5 BOARD
-config SW_POWERNOW
-    bool "Enable sw_powernow feature"
-    default y
-    help
-        Support for sw_powernow function
-
 source "arch/arm/mach-sunxi/Kconfig.conf"
+
+config SUNXI_TRUSTZONE
+       bool "SUNXI trustzone security"
+       default n
+    help
+        Support for SUNXI trustzone security
 
 endif

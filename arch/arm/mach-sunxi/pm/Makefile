@@ -4,6 +4,7 @@ use-flags := -Os
 not-use-flags := -O2
 KBUILD_CFLAGS := $(filter-out $(not-use-flags), $(KBUILD_CFLAGS))
 KBUILD_CFLAGS += $(use-flags)
+GCOV_PROFILE := n
 
 subdir- += standby
 obj-y	 += pm_tmp.o 
@@ -28,12 +29,19 @@ pm_tmp-y :=	mem_mapping.o               \
 		mem_timing.o                \
 		mem_hwspinlock.o              \
 		pm.o                        \
-		extended_standby.o          \
 		standby/super/super_power.o \
 		standby/super/super_twi.o   \
 		standby/super/super_clock.o \
 		standby.o		    \
-		mem.o
+		mem.o			    \
+		aw_pm.o			    \
+		aw_pwr_dm.o                 
+
+ifneq ($(strip $(CONFIG_ARCH_SUN8IW6)),)
+pm_tmp-y +=	extended_standby-sun8iw6.o
+else
+pm_tmp-y +=	extended_standby.o
+endif
 
 $(obj)/mem_mapping.o              : $(obj)/pm_tmp_xx.o
 $(obj)/mem_divlibc.o              : $(obj)/pm_tmp_xx.o
@@ -54,9 +62,12 @@ $(obj)/mem_cci400.o               : $(obj)/pm_tmp_xx.o
 $(obj)/mem_gtbus.o                : $(obj)/pm_tmp_xx.o
 $(obj)/pm_debug.o                 : $(obj)/pm_tmp_xx.o
 $(obj)/mem_timing.o               : $(obj)/pm_tmp_xx.o
-$(obj)/mem_hwspinlock.o             : $(obj)/pm_tmp_xx.o
+$(obj)/mem_hwspinlock.o           : $(obj)/pm_tmp_xx.o
 $(obj)/pm.o                       : $(obj)/pm_tmp_xx.o
+$(obj)/aw_pm.o                    : $(obj)/pm_tmp_xx.o
+$(obj)/aw_pwr_dm.o                : $(obj)/pm_tmp_xx.o
 $(obj)/extended_standby.o         : $(obj)/pm_tmp_xx.o
+$(obj)/extended_standby-sun8iw6.o : $(obj)/pm_tmp_xx.o
 $(obj)/standby/super/super_power.o: $(obj)/pm_tmp_xx.o
 $(obj)/standby/super/super_twi.o  : $(obj)/pm_tmp_xx.o
 $(obj)/standby/super/super_clock.o: $(obj)/pm_tmp_xx.o

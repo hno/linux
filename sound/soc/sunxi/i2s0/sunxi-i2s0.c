@@ -218,15 +218,15 @@ static int sunxi_i2s0_set_fmt(struct snd_soc_dai *cpu_dai, unsigned int fmt)
 	reg_val = readl(sunxi_i2s0.regs + SUNXI_I2S0CTL);
 	switch(fmt & SND_SOC_DAIFMT_MASTER_MASK){
 		case SND_SOC_DAIFMT_CBM_CFM:   /* codec clk & frm master, ap is slave*/
-			printk("%s, line:%d\n", __func__, __LINE__);
+			pr_debug("%s, line:%d\n", __func__, __LINE__);
 			reg_val |= SUNXI_I2S0CTL_MS;
 			break;
 		case SND_SOC_DAIFMT_CBS_CFS:   /* codec clk & frm slave,ap is master*/
-			printk("%s, line:%d\n", __func__, __LINE__);
+			pr_debug("%s, line:%d\n", __func__, __LINE__);
 			reg_val &= ~SUNXI_I2S0CTL_MS;
 			break;
 		default:
-			printk("unknwon master/slave format\n");
+			pr_err("unknwon master/slave format\n");
 			return -EINVAL;
 	}
 	writel(reg_val, sunxi_i2s0.regs + SUNXI_I2S0CTL);
@@ -355,7 +355,7 @@ static int sunxi_i2s0_set_sysclk(struct snd_soc_dai *cpu_dai, int clk_id,
                                  unsigned int freq, int i2s0_pcm_select)
 {
 	if (clk_set_rate(i2s0_pllclk, freq)) {
-		printk("try to set the i2s0_pllclk failed!\n");
+		pr_err("try to set the i2s0_pllclk failed!\n");
 	}
 
 	i2s0_select = i2s0_pcm_select;
@@ -688,7 +688,7 @@ static void i2s0regrestore(void)
 static int sunxi_i2s0_suspend(struct snd_soc_dai *cpu_dai)
 {
 	u32 reg_val;
-	printk("[I2S0]Entered %s\n", __func__);
+	pr_debug("[I2S0]Entered %s\n", __func__);
 
 	/*Global disable Digital Audio Interface*/
 	reg_val = readl(sunxi_i2s0.regs + SUNXI_I2S0CTL);
@@ -697,14 +697,14 @@ static int sunxi_i2s0_suspend(struct snd_soc_dai *cpu_dai)
 
 	i2s0regsave();
 	if ((NULL == i2s0_moduleclk) ||(IS_ERR(i2s0_moduleclk))) {
-		printk("i2s0_moduleclk handle is invalid, just return\n");
+		pr_err("i2s0_moduleclk handle is invalid, just return\n");
 		return -EFAULT;
 	} else {
 		/*release the module clock*/
 		clk_disable(i2s0_moduleclk);
 	}
 //     if ((NULL == i2s0_apbclk) ||(IS_ERR(i2s0_apbclk))) {
-//             printk("i2s0_apbclk handle is invalid, just return\n");
+//             pr_err("i2s0_apbclk handle is invalid, just return\n");
 //             return -EFAULT;
 //     } else {
 //             clk_disable(i2s0_apbclk);
@@ -715,16 +715,16 @@ static int sunxi_i2s0_suspend(struct snd_soc_dai *cpu_dai)
 static int sunxi_i2s0_resume(struct snd_soc_dai *cpu_dai)
 {
 	u32 reg_val;
-	printk("[I2S0]Entered %s\n", __func__);
+	pr_debug("[I2S0]Entered %s\n", __func__);
 
 	/*release the module clock*/
 //     if (clk_enable(i2s0_apbclk)) {
-//             printk("try to enable i2s0_apbclk output failed!\n");
+//             pr_err("try to enable i2s0_apbclk output failed!\n");
 //     }
 
 	/*release the module clock*/
 	if (clk_enable(i2s0_moduleclk)) {
-		printk("try to enable i2s0_moduleclk output failed!\n");
+		pr_err("try to enable i2s0_moduleclk output failed!\n");
 	}
 
 	i2s0regrestore();
@@ -795,50 +795,50 @@ static int __init sunxi_i2s0_dev_probe(struct platform_device *pdev)
     #endif
 #ifndef CONFIG_ARCH_SUN9I
 	if ((!i2s0_pllx8)||(IS_ERR(i2s0_pllx8))) {
-		printk("try to get i2s0_pllx8 failed\n");
+		pr_err("try to get i2s0_pllx8 failed\n");
 	}
 	if (clk_prepare_enable(i2s0_pllx8)) {
-		printk("enable i2s0_pllclk failed; \n");
+		pr_err("enable i2s0_pllclk failed; \n");
 	}
 
 	/*i2s0 pll2clk*/
 	i2s0_pllclk = clk_get(NULL, "pll2");
 	if ((!i2s0_pllclk)||(IS_ERR(i2s0_pllclk))) {
-		printk("try to get i2s0_pllclk failed\n");
+		pr_err("try to get i2s0_pllclk failed\n");
 	}
 	if (clk_prepare_enable(i2s0_pllclk)) {
-		printk("enable i2s0_pllclk failed; \n");
+		pr_err("enable i2s0_pllclk failed; \n");
 	}
 #else
 	/*i2s0 pll3clk*/
 	i2s0_pllclk = clk_get(NULL, "pll3");
 	if ((!i2s0_pllclk)||(IS_ERR(i2s0_pllclk))) {
-		printk("try to get i2s0_pllclk failed\n");
+		pr_err("try to get i2s0_pllclk failed\n");
 	}
 	if (clk_prepare_enable(i2s0_pllclk)) {
-		printk("enable i2s0_pllclk failed; \n");
+		pr_err("enable i2s0_pllclk failed; \n");
 	}
 #endif
 	/*i2s0 module clk*/
 	i2s0_moduleclk = clk_get(NULL, "i2s0");
 	if ((!i2s0_moduleclk)||(IS_ERR(i2s0_moduleclk))) {
-		printk("try to get i2s0_moduleclk failed\n");
+		pr_err("try to get i2s0_moduleclk failed\n");
 	}
 
 	if (clk_set_parent(i2s0_moduleclk, i2s0_pllclk)) {
-		printk("try to set parent of i2s0_moduleclk to i2s0_pll2ck failed! line = %d\n",__LINE__);
+		pr_err("try to set parent of i2s0_moduleclk to i2s0_pll2ck failed! line = %d\n",__LINE__);
 	}
 #ifndef CONFIG_ARCH_SUN9I
 	if (clk_set_rate(i2s0_moduleclk, 24576000/8)) {
-		printk("set i2s0_moduleclk clock freq to 24576000 failed! line = %d\n", __LINE__);
+		pr_err("set i2s0_moduleclk clock freq to 24576000 failed! line = %d\n", __LINE__);
 	}
 #else
 	if (clk_set_rate(i2s0_moduleclk, 24576000)) {
-		printk("set i2s0_moduleclk clock freq to 24576000 failed! line = %d\n", __LINE__);
+		pr_err("set i2s0_moduleclk clock freq to 24576000 failed! line = %d\n", __LINE__);
 	}
 #endif
 	if (clk_prepare_enable(i2s0_moduleclk)) {
-		printk("open i2s0_moduleclk failed! line = %d\n", __LINE__);
+		pr_err("open i2s0_moduleclk failed! line = %d\n", __LINE__);
 	}
 
 	reg_val = readl(sunxi_i2s0.regs + SUNXI_I2S0CTL);
@@ -847,62 +847,62 @@ static int __init sunxi_i2s0_dev_probe(struct platform_device *pdev)
 
 	type = script_get_item("i2s0", "over_sample_rate", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[I2S0] over_sample_rate type err!\n");
+        pr_err("[I2S0] over_sample_rate type err!\n");
     }
 	over_sample_rate = val.val;
 
 	type = script_get_item("i2s0", "sample_resolution", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[I2S0] sample_resolution type err!\n");
+        pr_err("[I2S0] sample_resolution type err!\n");
     }
 	sample_resolution = val.val;
 
 	type = script_get_item("i2s0", "word_select_size", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[I2S0] word_select_size type err!\n");
+        pr_err("[I2S0] word_select_size type err!\n");
     }
 	word_select_size = val.val;
 
 	type = script_get_item("i2s0", "pcm_sync_period", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[I2S0] pcm_sync_period type err!\n");
+        pr_err("[I2S0] pcm_sync_period type err!\n");
     }
 	pcm_sync_period = val.val;
 
 	type = script_get_item("i2s0", "msb_lsb_first", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[I2S0] msb_lsb_first type err!\n");
+        pr_err("[I2S0] msb_lsb_first type err!\n");
     }
 	msb_lsb_first = val.val;
 	type = script_get_item("i2s0", "sign_extend", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[I2S0] sign_extend type err!\n");
+        pr_err("[I2S0] sign_extend type err!\n");
     }
 	sign_extend = val.val;
 	type = script_get_item("i2s0", "slot_index", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[I2S0] slot_index type err!\n");
+        pr_err("[I2S0] slot_index type err!\n");
     }
 	slot_index = val.val;
 	type = script_get_item("i2s0", "slot_width", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[I2S0] slot_width type err!\n");
+        pr_err("[I2S0] slot_width type err!\n");
     }
 	slot_width = val.val;
 	type = script_get_item("i2s0", "frame_width", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[I2S0] frame_width type err!\n");
+        pr_err("[I2S0] frame_width type err!\n");
     }
 	frame_width = val.val;
 	type = script_get_item("i2s0", "tx_data_mode", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[I2S0] tx_data_mode type err!\n");
+        pr_err("[I2S0] tx_data_mode type err!\n");
     }
 	tx_data_mode = val.val;
 
 	type = script_get_item("i2s0", "rx_data_mode", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[I2S0] rx_data_mode type err!\n");
+        pr_err("[I2S0] rx_data_mode type err!\n");
     }
 	rx_data_mode = val.val;
 
@@ -920,21 +920,21 @@ static int __exit sunxi_i2s0_dev_remove(struct platform_device *pdev)
 		i2s0_used = 0;
 
 		if ((NULL == i2s0_moduleclk) ||(IS_ERR(i2s0_moduleclk))) {
-			printk("i2s0_moduleclk handle is invalid, just return\n");
+			pr_err("i2s0_moduleclk handle is invalid, just return\n");
 			return -EFAULT;
 		} else {
 			/*release the module clock*/
 			clk_disable(i2s0_moduleclk);
 		}
 		if ((NULL == i2s0_pllx8) ||(IS_ERR(i2s0_pllx8))) {
-			printk("i2s0_pllx8 handle is invalid, just return\n");
+			pr_err("i2s0_pllx8 handle is invalid, just return\n");
 			return -EFAULT;
 		} else {
 			/*reease pllx8clk*/
 			clk_put(i2s0_pllx8);
 		}
 		if ((NULL == i2s0_pllclk) ||(IS_ERR(i2s0_pllclk))) {
-			printk("i2s0_pllclk handle is invalid, just return\n");
+			pr_err("i2s0_pllclk handle is invalid, just return\n");
 			return -EFAULT;
 		} else {
 			/*release pll2clk*/
@@ -972,14 +972,14 @@ static int __init sunxi_i2s0_init(void)
 
 	type = script_get_item("i2s0", "i2s0_used", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[I2S0] type err!\n");
+        pr_err("[I2S0] type err!\n");
     }
 
 	i2s0_used = val.val;
 
 	type = script_get_item("i2s0", "i2s0_select", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[I2S0] i2s0_select type err!\n");
+        pr_err("[I2S0] i2s0_select type err!\n");
     }
 	i2s0_select = val.val;
 
@@ -990,7 +990,7 @@ static int __init sunxi_i2s0_init(void)
 		if ((err = platform_driver_register(&sunxi_i2s0_driver)) < 0)
                                return err;
 	} else {
-        printk("[I2S0]sunxi-i2s0 cannot find any using configuration for controllers, return directly!\n");
+        pr_err("[I2S0]sunxi-i2s0 cannot find any using configuration for controllers, return directly!\n");
         return 0;
     }
 

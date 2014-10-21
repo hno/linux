@@ -22,9 +22,14 @@
 #include <sound/pcm_params.h>
 #include <sound/soc-dapm.h>
 #include <linux/io.h>
-
+#if defined CONFIG_ARCH_SUN9I || CONFIG_ARCH_SUN8IW6
 #include "sunxi-hdmipcm.h"
-#ifdef CONFIG_ARCH_SUN9I
+#endif
+#ifdef CONFIG_ARCH_SUN8IW7
+#include "sunxi-hdmitdm.h"
+#endif
+
+#if defined (CONFIG_ARCH_SUN9I) || defined (CONFIG_ARCH_SUN8IW7) || defined (CONFIG_ARCH_SUN8IW6)
 /*i2s1 as master, hdmi as slave*/
 static int i2s1_master 		= 4;
 /*
@@ -47,14 +52,15 @@ static int signal_inversion = 1;
 static int sunxi_sndhdmi_hw_params(struct snd_pcm_substream *substream,
 					struct snd_pcm_hw_params *params)
 {
+#if defined (CONFIG_ARCH_SUN9I) || defined (CONFIG_ARCH_SUN8IW7) || defined (CONFIG_ARCH_SUN8IW6)
 	int ret = 0;
 	struct snd_soc_pcm_runtime *rtd = NULL;
 	struct snd_soc_dai *cpu_dai 	= NULL;
-#ifdef CONFIG_ARCH_SUN9I
+
 	u32 freq = 22579200;
 	unsigned long sample_rate = params_rate(params);
 	if (!substream) {
-		printk("error:%s,line:%d\n", __func__, __LINE__);
+		pr_err("error:%s,line:%d\n", __func__, __LINE__);
 		return -EAGAIN;
 	}
 	rtd 		= substream->private_data;
@@ -118,36 +124,63 @@ static struct snd_soc_card snd_soc_sunxi_sndhdmi = {
 	.num_links 	= 1,
 };
 
-static struct platform_device *sunxi_sndhdmi_device;
-
-static int __init sunxi_sndhdmi_init(void)
+static int __devinit sunxi_sndhdmi_dev_probe(struct platform_device *pdev)
 {
 	int ret = 0;
-
-	sunxi_sndhdmi_device = platform_device_alloc("soc-audio", 0);
-		
-	if (!sunxi_sndhdmi_device) {
-		return -ENOMEM;
-	}
-
-	platform_set_drvdata(sunxi_sndhdmi_device, &snd_soc_sunxi_sndhdmi);
-	ret = platform_device_add(sunxi_sndhdmi_device);		
-
+	struct snd_soc_card *card = &snd_soc_sunxi_sndhdmi;
+	
+	card->dev = &pdev->dev;
+	ret = snd_soc_register_card(card);
 	if (ret) {
-		platform_device_put(sunxi_sndhdmi_device);
+		dev_err(&pdev->dev, "snd_soc_register_card() failed: %d\n",
+			ret);
 	}
-
 	return ret;
 }
 
-static void __exit sunxi_sndhdmi_exit(void)
+static int __devexit sunxi_sndhdmi_dev_remove(struct platform_device *pdev)
 {
-	platform_device_unregister(sunxi_sndhdmi_device);
+	struct snd_soc_card *card = platform_get_drvdata(pdev);
+
+	snd_soc_unregister_card(card);
+	return 0;
 }
 
-module_init(sunxi_sndhdmi_init);
-module_exit(sunxi_sndhdmi_exit);
+/*data relating*/
+static struct platform_device sunxi_hdmiaudio_device = {
+	.name 	= "sndhdmi",
+	.id 	= PLATFORM_DEVID_NONE,
+};
 
+/*method relating*/
+static struct platform_driver sunxi_hdmiaudio_driver = {
+	.probe = sunxi_sndhdmi_dev_probe,
+	.remove = __exit_p(sunxi_sndhdmi_dev_remove),
+	.driver = {
+		.name = "sndhdmi",
+		.owner = THIS_MODULE,
+		.pm = &snd_soc_pm_ops,
+	},
+};
+
+static int __init sunxi_sndhdmi_init(void)
+{
+	int err = 0;
+	if((err = platform_device_register(&sunxi_hdmiaudio_device)) < 0)
+		return err;
+
+	if ((err = platform_driver_register(&sunxi_hdmiaudio_driver)) < 0)
+		return err;	
+
+	return 0;
+}
+module_init(sunxi_sndhdmi_init);
+
+static void __exit sunxi_sndhdmi_exit(void)
+{
+	platform_driver_unregister(&sunxi_hdmiaudio_driver);
+}
+module_exit(sunxi_sndhdmi_exit);
 MODULE_AUTHOR("huangxin");
 MODULE_DESCRIPTION("SUNXI_SNDHDMI ALSA SoC audio driver");
 MODULE_LICENSE("GPL");

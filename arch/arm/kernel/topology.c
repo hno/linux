@@ -158,7 +158,12 @@ void __init arch_get_fast_and_slow_cpus(struct cpumask *fast,
        struct device_node *cn = NULL;
        int cpu;
 #endif
-
+#if defined(CONFIG_SCHED_HMP) && defined(CONFIG_ARCH_SUN9I)
+       unsigned int cpu_part;
+       struct cpumask pre_fast, pre_slow;
+       int          revert_mask=0;
+       unsigned int cpu_cur = smp_processor_id();
+#endif
        cpumask_clear(fast);
        cpumask_clear(slow);
 
@@ -171,6 +176,25 @@ void __init arch_get_fast_and_slow_cpus(struct cpumask *fast,
                        WARN(1, "Failed to parse HMP fast cpu mask!\n");
                if (cpulist_parse(CONFIG_HMP_SLOW_CPU_MASK, slow))
                        WARN(1, "Failed to parse HMP slow cpu mask!\n");
+#if defined(CONFIG_SCHED_HMP) && defined(CONFIG_ARCH_SUN9I)
+               cpu_part = (read_cpuid_id() >> 4) & 0xfff;
+               if((cpu_part == 0xc0f) && (cpumask_test_cpu(cpu_cur,slow)))
+                    revert_mask = 1;
+               else if((cpu_part == 0xc07) && (cpumask_test_cpu(cpu_cur,fast)))
+                    revert_mask = 1;
+
+               if(revert_mask)
+               {
+                      cpumask_clear(&pre_fast);
+                      cpumask_clear(&pre_slow);
+                      cpumask_copy(&pre_fast,fast);
+                      cpumask_copy(&pre_slow,slow);
+                      cpumask_clear(fast);
+                      cpumask_clear(slow);
+                      cpumask_copy(fast,&pre_slow);
+                      cpumask_copy(slow,&pre_fast);
+               }
+#endif
                return;
        }
 
@@ -214,10 +238,10 @@ void __init arch_get_fast_and_slow_cpus(struct cpumask *fast,
 }
 
 struct cpumask hmp_slow_cpu_mask;
-
+struct cpumask hmp_fast_cpu_mask;
 void __init arch_get_hmp_domains(struct list_head *hmp_domains_list)
 {
-       struct cpumask hmp_fast_cpu_mask;
+
        struct hmp_domain *domain;
 
        arch_get_fast_and_slow_cpus(&hmp_fast_cpu_mask, &hmp_slow_cpu_mask);

@@ -273,7 +273,7 @@ static void clk_syncboot_subtree(struct clk *clk)
 
 	if (!(clk->flags & CLK_IGNORE_SYNCBOOT) && __clk_is_enabled(clk) && clk->ops->enable && (!clk->ops->prepare))
     {
-        printk(KERN_INFO "try to syncboot of clk %s\n",clk->name);
+        //printk(KERN_INFO "try to syncboot of clk %s\n",clk->name);
         if((!clk->prepare_count) && (!clk->enable_count))
         {
             clk->ops->enable(clk->hw);
@@ -296,6 +296,7 @@ out:
 	return;
 }
 #ifdef CONFIG_COMMON_CLK_ENABLE_SYNCBOOT_EARLY
+int clk_syncboot(void);
 int clk_syncboot(void)
 #else
 static int clk_syncboot(void)

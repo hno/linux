@@ -1,8 +1,9 @@
 #
 # Makefile for the linux kernel.
 #
-
+ifndef CONFIG_SUNXI_GIC_ACCESS_SS
 obj-$(CONFIG_ARM_GIC)		+= gic.o
+endif
 obj-$(CONFIG_ARM_VIC)		+= vic.o
 obj-$(CONFIG_ICST)		+= icst.o
 obj-$(CONFIG_SA1111)		+= sa1111.o
@@ -20,3 +21,4 @@ obj-$(CONFIG_FIQ_GLUE)		+= fiq_glue.o fiq_glue_setup.o
 obj-$(CONFIG_FIQ_DEBUGGER)	+= fiq_debugger.o
 obj-$(CONFIG_BL_SWITCHER)	+= bL_switcher.o
 obj-$(CONFIG_BL_SWITCHER_DUMMY_IF) += bL_switcher_dummy_if.o
+obj-y				+= firmware.o

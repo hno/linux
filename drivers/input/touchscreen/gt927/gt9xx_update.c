@@ -70,19 +70,19 @@ typedef struct
     mm_segment_t old_fs;
 }st_update_msg;
 
-st_update_msg update_msg;
-struct i2c_client *guitar_client = NULL;
+static st_update_msg update_msg;
+static struct i2c_client *guitar_client = NULL;
 u16 show_len;
 u16 total_len;
-extern void int2io(int status,int level);
+//extern void int2io(int status,int level);
 extern char *firmware_name;
 
-extern s32  gtp_i2c_read(struct i2c_client *client, uint8_t *buf, s32 len);
-extern s32  gtp_i2c_write(struct i2c_client *client,uint8_t *data,s32 len);
-extern void gtp_reset_guitar(s32 ms);
-extern s32  gtp_send_cfg(struct i2c_client *client);
-extern void gtp_irq_disable(struct goodix_ts_data *ts);
-extern void gtp_irq_enable(struct goodix_ts_data *ts);
+//extern s32  gtp_i2c_read(struct i2c_client *client, uint8_t *buf, s32 len);
+//extern s32  gtp_i2c_write(struct i2c_client *client,uint8_t *data,s32 len);
+//extern void gtp_reset_guitar(s32 ms);
+//extern s32  gtp_send_cfg(struct i2c_client *client);
+//extern void gtp_irq_disable(struct goodix_ts_data *ts);
+//extern void gtp_irq_enable(struct goodix_ts_data *ts);
 
 static u8 gup_get_ic_msg(struct i2c_client *client, u16 addr, u8* msg, s32 len)
 {
@@ -680,6 +680,8 @@ static u8 gup_burn_dsp_isp(struct i2c_client *client)
     if(retry >= 5)
     {
         GTP_ERROR("[burn_dsp_isp]Alloc memory fail,exit.");
+	if(NULL != fw_dsp_isp)
+		kfree(fw_dsp_isp);
         return FAIL;
     }
     
@@ -809,7 +811,9 @@ static u8 gup_burn_fw_ss51(struct i2c_client *client)
     }
     if(retry >= 5)
     {
-        GTP_ERROR("[burn_fw_ss51]Alloc memory fail,exit.");
+	if(NULL != fw_ss51)
+		kfree(fw_ss51);
+	GTP_ERROR("[burn_fw_ss51]Alloc memory fail,exit.");
         return FAIL;
     }
     
@@ -928,6 +932,8 @@ static u8 gup_burn_fw_dsp(struct i2c_client *client)
     if(retry >= 5)
     {
         GTP_ERROR("[burn_fw_dsp]Alloc memory fail,exit.");
+	if(NULL != fw_dsp) 
+		kfree(fw_dsp);
         return FAIL;
     }
     
@@ -1054,6 +1060,8 @@ static u8 gup_burn_fw_boot(struct i2c_client *client)
     if(retry >= 5)
     {
         GTP_ERROR("[burn_fw_boot]Alloc memory fail,exit.");
+	if( NULL != fw_boot)
+		kfree(fw_boot);
         return FAIL;
     }
     

@@ -30,7 +30,6 @@
 #include<linux/fs.h>
 #include<linux/string.h>
 #include<asm/uaccess.h>
-#include <linux/regulator/consumer.h>
 
 enum{
         DEBUG_INIT              = 1U << 0,
@@ -56,7 +55,7 @@ enum{
 #define FILE_LENGTH             (512)
 #define NAME_LENGTH             (32)
 #define ADDRESS_NUMBER          (5)
-#define REG_VALUE_NUMBER        (10)
+#define REG_VALUE_NUMBER        (5)
 #define DEFAULT_TOTAL_ROW       (7)
 
 /*
@@ -91,32 +90,6 @@ struct sw_device_info{
 	unsigned short id_value[REG_VALUE_NUMBER];
 
 	int same_flag;
-};
-/*
- * para_power_name - Used to parse the power elevant key word
- *
- * @keyname:             sysconfig.fex para key name, format:xxx_para ,For example: ctp_para
- * @power_ldo_name:      sysconfig.fex ldo name,For example: ctp_power_ldo
- * @power_ldo_vol_name:  sysconfig.fex ldo vol para key name, For example: ctp_power_ldo_vol
- * @power_io_name:       sysconfig.fex para power gpio name, For example: ctp_power_io
- * @reset_pin_name:      sysconfig.fex reset pin name, For example: ctp_wakeup
- * @power_ldo:           ldo name ,For example : "axp22_dldo4"
- * @power_ldo_vol        The voltage need to be set for ctp
- * @power_io             power gpio pin
- * @reset_pin            The reset pin of the device
- * @ldo                  axp ldo
-*/
-struct para_power{
-        char* keyname;
-        char* power_ldo_name;
-        char* power_ldo_vol_name;
-        char* power_io_name;
-        char* reset_pin_name;
-        char *power_ldo;
-        int    power_ldo_vol;
-        struct gpio_config power_io;
-        struct gpio_config reset_pin;
-        struct regulator *ldo;
 };
 
 /*

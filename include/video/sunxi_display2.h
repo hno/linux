@@ -1,6 +1,12 @@
 #ifndef __SUNXI_DISPLAY_H__
 #define __SUNXI_DISPLAY_H__
 
+struct disp_manager;
+struct disp_device;
+struct disp_smbl;
+struct disp_enhance;
+struct disp_capture;
+
 typedef struct {unsigned char  alpha;unsigned char red;unsigned char green; unsigned char blue; }disp_color;
 typedef struct {int x; int y; unsigned int width; unsigned int height;}disp_rect;
 typedef struct {unsigned int width;unsigned int height;                   }disp_rectsz;
@@ -137,14 +143,6 @@ typedef enum
 
 typedef enum
 {
-	DISP_TRANSFORM_ROT_0   = 0,
-	DISP_TRANSFORM_ROT_90  = 1,
-	DISP_TRANSFORM_ROT_180 = 2,
-	DISP_TRANSFORM_ROT_270 = 3,
-}disp_transform_type;
-
-typedef enum
-{
 	DISP_BF_NORMAL        = 0,//non-stereo
 	DISP_BF_STEREO_TB     = 1 << 0,//stereo top-bottom
 	DISP_BF_STEREO_FP     = 1 << 1,//stereo frame packing
@@ -165,6 +163,12 @@ typedef enum
 	DISP_SCAN_INTERLACED_ODD_FLD_FIRST    = 1 << 0,//interlace ,odd field first
 	DISP_SCAN_INTERLACED_EVEN_FLD_FIRST   = 1 << 1,//interlace,even field first
 }disp_scan_flags;
+
+typedef struct
+{
+	unsigned int type;
+	unsigned int mode;
+}disp_output;
 
 typedef struct
 {
@@ -246,15 +250,9 @@ typedef struct
 
 typedef struct
 {
-	disp_s_frame s_frame;
-	disp_s_frame d_frame;
-	disp_transform_type tr;
-}disp_transform_info;
-
-typedef struct
-{
 	unsigned int    vic;  //video infomation code
-	unsigned int    pixel_clk;//khz
+	unsigned int	tv_mode;
+	unsigned int    pixel_clk;
 	unsigned int    pixel_repeat;//pixel repeat (pixel_repeat+1) times
 	unsigned int    x_res;
 	unsigned int    y_res;
@@ -270,6 +268,7 @@ typedef struct
 	unsigned int    ver_sync_polarity;//0: negative, 1: positive
 	bool            b_interlace;
 	unsigned int    vactive_space;
+	unsigned int    trd_mode;
 }disp_video_timings;
 
 typedef enum
@@ -316,12 +315,81 @@ typedef struct
 	int (*hdmi_get_input_csc)(void);
 	int (*hdmi_get_hdcp_enable)(void);
 	int (*hdmi_get_video_timing_info)(disp_video_timings **video_info);
-	int (*hdmi_get_video_info_index)(u32 mode_id);
 	int (*hdmi_suspend)(void);
 	int (*hdmi_resume)(void);
 	int (*hdmi_early_suspend)(void);
 	int (*hdmi_late_resume)(void);
 }disp_hdmi_func;
+typedef struct
+{
+		int (*tv_enable)(u32 sel);
+		int (*tv_disable)(u32 sel);
+		int (*tv_suspend)(void);
+		int (*tv_resume)(void);
+		int (*tv_get_mode)(__u32 sel);
+		int (*tv_set_mode)(__u32 sel, disp_tv_mode tv_mod);
+		int (*tv_get_input_csc) (void);
+		int (* tv_get_video_timing_info) (u32 sel, disp_video_timings **video_info);
+		int (*tv_mode_support) (disp_tv_mode mode);
+
+}disp_tv_func;
+
+typedef struct {
+	unsigned int intf;
+	unsigned int sub_intf;
+	unsigned int sequence;
+	unsigned int fdelay;
+}disp_vdevice_interface_para;
+
+typedef struct
+{
+	int (*tcon_enable)(struct disp_device *dispdev);
+	int (*tcon_disable)(struct disp_device *dispdev);
+}disp_vdevice_source_ops;
+
+typedef struct
+{
+	int (*enable)(void);
+	int (*disable)(void);
+	int (*set_mode)(u32 mode);
+	int (*mode_support)(u32 mode);
+	int (*get_HPD_status)(void);
+	int (*get_input_csc)(void);
+	int (*get_video_timing_info)(disp_video_timings **video_info);
+	int (*suspend)(void);
+	int (*resume)(void);
+	int (*early_suspend)(void);
+	int (*late_resume)(void);
+	int (*get_interface_para)(void *para);
+}disp_device_func;
+
+typedef struct
+{
+	char name[32];
+	u32 disp;
+	u32 fix_timing;
+	disp_output_type type;
+	disp_device_func func;
+}disp_vdevice_init_data;
+
+typedef enum
+{
+    DISP_TV_DAC_SRC_COMPOSITE       = 0,
+    DISP_TV_DAC_SRC_LUMA            = 1,
+    DISP_TV_DAC_SRC_CHROMA          = 2,
+    DISP_TV_DAC_SRC_Y               = 4,
+    DISP_TV_DAC_SRC_PB              = 5,
+    DISP_TV_DAC_SRC_PR              = 6,
+    DISP_TV_DAC_SRC_NONE            = 7,
+}disp_tv_dac_source;
+
+typedef enum
+{
+    DISP_TV_NONE    = 0,
+    DISP_TV_CVBS    = 1,
+    DISP_TV_YPBPR   = 2,
+    DISP_TV_SVIDEO  = 4,
+}disp_tv_output;
 
 typedef enum tag_DISP_CMD
 {
@@ -340,6 +408,8 @@ typedef enum tag_DISP_CMD
 	DISP_BLANK = 0x0C,
 	DISP_SHADOW_PROTECT = 0x0D,
 	DISP_HWC_COMMIT = 0x0E,
+	DISP_DEVICE_SWITCH = 0x0F,
+	DISP_GET_OUTPUT = 0x10,
 
 	//----layer----
 	DISP_LAYER_ENABLE = 0x40,
@@ -353,13 +423,7 @@ typedef enum tag_DISP_CMD
 	DISP_LAYER_GET_CONFIG = 0x48,
 
 	//----hdmi----
-	DISP_HDMI_ENABLE = 0xc0,
-	DISP_HDMI_DISABLE = 0xc1,
-	DISP_HDMI_SET_MODE = 0xc2,
-	DISP_HDMI_GET_MODE = 0xc3,
 	DISP_HDMI_SUPPORT_MODE = 0xc4,
-	DISP_HDMI_GET_HPD_STATUS = 0xc5,
-	DISP_HDMI_SET_SRC = 0xc6,
 
 	//----lcd----
 	DISP_LCD_ENABLE = 0x100,
@@ -393,6 +457,8 @@ typedef enum tag_DISP_CMD
 	DISP_ENHANCE_GET_WINDOW = 0x184,
 	DISP_ENHANCE_SET_MODE = 0x185,
 	DISP_ENHANCE_GET_MODE = 0x186,
+	DISP_ENHANCE_DEMO_ENABLE = 0x187,
+	DISP_ENHANCE_DEMO_DISABLE = 0x188,
 
 	//---smart backlight ---
 	DISP_SMBL_ENABLE = 0x200,

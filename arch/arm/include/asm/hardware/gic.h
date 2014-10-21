@@ -19,6 +19,9 @@
 #define GIC_CPU_EOI			0x10
 #define GIC_CPU_RUNNINGPRI		0x14
 #define GIC_CPU_HIGHPRI			0x18
+#define GIC_CPU_AINTACK			0x20
+#define GIC_CPU_AEOI			0x24
+#define GIC_CPU_AHIGHPRI		0x28
 
 #define GIC_DIST_CTRL			0x000
 #define GIC_DIST_CTR			0x004
@@ -49,6 +52,7 @@ void gic_cascade_irq(unsigned int gic_nr, unsigned int irq);
 void gic_raise_softirq(const struct cpumask *mask, unsigned int irq);
 
 void gic_cpu_exit(unsigned int gic_nr);
+void gic_cpu_enter(unsigned int gic_nr);
 bool gic_pending_irq(unsigned int gic_nr);
 
 static inline void gic_init(unsigned int nr, int start,

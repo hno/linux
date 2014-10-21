@@ -118,7 +118,7 @@ struct bosch_sensor_specific {
 };
 /* Addresses to scan */
 static const unsigned short normal_i2c[2] = {0x68,I2C_CLIENT_END};
-static int i2c_num = 0;
+//static int i2c_num = 0;
 static struct sensor_config_info config_info = {
 	.input_type = GYR_TYPE,
 };
@@ -177,9 +177,6 @@ static int gyr_detect(struct i2c_client *client, struct i2c_board_info *info)
 {
 	struct i2c_adapter *adapter = client->adapter;
 	int ret;
-	int err = -1;
-	u8 buf[1];
-	u8 cmd;
 
 	dprintk(DEBUG_INIT, "enter func %s. \n", __FUNCTION__);
 	printk("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++");

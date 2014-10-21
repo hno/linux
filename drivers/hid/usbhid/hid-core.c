@@ -1166,6 +1166,12 @@ static int usbhid_start(struct hid_device *hid)
 
 	set_bit(HID_STARTED, &usbhid->iofl);
 
+	if (interface->desc.bInterfaceSubClass == USB_INTERFACE_SUBCLASS_BOOT &&
+			interface->desc.bInterfaceProtocol ==
+				USB_INTERFACE_PROTOCOL_MOUSE) {
+			device_set_wakeup_enable(&dev->dev, 1);
+	}
+
 	/* Some keyboards don't work until their LEDs have been set.
 	 * Since BIOSes do set the LEDs, it must be safe for any device
 	 * that supports the keyboard boot protocol.
@@ -1470,15 +1476,6 @@ static int hid_suspend_resume(struct usb_device *udev, u32 suspend)
 		    return -1;
 		}
 
-        /* suspend */
-		status = usb_control_msg(hdev, usb_sndctrlpipe(hdev, 0),
-		        USB_REQ_SET_FEATURE, USB_RT_PORT,
-		        USB_PORT_FEAT_SUSPEND, port1,
-		        NULL, 0, 1000);
-		if(status){
-		    printk("err: suspend port failed, status=%d\n", status);
-		    return -1;
-		}
     }else{
 		if(!g_hid_suspend){
 			return 0;
@@ -1487,16 +1484,6 @@ static int hid_suspend_resume(struct usb_device *udev, u32 suspend)
         printk("hid_suspend_resume: clear remote wakeup\n");
 
 		g_hid_suspend = 0;
-
-        /* resume */
-        status = usb_control_msg(hdev, usb_sndctrlpipe(hdev, 0),
-		        USB_REQ_CLEAR_FEATURE, USB_RT_PORT,
-		        USB_PORT_FEAT_SUSPEND, port1,
-		        NULL, 0, 1000);
-		if(status){
-		    printk("err: resume port failed, status=%d\n", status);
-		    return -1;
-		}
 
         /* resume complete */
 		status = usb_control_msg(hdev, usb_rcvctrlpipe(hdev, 0),
@@ -1586,10 +1573,7 @@ static int hid_resume(struct usb_interface *intf)
 	struct hid_device *hid = usb_get_intfdata (intf);
 	struct usbhid_device *usbhid = hid->driver_data;
 	int status;
-#ifdef  CONFIG_HID_REMOTE_WAKEUP
-	int rc = 0;
-	unsigned long standby_wakeup_event = 0;
-#endif
+
 	if (!test_bit(HID_STARTED, &usbhid->iofl))
 		return 0;
 
@@ -1613,12 +1597,6 @@ static int hid_resume(struct usb_interface *intf)
 
 #ifdef  CONFIG_HID_REMOTE_WAKEUP
 	hid_suspend_resume(interface_to_usbdev(intf), 0);
-	arisc_query_wakeup_source(&standby_wakeup_event);
-	if (standby_wakeup_event & CPUS_WAKEUP_USBMOUSE) {
-		rc = usb_submit_urb(usbhid->urbin, GFP_ATOMIC);
-		if (rc != 0)
-			clear_bit(HID_IN_RUNNING, &usbhid->iofl);
-	}
 #endif
 	dev_dbg(&intf->dev, "resume status %d\n", status);
 	return 0;

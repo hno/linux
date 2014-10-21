@@ -26,6 +26,7 @@ struct sw_uart_pdata {
 	unsigned int irq;
 	unsigned int max_ios;
 	unsigned int io_num;
+	unsigned int port_no;
 	char			  regulator_id[16];
 	struct regulator *regulator;
 };
@@ -53,7 +54,6 @@ struct sw_uart_port {
 	struct proc_dir_entry *proc_info;
 
 	struct pinctrl		 *pctrl;
-	struct pinctrl_state *pctrl_state;	
 };
 
 /* register offset define */
@@ -161,11 +161,22 @@ struct sw_uart_port {
 #ifdef CONFIG_ARCH_SUN8IW1P1
 #define SUNXI_UART_NUM			6
 #endif
-#if defined(CONFIG_ARCH_SUN8IW3P1) || defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1)
+#if defined(CONFIG_ARCH_SUN8IW6P1) || defined(CONFIG_ARCH_SUN8IW9)
 #define SUNXI_UART_NUM			5
 #endif
-#ifdef CONFIG_ARCH_SUN9IW1P1
+#if defined(CONFIG_ARCH_SUN8IW3P1) || defined(CONFIG_ARCH_SUN8IW5P1) \
+		|| defined(CONFIG_ARCH_SUN8IW7)
+#define SUNXI_UART_NUM			4
+#endif
+#if defined(CONFIG_ARCH_SUN8IW8)
+#define SUNXI_UART_NUM			3
+#endif
+#if defined(CONFIG_ARCH_SUN9IW1P1)
 #define SUNXI_UART_NUM			6
+#endif
+
+#ifndef SUNXI_UART_NUM
+#define SUNXI_UART_NUM			1
 #endif
 
 /* In 50/39 FPGA, two UART is available, but they share one IRQ.
@@ -187,18 +198,52 @@ struct sw_uart_port {
 
 #define SUNXI_UART_IRQ(ch)	    (SUNXI_IRQ_UART0 + ch)
 
+/* Support to use r_uart on sun8iw5 */
+#ifdef CONFIG_ARCH_SUN8IW5P1
+#define SUNXI_S_UART
+#undef	SUNXI_UART_NUM
+#define SUNXI_UART_NUM			5
+#endif
+
+#ifdef SUNXI_S_UART
+#define SUNXI_S_UART_DEV_NAME		"s_uart"
+#define SUNXI_S_UART_MEM_BASE		SUNXI_R_UART_PBASE
+#define SUNXI_S_UART_MEM_RANGE		0x400
+#define SUNXI_S_UART_MEM_START		(SUNXI_S_UART_MEM_BASE)
+#define SUNXI_S_UART_MEM_END		(SUNXI_S_UART_MEM_START + SUNXI_S_UART_MEM_RANGE - 1)
+#define SUNXI_S_UART_IRQ	    	SUNXI_IRQ_RUART
+#endif
+
 /* About the number of IO */
 
-#define SUNXI_UART_8_IO_PORT	1
+#ifdef CONFIG_EVB_PLATFORM
 
 #ifdef CONFIG_ARCH_SUN8IW1P1
-#define SUNXI_UART_2_IO_PORT	4
+static int gs_uart_io_num[SUNXI_UART_NUM] = {2, 8, 4, 4, 2, 2};
+#elif defined(CONFIG_ARCH_SUN8IW5P1)
+#ifdef SUNXI_S_UART
+static int gs_uart_io_num[SUNXI_UART_NUM] = {2, 4, 4, 4, 2};
+#else
+static int gs_uart_io_num[SUNXI_UART_NUM] = {2, 4, 4, 4};
 #endif
-#if defined(CONFIG_ARCH_SUN8IW3P1) || defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1)
-#define SUNXI_UART_2_IO_PORT	0
+#elif defined(CONFIG_ARCH_SUN8IW6P1)
+static int gs_uart_io_num[SUNXI_UART_NUM] = {2, 4, 4, 4, 4};
+#elif defined(CONFIG_ARCH_SUN8IW3P1) || defined(CONFIG_ARCH_SUN8IW7P1)
+static int gs_uart_io_num[SUNXI_UART_NUM] = {2, 4, 4, 4};
+#elif defined(CONFIG_ARCH_SUN8IW8P1)
+static int gs_uart_io_num[SUNXI_UART_NUM] = {2, 4, 4};
+#elif defined(CONFIG_ARCH_SUN8IW9P1)
+static int gs_uart_io_num[SUNXI_UART_NUM] = {2, 4, 4, 4, 4};
+#elif defined(CONFIG_ARCH_SUN9IW1P1)
+static int gs_uart_io_num[SUNXI_UART_NUM] = {2, 8, 4, 4, 4, 4};
+#else
+static int gs_uart_io_num[SUNXI_UART_NUM] = {2};
 #endif
-#ifdef CONFIG_ARCH_SUN9IW1P1
-#define SUNXI_UART_2_IO_PORT	0
+
+#else /* #ifdef CONFIG_EVB_PLATFORM */
+
+static int gs_uart_io_num[SUNXI_UART_NUM] = {2};
+
 #endif
 
 struct platform_device *sw_uart_get_pdev(int uart_id);

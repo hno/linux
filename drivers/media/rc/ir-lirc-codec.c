@@ -393,7 +393,7 @@ static int __init ir_lirc_codec_init(void)
 {
 	ir_raw_handler_register(&lirc_handler);
 
-	printk(KERN_INFO "IR LIRC bridge handler initialized\n");
+	pr_debug("IR LIRC bridge handler initialized\n");
 	return 0;
 }
 

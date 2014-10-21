@@ -182,7 +182,7 @@ static int __init ir_jvc_decode_init(void)
 {
 	ir_raw_handler_register(&jvc_handler);
 
-	printk(KERN_INFO "IR JVC protocol handler initialized\n");
+	pr_debug("IR JVC protocol handler initialized\n");
 	return 0;
 }
 

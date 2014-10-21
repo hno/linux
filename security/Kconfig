@@ -188,9 +188,11 @@ source security/smack/Kconfig
 source security/tomoyo/Kconfig
 source security/apparmor/Kconfig
 source security/yama/Kconfig
-
 source security/integrity/Kconfig
+source security/te_driver/Kconfig
+source security/te_test/Kconfig
 
+source security/te_sec_storage/Kconfig
 choice
 	prompt "Default security module"
 	default DEFAULT_SECURITY_SELINUX if SECURITY_SELINUX

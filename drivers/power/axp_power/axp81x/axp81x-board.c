@@ -1,3 +1,13 @@
+/*
+ * Battery charger driver for allwinnertech AXP81X
+ *
+ * Copyright (C) 2014 ALLWINNERTECH.
+ *  Ming Li <liming@allwinnertech.com>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
 #include <linux/init.h>
 #include <linux/device.h>
 #include <linux/platform_device.h>
@@ -155,11 +165,6 @@ static int  axp81x_platform_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static struct platform_device axp81x_platform_device = {
-	.name		    = "axp81x_board",
-	.id		        = PLATFORM_DEVID_NONE,
-};
-
 static struct platform_driver axp81x_platform_driver = {
 	.probe		= axp81x_platform_probe,
 	.driver		= {
@@ -172,7 +177,7 @@ static struct platform_driver axp81x_platform_driver = {
 static int __init axp81x_board_init(void)
 {
 	int ret = 0;
-	struct axp_funcdev_info (* axp_regu_info)[23] = NULL;
+	struct axp_funcdev_info *axp_regu_info = NULL;
 
 	ret = axp_fetch_sysconfig_para("pmu1_para", &axp81x_config);
 	if (ret) {
@@ -181,38 +186,47 @@ static int __init axp81x_board_init(void)
 	}
 
 	if (axp81x_config.pmu_used) {
-	axp_regu_info = axp81x_regu_init();
-	if (NULL == axp_regu_info) {
-		printk("%s fetch regu tree err\n", __func__);
-		return -1;
-	} else {
-		axp_pdata.num_regl_devs = 22;
-		axp_pdata.regl_devs = (struct axp_funcdev_info *)axp_regu_info;
-	}
+		battery_data.voltage_max_design = axp81x_config.pmu_init_chgvol;
+		battery_data.voltage_min_design = axp81x_config.pmu_pwroff_vol;
+		battery_data.energy_full_design = axp81x_config.pmu_battery_cap;
+		axp_sply_init_data.chgcur = axp81x_config.pmu_runtime_chgcur;
+		axp_sply_init_data.chgvol = axp81x_config.pmu_init_chgvol;
+		axp_sply_init_data.chgend = axp81x_config.pmu_init_chgend_rate;
+		axp_sply_init_data.chgen = axp81x_config.pmu_init_chg_enabled;
+		axp_sply_init_data.sample_time = axp81x_config.pmu_init_adc_freq;
+		axp_sply_init_data.chgpretime = axp81x_config.pmu_init_chg_pretime;
+		axp_sply_init_data.chgcsttime = axp81x_config.pmu_init_chg_csttime;
+		axp_regu_info = axp81x_regu_init();
+		if (NULL == axp_regu_info) {
+			printk("%s fetch regu tree err\n", __func__);
+			return -1;
+		} else {
+			axp_pdata.num_regl_devs = 23;
+			axp_pdata.regl_devs = (struct axp_funcdev_info *)axp_regu_info;
+			if (NULL == axp_pdata.regl_devs) {
+				printk(KERN_ERR "%s: get regl_devs failed\n", __func__);
+				return -1;
+			}
+		}
 
 #ifdef	CONFIG_AXP_TWI_USED
-	ret = i2c_add_driver(&axp_i2c_driver);
-	if (ret < 0) {
-		printk("axp_i2c_driver add failed\n");
-		return ret;
-	}
+		ret = i2c_add_driver(&axp_i2c_driver);
+		if (ret < 0) {
+			printk("axp_i2c_driver add failed\n");
+			return ret;
+		}
 
-	ret = i2c_register_board_info(1, axp_mfd_i2c_board_info, ARRAY_SIZE(axp_mfd_i2c_board_info));
-	if (ret < 0) {
-		printk("axp_i2c_board_info add failed\n");
-		return ret;
-	}
+		ret = i2c_register_board_info(1, axp_mfd_i2c_board_info, ARRAY_SIZE(axp_mfd_i2c_board_info));
+		if (ret < 0) {
+			printk("axp_i2c_board_info add failed\n");
+			return ret;
+		}
 #else
-	ret = platform_driver_register(&axp81x_platform_driver);
-	if (IS_ERR_VALUE(ret)) {
-		printk("register axp81x platform driver failed\n");
-		return ret;
-	}
-	ret = platform_device_register(&axp81x_platform_device);
-	if (IS_ERR_VALUE(ret)) {
-		printk("register axp81x platform device failed\n");
-		return ret;
-	}
+		ret = platform_driver_register(&axp81x_platform_driver);
+		if (IS_ERR_VALUE(ret)) {
+			printk("register axp81x platform driver failed\n");
+			return ret;
+		}
 #endif
 	} else {
 		ret = -1;
@@ -220,13 +234,9 @@ static int __init axp81x_board_init(void)
         return ret;
 }
 
-#ifdef	CONFIG_AXP_TWI_USED
 arch_initcall(axp81x_board_init);
-#else
-subsys_initcall(axp81x_board_init);
-#endif
 
-MODULE_DESCRIPTION("X-POWERS axp board");
-MODULE_AUTHOR("Weijin Zhong");
+MODULE_DESCRIPTION("ALLWINNERTECH axp board");
+MODULE_AUTHOR("Ming Li");
 MODULE_LICENSE("GPL");
 

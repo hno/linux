@@ -34,7 +34,7 @@
 #endif
 static u32 debug_mask = 0x0;
 #define dprintk(level_mask, fmt, arg...)	if (unlikely(debug_mask & level_mask)) \
-	printk(KERN_DEBUG fmt , ## arg)
+	printk(fmt , ## arg)
 
 struct sunxi_ths_data {
 	void __iomem *base_addr;
@@ -156,7 +156,7 @@ static ssize_t sunxi_ths_show_temp(struct device *dev,
 	int i = 0;
 	printk("%s: enter \n", __func__);
 
-	for (i=0; i<4; i++) {
+	for (i=0; i<6; i++) {
 		cnt += sprintf(buf + cnt,"temperature[%d]:%d\n" , i, ths_read_data(i));
 	}
 
@@ -249,7 +249,7 @@ static int sunxi_ths_input_init(struct sunxi_ths_data *data)
 
 	err = input_register_device(data->ths_input_dev);
 	if (0 < err) {
-		printk("%s: could not register input device\n", __func__);
+		pr_err("%s: could not register input device\n", __func__);
 		input_free_device(data->ths_input_dev);
 		goto fail2;
 	}
@@ -264,7 +264,7 @@ static int sunxi_ths_input_init(struct sunxi_ths_data *data)
 						 &sunxi_ths_input_attribute_group);
 	if (err < 0)
 	{
-		printk("%s: sysfs_create_group err\n", __func__);
+		pr_err("%s: sysfs_create_group err\n", __func__);
 		goto fail3;
 	}
 
@@ -315,7 +315,7 @@ static void calc_temperature(int value, int divisor, int minus, struct sunxi_ths
 	unsigned int i = 0;
 	int64_t avg_temp[4] = {0, 0, 0, 0};
 
-	if (data->circle_num % 10 || !data->circle_num)
+	if (data->circle_num % 5 || !data->circle_num)
 		return;
 	if (value > 0) {
 		for (i = 0; i < data->circle_num; i++) {
@@ -342,7 +342,7 @@ static void calc_temperature(int value, int divisor, int minus, struct sunxi_ths
 		do_div(avg_temp[i], data->circle_num);
 		dprintk(DEBUG_DATA_INFO, "avg_temp_reg=%lld\n", avg_temp[i]);
 
-#ifdef CONFIG_ARCH_SUN9IW1P1
+#if defined(CONFIG_ARCH_SUN9IW1P1) || defined(CONFIG_ARCH_SUN8IW6P1)
 		avg_temp[i] *= 1000;
 		if (0 != avg_temp[i])
 			do_div(avg_temp[i], divisor);
@@ -497,7 +497,7 @@ static int __init sunxi_ths_init(void)
 	dprintk(DEBUG_INIT, "%s: enter!\n", __func__);
 
 	if (input_fetch_sysconfig_para(&(ths_info.input_type))) {
-		printk("%s: err.\n", __func__);
+		pr_err("%s: err.\n", __func__);
 		return -EPERM;
 	}
 
@@ -516,7 +516,7 @@ static int __init sunxi_ths_init(void)
 
 	thermal_data = kzalloc(sizeof(*thermal_data), GFP_KERNEL);
 	if (IS_ERR_OR_NULL(thermal_data)) {
-		printk(KERN_ERR "thermal_data: not enough memory for input device\n");
+		pr_err("thermal_data: not enough memory for input device\n");
 		err = -ENOMEM;
 		goto fail1;
 	}
@@ -524,7 +524,7 @@ static int __init sunxi_ths_init(void)
 	sunxi_ths_input_init(thermal_data);
 	err = sunxi_ths_register_thermal(&ths_zone);
 	if(err < 0) {
-		printk(KERN_ERR "therma: register thermal core failed\n");
+		pr_err("therma: register thermal core failed\n");
 		goto fail2;
 	}
 
@@ -564,6 +564,21 @@ static void __exit sunxi_ths_exit(void)
 
 #elif defined(CONFIG_ARCH_SUN8IW5P1)
 
+#define SUN8IW5_SID_CALIBRATION
+#ifdef SUN8IW5_SID_CALIBRATION
+#define SID_BASE	(void __iomem *)(0xf1C23800)
+#define SID_THS		(SID_BASE + 0X10)
+static void ths_calibration(void)
+{
+	u32 reg_val;
+	reg_val = readl(SID_THS);
+	if(reg_val != 0)
+	{
+		writel(reg_val,thermal_data->base_addr + TEMP_CATA);
+	}
+}
+#endif
+
 static void sunxi_ths_work_func(struct work_struct *work)
 {
 	struct sunxi_ths_data *data = container_of((struct delayed_work *)work,
@@ -591,6 +606,9 @@ static void sunxi_ths_reg_clear(void)
 
 static void sunxi_ths_reg_init(void)
 {
+#ifdef SUN8IW5_SID_CALIBRATION
+	ths_calibration();
+#endif
 	writel(THS_CTRL_REG0_VALUE, thermal_data->base_addr + THS_CTRL_REG0);
 	writel(THS_CTRL_REG1_VALUE, thermal_data->base_addr + THS_CTRL_REG1);
 	writel(THS_PRO_CTRL_REG_VALUE, thermal_data->base_addr + THS_PRO_CTRL_REG);
@@ -700,6 +718,103 @@ static void __exit sunxi_ths_exit(void)
 }
 
 #elif defined(CONFIG_ARCH_SUN8IW6P1)
+#define SUN8IW6_SID_CALIBRATION
+#ifdef SUN8IW6_SID_CALIBRATION
+#define SID_BASE				(void __iomem *)(0xf1c14000)
+
+#define SID_SRAM				(SID_BASE + 0x200)
+
+#define SID_THERMAL_CDATA1				(0xf1c0e000 + 0x34)
+#define SID_THERMAL_CDATA2				(0xf1c0e000 + 0x38)
+
+#define SID_THERMAL_CDATA1_SRAM				(SID_SRAM + 0x34)
+#define SID_THERMAL_CDATA2_SRAM				(SID_SRAM + 0x38)
+
+#endif
+
+
+static struct workqueue_struct *thermal_wq;
+
+/****************************** thermal zone 1 *************************************/
+
+static struct	thermal_trip_point_conf sunxi_trip_data_1 = {
+	.trip_count		= 3,
+	.trip_val[0]		= 80,
+	.trip_val[1]		= 100,
+	.trip_val[2]		= 110,
+};
+
+static struct thermal_cooling_conf sunxi_cooling_data_1 = {
+	.freq_data[0] = {
+		.freq_clip_min = 408000,
+		.freq_clip_max = 2016000,
+		.temp_level = 80,
+	},
+	.freq_data[1] = {
+		.freq_clip_min = 60000,
+		.freq_clip_max = 408000,
+		.temp_level = 100,
+	},
+	.freq_clip_count = 2,
+};
+
+static struct thermal_sensor_conf sunxi_sensor_conf_1 = {
+	.name			= SUNXI_THERMAL_COOLING_DEVICE_NAMER,
+	.read_temperature	= ths_read_data,
+	.trip_data		= &sunxi_trip_data_1,
+	.cooling_data		= &sunxi_cooling_data_1,
+};
+
+static struct sunxi_thermal_zone ths_zone_1 = {
+	.id			= 4,
+	.name			= "sunxi-therm-1",
+	.sunxi_ths_sensor_conf	= &sunxi_sensor_conf_1,
+};
+
+/**************************** thermal zone 1 end ***********************************/
+
+/****************************** thermal zone 2 *************************************/
+
+static struct	thermal_trip_point_conf sunxi_trip_data_2 = {
+	.trip_count		= 1,
+	.trip_val[0]		= 110,
+};
+
+static struct thermal_cooling_conf sunxi_cooling_data_2 = {
+	.freq_data[0] = {
+		.freq_clip_min = 60000,
+		.freq_clip_max = 2016000,
+		.temp_level = 110,
+	},
+	.freq_clip_count = 1,
+};
+
+static struct thermal_sensor_conf sunxi_sensor_conf_2 = {
+	.name			= SUNXI_THERMAL_COOLING_DEVICE_NAMER,
+	.read_temperature	= ths_read_data,
+	.trip_data		= &sunxi_trip_data_2,
+	.cooling_data		= &sunxi_cooling_data_2,
+};
+
+static struct sunxi_thermal_zone ths_zone_2 = {
+	.id			= 4,
+	.name			= "sunxi-therm-2",
+	.sunxi_ths_sensor_conf	= &sunxi_sensor_conf_2,
+};
+
+/**************************** thermal zone 2 end ***********************************/
+
+static int temperature_to_reg(int temp_value, int multiplier, int minus)
+{
+	int64_t temp_reg;
+
+	temp_reg = minus*1000 - multiplier*temp_value;
+
+	do_div(temp_reg, 1000);
+	dprintk(DEBUG_INIT, "temp_reg=%lld \n", temp_reg);
+
+	return (int)(temp_reg);
+}
 
 static inline unsigned long ths_get_intsta(struct sunxi_ths_data *data)
 {
@@ -709,6 +824,13 @@ static inline unsigned long ths_get_intsta(struct sunxi_ths_data *data)
 static inline void ths_clr_intsta(struct sunxi_ths_data *data)
 {
 	writel(THS_CLEAR_INT_STA, data->base_addr + THS_INT_STA_REG);
+}
+
+static void ths_irq_work_func(struct work_struct *work)
+{
+	dprintk(DEBUG_DATA_INFO, "%s enter\n", __func__);
+	thermal_zone_device_update(ths_zone_2.therm_dev);
+	return;
 }
 
 static irqreturn_t ths_irq_service(int irqno, void *dev_id)
@@ -722,18 +844,8 @@ static irqreturn_t ths_irq_service(int irqno, void *dev_id)
 
 	ths_clr_intsta(data);
 
-	if (intsta & THS_INTS_SHT0) {
-	}
-	if (intsta & THS_INTS_SHT1) {
-	}
-	if (intsta & THS_INTS_SHT2) {
-	}
-
-	if (intsta & THS_INTS_ALARM0) {
-	}
-	if (intsta & THS_INTS_ALARM1) {
-	}
-	if (intsta & THS_INTS_ALARM2) {
+	if (intsta & (THS_INTS_SHT0|THS_INTS_SHT1|THS_INTS_SHT2)){
+		queue_work(thermal_wq, &thermal_data->irq_work);
 	}
 
 	return IRQ_HANDLED;
@@ -758,7 +870,7 @@ static void sunxi_ths_work_func(struct work_struct *work)
 	if ((1000 < data->temp_data1[data->circle_num]) && (1000 < data->temp_data2[data->circle_num])
 		&& (1000 < data->temp_data3[data->circle_num]))
 		data->circle_num++;
-	calc_temperature(4, 625, 267, data);
+	calc_temperature(3, 14186, 192, data);
 
 	if (0 == data->circle_num) {
 		temp = data->thermal_data[0];
@@ -770,8 +882,229 @@ static void sunxi_ths_work_func(struct work_struct *work)
 		}
 		data->thermal_data[4] = temp;
 		ths_write_data(4, data);
-		do_div(avg_temp, 4);
+		do_div(avg_temp, 3);
 		data->thermal_data[5] = (int)(avg_temp);
+		ths_write_data(5, data);
+	}
+
+	schedule_delayed_work(&data->work, delay);
+}
+
+static void sunxi_ths_reg_clear(void)
+{
+	writel(0, thermal_data->base_addr + THS_CTRL2_REG);
+}
+
+static void sunxi_ths_reg_init(void)
+{
+	int reg_value;
+
+#ifdef SUN8IW6_SID_CALIBRATION
+	reg_value = readl(SID_THERMAL_CDATA1_SRAM);
+	if (0 != reg_value)
+		writel(reg_value, thermal_data->base_addr + THS_0_1_CDATA_REG);
+	reg_value = readl(SID_THERMAL_CDATA2_SRAM);
+	if (0 != reg_value)
+		writel(reg_value, thermal_data->base_addr + THS_2_CDATA_REG);
+#endif
+
+	writel(THS_CTRL0_VALUE, thermal_data->base_addr + THS_CTRL0_REG);
+	writel(THS_CTRL2_VALUE, thermal_data->base_addr + THS_CTRL2_REG);
+	writel(THS_INT_CTRL_VALUE, thermal_data->base_addr + THS_INT_CTRL_REG);
+	writel(THS_CLEAR_INT_STA, thermal_data->base_addr + THS_INT_STA_REG);
+	writel(THS_FILT_CTRL_VALUE, thermal_data->base_addr + THS_FILT_CTRL_REG);
+
+	reg_value = temperature_to_reg(ths_zone_2.sunxi_ths_sensor_conf->trip_data->trip_val[0], 14186, 2794);
+	reg_value = (reg_value<<16);
+
+	writel(reg_value, thermal_data->base_addr + THS_INT_SHUT_TH_REG0);
+	writel(reg_value, thermal_data->base_addr + THS_INT_SHUT_TH_REG1);
+	writel(reg_value, thermal_data->base_addr + THS_INT_SHUT_TH_REG2);
+
+	dprintk(DEBUG_INIT, "THS_CTRL_REG = 0x%x\n", readl(thermal_data->base_addr + THS_CTRL2_REG));
+	dprintk(DEBUG_INIT, "THS_INT_CTRL_REG = 0x%x\n", readl(thermal_data->base_addr + THS_INT_CTRL_REG));
+	dprintk(DEBUG_INIT, "THS_INT_STA_REG = 0x%x\n", readl(thermal_data->base_addr + THS_INT_STA_REG));
+	dprintk(DEBUG_INIT, "THS_FILT_CTRL_REG = 0x%x\n", readl(thermal_data->base_addr + THS_FILT_CTRL_REG));
+}
+
+
+static int __init sunxi_ths_init(void)
+{
+	int err = 0;
+
+	dprintk(DEBUG_INIT, "%s: enter!\n", __func__);
+
+	if (input_fetch_sysconfig_para(&(ths_info.input_type))) {
+		printk("%s: err.\n", __func__);
+		return -EPERM;
+	}
+
+	sunxi_trip_data_1.trip_count = ths_info.trip1_count;
+	sunxi_trip_data_1.trip_val[0] = ths_info.trip1_0;
+	sunxi_trip_data_1.trip_val[1] = ths_info.trip1_1;
+	sunxi_trip_data_1.trip_val[2] = ths_info.trip1_2;
+	sunxi_trip_data_1.trip_val[3] = ths_info.trip1_3;
+	sunxi_trip_data_1.trip_val[4] = ths_info.trip1_4;
+	sunxi_trip_data_1.trip_val[5] = ths_info.trip1_5;
+	sunxi_trip_data_1.trip_val[6] = ths_info.trip1_6;
+	sunxi_trip_data_1.trip_val[7] = ths_info.trip1_7;
+
+	sunxi_cooling_data_1.freq_clip_count = ths_info.trip1_count-1;
+	sunxi_cooling_data_1.freq_data[0].freq_clip_min = ths_info.trip1_0_min;
+	sunxi_cooling_data_1.freq_data[0].freq_clip_max = ths_info.trip1_0_max;
+	sunxi_cooling_data_1.freq_data[0].temp_level = ths_info.trip1_0;
+	sunxi_cooling_data_1.freq_data[1].freq_clip_min = ths_info.trip1_1_min;
+	sunxi_cooling_data_1.freq_data[1].freq_clip_max = ths_info.trip1_1_max;
+	sunxi_cooling_data_1.freq_data[1].temp_level = ths_info.trip1_1;
+	sunxi_cooling_data_1.freq_data[2].freq_clip_min = ths_info.trip1_2_min;
+	sunxi_cooling_data_1.freq_data[2].freq_clip_max = ths_info.trip1_2_max;
+	sunxi_cooling_data_1.freq_data[2].temp_level = ths_info.trip1_2;
+	sunxi_cooling_data_1.freq_data[3].freq_clip_min = ths_info.trip1_3_min;
+	sunxi_cooling_data_1.freq_data[3].freq_clip_max = ths_info.trip1_3_max;
+	sunxi_cooling_data_1.freq_data[3].temp_level = ths_info.trip1_3;
+	sunxi_cooling_data_1.freq_data[4].freq_clip_min = ths_info.trip1_4_min;
+	sunxi_cooling_data_1.freq_data[4].freq_clip_max = ths_info.trip1_4_max;
+	sunxi_cooling_data_1.freq_data[4].temp_level = ths_info.trip1_4;
+	sunxi_cooling_data_1.freq_data[5].freq_clip_min = ths_info.trip1_5_min;
+	sunxi_cooling_data_1.freq_data[5].freq_clip_max = ths_info.trip1_5_max;
+	sunxi_cooling_data_1.freq_data[5].temp_level = ths_info.trip1_5;
+	sunxi_cooling_data_1.freq_data[6].freq_clip_min = ths_info.trip1_6_min;
+	sunxi_cooling_data_1.freq_data[6].freq_clip_max = ths_info.trip1_6_max;
+	sunxi_cooling_data_1.freq_data[6].temp_level = ths_info.trip1_6;
+
+	sunxi_trip_data_2.trip_count = ths_info.trip2_count;
+	sunxi_trip_data_2.trip_val[0] = ths_info.trip2_0;
+	sunxi_cooling_data_2.freq_clip_count = ths_info.trip2_count-1;
+	sunxi_cooling_data_2.freq_data[0].temp_level = ths_info.trip2_0;
+
+	thermal_data = kzalloc(sizeof(*thermal_data), GFP_KERNEL);
+	if (IS_ERR_OR_NULL(thermal_data)) {
+		printk(KERN_ERR "thermal_data: not enough memory for input device\n");
+		err = -ENOMEM;
+		goto fail1;
+	}
+
+	sunxi_ths_input_init(thermal_data);
+	err = sunxi_ths_register_thermal(&ths_zone_1);
+	if(err < 0) {
+		printk(KERN_ERR "therma: register thermal core failed\n");
+		goto fail2;
+	}
+	err = sunxi_ths_register_thermal(&ths_zone_2);
+	if(err < 0) {
+		printk(KERN_ERR "therma: register thermal core failed\n");
+		goto fail2;
+	}
+
+	thermal_data->base_addr = (void __iomem *)THERMAL_BASSADDRESS;
+	sunxi_ths_reg_init();
+
+	INIT_WORK(&thermal_data->irq_work, ths_irq_work_func);
+	thermal_wq = create_singlethread_workqueue("thermal_wq");
+	if (!thermal_wq) {
+		printk(KERN_ALERT "Creat thermal_wq failed.\n");
+		return -ENOMEM;
+	}
+	flush_workqueue(thermal_wq);
+	
+	thermal_data->irq_used = 1;
+	if (request_irq(THS_IRQNO, ths_irq_service, 0, "Thermal",
+			thermal_data->ths_input_dev)) {
+		err = -EBUSY;
+		goto fail3;
+	}
+
+#ifdef CONFIG_PM
+	thermal_data->ths_pm_domain.ops.suspend = sunxi_ths_suspend;
+	thermal_data->ths_pm_domain.ops.resume = sunxi_ths_resume;
+	thermal_data->ths_input_dev->dev.pm_domain = &thermal_data->ths_pm_domain;
+#endif
+	INIT_DELAYED_WORK(&thermal_data->work, sunxi_ths_work_func);
+	atomic_set(&thermal_data->delay, (unsigned int) THERMAL_DATA_DELAY);
+	schedule_delayed_work(&thermal_data->work,
+				msecs_to_jiffies(atomic_read(&thermal_data->delay)));
+
+	dprintk(DEBUG_INIT, "%s: OK!\n", __func__);
+
+	return 0;
+fail3:
+	sunxi_ths_unregister_thermal(&ths_zone_2);
+	sunxi_ths_unregister_thermal(&ths_zone_1);
+fail2:
+	sunxi_ths_input_exit(thermal_data);
+	kfree(thermal_data);
+fail1:
+	return err;
+}
+
+static void __exit sunxi_ths_exit(void)
+{
+	cancel_delayed_work_sync(&thermal_data->input_work);
+	cancel_delayed_work_sync(&thermal_data->work);
+	free_irq(THS_IRQNO, thermal_data->ths_input_dev);
+	if (thermal_wq)
+		destroy_workqueue(thermal_wq);
+	sunxi_ths_reg_clear();
+	sunxi_ths_unregister_thermal(&ths_zone_2);
+	sunxi_ths_unregister_thermal(&ths_zone_1);
+	sunxi_ths_input_exit(thermal_data);
+	kfree(thermal_data);
+}
+
+#elif defined(CONFIG_ARCH_SUN8IW7P1)
+
+static inline unsigned long ths_get_intsta(struct sunxi_ths_data *data)
+{
+	return (readl(data->base_addr + THS_INT_STA_REG));
+}
+
+static inline void ths_clr_intsta(struct sunxi_ths_data *data)
+{
+	writel(THS_CLEAR_INT_STA, data->base_addr + THS_INT_STA_REG);
+}
+
+static irqreturn_t ths_irq_service(int irqno, void *dev_id)
+{
+	struct sunxi_ths_data *data = container_of(dev_id,
+					struct sunxi_ths_data, ths_input_dev);
+	unsigned long intsta;
+	dprintk(DEBUG_DATA_INFO, "THS IRQ Serve\n");
+
+	intsta = ths_get_intsta(data);
+
+	ths_clr_intsta(data);
+
+	if (intsta & THS_INTS_SHT0) {
+	}
+	
+	if (intsta & THS_INTS_ALARM0) {
+	}
+	
+	return IRQ_HANDLED;
+}
+
+static void sunxi_ths_work_func(struct work_struct *work)
+{
+	int i = 0;
+	int temp;
+
+	struct sunxi_ths_data *data = container_of((struct delayed_work *)work,
+			struct sunxi_ths_data, work);
+	unsigned long delay = msecs_to_jiffies(atomic_read(&data->delay));
+
+	data->temp_data1[data->circle_num] = readl(data->base_addr + THS_DATA_REG);
+	dprintk(DEBUG_DATA_INFO, "THS data = %d\n", data->temp_data1[data->circle_num]);
+
+	if ((1000 < data->temp_data1[data->circle_num]) && (1000 < data->temp_data2[data->circle_num])
+		&& (1000 < data->temp_data3[data->circle_num]))
+		data->circle_num++;
+	calc_temperature(1, 625, 267, data);///gai
+
+	if (0 == data->circle_num) {
+		ths_write_data(1, data);
+		data->thermal_data[4] = data->thermal_data[0];
+		ths_write_data(4, data);
+		data->thermal_data[5] = data->thermal_data[0];
 		ths_write_data(5, data);
 	}
 
@@ -791,13 +1124,9 @@ static void sunxi_ths_reg_init(void)
 	writel(THS_CLEAR_INT_STA, thermal_data->base_addr + THS_INT_STA_REG);
 	writel(THS_FILT_CTRL_VALUE, thermal_data->base_addr + THS_FILT_CTRL_REG);
 
-	writel(0, thermal_data->base_addr + THS_INT_ALM_TH_REG0);
-	writel(0, thermal_data->base_addr + THS_INT_ALM_TH_REG1);
-	writel(0, thermal_data->base_addr + THS_INT_ALM_TH_REG2);
+	writel(0, thermal_data->base_addr + THS_INT_ALM_TH_REG);
 
-	writel(0, thermal_data->base_addr + THS_INT_SHUT_TH_REG0);
-	writel(0, thermal_data->base_addr + THS_INT_SHUT_TH_REG1);
-	writel(0, thermal_data->base_addr + THS_INT_SHUT_TH_REG2);
+	writel(0, thermal_data->base_addr + THS_INT_SHUT_TH_REG);
 
 	dprintk(DEBUG_INIT, "THS_CTRL_REG = 0x%x\n", readl(thermal_data->base_addr + THS_CTRL2_REG));
 	dprintk(DEBUG_INIT, "THS_INT_CTRL_REG = 0x%x\n", readl(thermal_data->base_addr + THS_INT_CTRL_REG));
@@ -949,6 +1278,7 @@ static void __exit sunxi_ths_exit(void)
 }
 
 #elif defined(CONFIG_ARCH_SUN9IW1P1)
+
 #define SUN9I_SID_CALIBRATION
 #ifdef SUN9I_SID_CALIBRATION
 #define SID_BASE				(void __iomem *)(0xf1c0e000)
@@ -965,28 +1295,9 @@ static void __exit sunxi_ths_exit(void)
 #define SID_THERMAL1				(0xf1c0e000 + 0x44)
 #define SID_THERMAL2				(0xf1c0e000 + 0x48)
 
-static int sid_read_key(int key_index)
-{
-	u32 reg_val;
+#define SID_THERMAL1_SRAM				(SID_SRAM + 0x44)
+#define SID_THERMAL2_SRAM				(SID_SRAM + 0x48)
 
-	reg_val = readl(SID_PRCTL);
-	reg_val &= ~((0x1ff<<16)|0x3);
-	reg_val |= key_index<<16;
-	writel(reg_val, SID_PRCTL);
-
-	reg_val &= ~((0xff<<8)|0x3);
-	reg_val |= (SID_OP_LOCK<<8) | 0x2;
-	writel(reg_val, SID_PRCTL);
-
-	while(readl(SID_PRCTL)&0x2){};
-
-	reg_val &= ~((0x1ff<<16)|(0xff<<8)|0x3);
-	writel(reg_val, SID_PRCTL);
-
-	reg_val = readl(SID_RDKEY);
-
-	return reg_val;
-}
 #endif
 
 /****************************** thermal zone 1 *************************************/
@@ -1004,7 +1315,7 @@ static struct thermal_sensor_conf sunxi_sensor_conf_1 = {
 };
 
 static struct sunxi_thermal_zone ths_zone_1 = {
-	.id			= 5,
+	.id			= 4,
 	.name			= "sunxi-therm-1",
 	.sunxi_ths_sensor_conf	= &sunxi_sensor_conf_1,
 };
@@ -1235,10 +1546,10 @@ static void sunxi_ths_reg_init(void)
 	dprintk(DEBUG_INIT, "THS_FILT_CTRL_REG = 0x%x\n", readl(thermal_data->base_addr + THS_FILT_CTRL_REG));
 
 #ifdef SUN9I_SID_CALIBRATION
-	reg_value = sid_read_key(SID_THERMAL1);
+	reg_value = readl(SID_THERMAL1_SRAM);
 	if (reg_value != 0)
 		writel(reg_value, thermal_data->base_addr + THS_0_1_CDAT_REG);
-	reg_value = sid_read_key(SID_THERMAL2);
+	reg_value = readl(SID_THERMAL2_SRAM);
 	if (reg_value != 0)
 		writel(reg_value, thermal_data->base_addr + THS_2_3_CDAT_REG);
 #endif

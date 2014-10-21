@@ -70,8 +70,24 @@
 * GPIO5<-->GPIO/Wakeup(PIN 14)
 * GPIO6<-->SWOUT(PIN 22)
 */
+#ifdef CONFIG_AW_AXP15
 #define AXP_GPIO5_CFG                   (AXP15_WAKEUP_FUNC)//0x35
 #define AXP_GPIO6_CFG                   (AXP15_BC_LDO_EN)//0x11
+#endif
+
+#ifndef AXP_GPIO0_CFG
+#define AXP_GPIO0_CFG                   (0)
+#define AXP_GPIO1_CFG                   (0)
+#define AXP_GPIO2_CFG                   (0)
+#define AXP_GPIO3_CFG                   (0)
+#define AXP_GPIO4_CFG                   (0)
+#define AXP_GPIO4_STA                   (0)
+#define AXP_GPIO01_STATE                (0)
+#endif
+#ifndef AXP_GPIO5_CFG
+#define AXP_GPIO5_CFG                   (0)//0x35
+#define AXP_GPIO6_CFG                   (0)//0x11
+#endif
 
 #define AXP_PIN_NAME_MAX_LEN	8
 

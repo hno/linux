@@ -29,6 +29,10 @@
 #include "sun8i/platform-sun8iw6p1.h"
 #elif defined CONFIG_ARCH_SUN8IW7P1
 #include "sun8i/platform-sun8iw7p1.h"
+#elif defined CONFIG_ARCH_SUN8IW8P1
+#include "sun8i/platform-sun8iw8p1.h"
+#elif defined CONFIG_ARCH_SUN8IW9P1
+#include "sun8i/platform-sun8iw9p1.h"
 #elif defined(CONFIG_ARCH_SUN9IW1P1)
 #include "sun9i/platform-sun9iw1p1.h"
 #else

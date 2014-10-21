@@ -26,7 +26,6 @@
 nmi_isr_t nmi_isr_node[2];
 EXPORT_SYMBOL(nmi_isr_node);
 
-
 /**
  * register call-back function, call-back function is for arisc notify some event to ac327,
  * axp/rtc interrupt for external interrupt NMI.
@@ -176,6 +175,38 @@ int arisc_axp_get_chip_id(unsigned char *chip_id)
 }
 EXPORT_SYMBOL(arisc_axp_get_chip_id);
 
+#if (defined CONFIG_ARCH_SUN8IW5P1)
+int arisc_adjust_pmu_chgcur(unsigned int max_chgcur, unsigned int chg_ic_temp)
+{
+	int                   result;
+	struct arisc_message *pmessage;
+
+	/* allocate a message frame */
+	pmessage = arisc_message_allocate(ARISC_MESSAGE_ATTR_HARDSYN);
+	if (pmessage == NULL) {
+		ARISC_WRN("allocate message failed\n");
+		return -ENOMEM;
+	}
+
+	/* initialize message */
+	pmessage->type       = ARISC_AXP_SET_PARAS;
+	pmessage->private    = (void *)0x62; /* set charge current flag */
+	pmessage->paras[0]   = chg_ic_temp;
+	pmessage->paras[1]   = max_chgcur;
+	pmessage->paras[2]   = 0;
+
+	/* send message use hwmsgbox */
+	arisc_hwmsgbox_send_message(pmessage, ARISC_SEND_MSG_TIMEOUT);
+
+	/* free message */
+	result = pmessage->result;
+	arisc_message_free(pmessage);
+
+	return result;
+}
+EXPORT_SYMBOL(arisc_adjust_pmu_chgcur);
+#endif
+
 int arisc_axp_int_notify(struct arisc_message *pmessage)
 {
 	u32 type = pmessage->paras[0];
@@ -224,9 +255,7 @@ int arisc_config_pmu_paras(void)
 {
 	u32 pmu_discharge_ltf = 0;
 	u32 pmu_discharge_htf = 0;
-#if (defined CONFIG_ARCH_SUN8IW5P1)
-	u32 bat_chargetemp = 0; /* used for config object temperature when battery charging */
-#endif
+
 	int result = 0;
 	struct arisc_message *pmessage;
 
@@ -239,13 +268,7 @@ int arisc_config_pmu_paras(void)
 		ARISC_WRN("parse pmu discharge htf fail\n");
 		return -EINVAL;
 	}
-#if (defined CONFIG_ARCH_SUN8IW5P1)
-	/* parse pmu temperature paras */
-	if (arisc_get_pmu_cfg("pmu1_para", "pmu_chg_ic_temp", &bat_chargetemp)) {
-		ARISC_WRN("parse battery charge temperature fail\n");
-		return -EINVAL;
-	}
-#endif
+
 	/* allocate a message frame */
 	pmessage = arisc_message_allocate(ARISC_MESSAGE_ATTR_HARDSYN);
 	if (pmessage == NULL) {
@@ -255,11 +278,11 @@ int arisc_config_pmu_paras(void)
 
 	/* initialize message */
 	pmessage->type       = ARISC_AXP_SET_PARAS;
+	pmessage->private    = (void *)0x00; /* init pmu paras flag */
 	pmessage->paras[0]   = pmu_discharge_ltf;
 	pmessage->paras[1]   = pmu_discharge_htf;
-#if (defined CONFIG_ARCH_SUN8IW5P1)
-	pmessage->paras[2]   = bat_chargetemp;
-#endif
+	pmessage->paras[2]   = 0;
+
 	pmessage->state      = ARISC_MESSAGE_INITIALIZED;
 	pmessage->cb.handler = NULL;
 	pmessage->cb.arg     = NULL;
@@ -281,3 +304,65 @@ int arisc_config_pmu_paras(void)
 
 	return result;
 }
+
+int arisc_pmu_set_voltage(u32 type, u32 voltage)
+{
+	int                   result;
+	struct arisc_message *pmessage;
+
+	/* allocate a message frame */
+	pmessage = arisc_message_allocate(ARISC_MESSAGE_ATTR_HARDSYN);
+	if (pmessage == NULL) {
+		ARISC_WRN("allocate message failed\n");
+		return -ENOMEM;
+	}
+
+	/* initialize message */
+	pmessage->type       = ARISC_SET_PMU_VOLT;
+	pmessage->state      = ARISC_MESSAGE_INITIALIZED;
+	pmessage->cb.handler = NULL;
+	pmessage->cb.arg     = NULL;
+	pmessage->paras[0]   = type;
+	pmessage->paras[1]   = voltage;
+
+	/* send message use hwmsgbox */
+	arisc_hwmsgbox_send_message(pmessage, ARISC_SEND_MSG_TIMEOUT);
+
+	/* free message */
+	result = pmessage->result;
+	arisc_message_free(pmessage);
+
+	return result;
+}
+EXPORT_SYMBOL(arisc_pmu_set_voltage);
+
+unsigned int arisc_pmu_get_voltage(u32 type)
+{
+	u32                   voltage;
+	struct arisc_message *pmessage;
+
+	/* allocate a message frame */
+	pmessage = arisc_message_allocate(ARISC_MESSAGE_ATTR_HARDSYN);
+	if (pmessage == NULL) {
+		ARISC_WRN("allocate message failed\n");
+		return -ENOMEM;
+	}
+
+	/* initialize message */
+	pmessage->type       = ARISC_GET_PMU_VOLT;
+	pmessage->state      = ARISC_MESSAGE_INITIALIZED;
+	pmessage->cb.handler = NULL;
+	pmessage->cb.arg     = NULL;
+	pmessage->paras[0]   = type;
+
+	/* send message use hwmsgbox */
+	arisc_hwmsgbox_send_message(pmessage, ARISC_SEND_MSG_TIMEOUT);
+	voltage = pmessage->paras[1];
+
+	/* free message */
+	arisc_message_free(pmessage);
+
+	return voltage;
+}
+EXPORT_SYMBOL(arisc_pmu_get_voltage);
+

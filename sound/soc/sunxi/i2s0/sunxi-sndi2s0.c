@@ -110,7 +110,7 @@ static int sunxi_sndi2s0_hw_params(struct snd_pcm_substream *substream,
 	ret = snd_soc_dai_set_fmt(codec_dai, SND_SOC_DAIFMT_I2S |
 			SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_CBS_CFS);
 	if (ret < 0) {
-		printk("%s, line:%d\n", __func__, __LINE__);
+		pr_err("%s, line:%d\n", __func__, __LINE__);
 		return ret;
 	}
 	/*
@@ -128,7 +128,7 @@ static int sunxi_sndi2s0_hw_params(struct snd_pcm_substream *substream,
 
 	ret = snd_soc_dai_set_clkdiv(codec_dai, 0, sample_rate);
 	if (ret < 0) {
-		printk("%s, line:%d\n", __func__, __LINE__);
+		pr_err("%s, line:%d\n", __func__, __LINE__);
 		return ret;
 	}
 	/*
@@ -193,68 +193,99 @@ static struct snd_soc_card snd_soc_sunxi_sndi2s0 = {
 	.num_links 	= 1,
 };
 
-static struct platform_device *sunxi_sndi2s0_device;
-
-static int __init sunxi_sndi2s0_init(void)
+static int __devinit sunxi_sndi2s0_dev_probe(struct platform_device *pdev)
 {
 	int ret = 0;
 	script_item_u val;
 	script_item_value_type_e  type;
+	struct snd_soc_card *card = &snd_soc_sunxi_sndi2s0;
 
 	type = script_get_item("i2s0", "i2s0_used", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[I2S0] type err!\n");
+        pr_err("[I2S0] type err!\n");
     }
 	i2s0_used = val.val;
 	type = script_get_item("i2s0", "i2s0_select", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[I2S0] i2s0_select type err!\n");
+        pr_err("[I2S0] i2s0_select type err!\n");
     }
 	i2s0_pcm_select = val.val;
 
 	type = script_get_item("i2s0", "i2s0_master", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[I2S0] i2s0_master type err!\n");
+        pr_err("[I2S0] i2s0_master type err!\n");
     }
 	i2s0_master = val.val;
 	
 	type = script_get_item("i2s0", "audio_format", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[I2S0] audio_format type err!\n");
+        pr_err("[I2S0] audio_format type err!\n");
     }
 	audio_format = val.val;
 
 	type = script_get_item("i2s0", "signal_inversion", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[I2S0] signal_inversion type err!\n");
+        pr_err("[I2S0] signal_inversion type err!\n");
     }
 	signal_inversion = val.val;
 
-    if (i2s0_used) {
-		sunxi_sndi2s0_device = platform_device_alloc("soc-audio", 2);
-		if(!sunxi_sndi2s0_device)
-			return -ENOMEM;
-		platform_set_drvdata(sunxi_sndi2s0_device, &snd_soc_sunxi_sndi2s0);
-		ret = platform_device_add(sunxi_sndi2s0_device);
+	if (i2s0_used) {
+		card->dev = &pdev->dev;
+		ret = snd_soc_register_card(card);
 		if (ret) {
-			platform_device_put(sunxi_sndi2s0_device);
+			dev_err(&pdev->dev, "snd_soc_register_card() failed: %d\n", ret);
 		}
-	}else{
-		printk("[I2S0]sunxi_sndi2s0 cannot find any using configuration for controllers, return directly!\n");
+	} else {
+		pr_err("[i2s0]sunxi_sndi2s0_dev_probe cannot find any using configuration for controllers, return directly!\n");
         return 0;
 	}
 	return ret;
 }
 
-static void __exit sunxi_sndi2s0_exit(void)
+static int __devexit sunxi_sndi2s0_dev_remove(struct platform_device *pdev)
 {
-	if(i2s0_used) {
-		i2s0_used = 0;
-		platform_device_unregister(sunxi_sndi2s0_device);
+	struct snd_soc_card *card = platform_get_drvdata(pdev);
+
+	if (i2s0_used) {
+		snd_soc_unregister_card(card);
 	}
+	return 0;
 }
 
+/*data relating*/
+static struct platform_device sunxi_i2s0_device = {
+	.name 	= "sndi2s0",
+	.id 	= PLATFORM_DEVID_NONE,
+};
+
+/*method relating*/
+static struct platform_driver sunxi_i2s0_driver = {
+	.probe = sunxi_sndi2s0_dev_probe,
+	.remove = __exit_p(sunxi_sndi2s0_dev_remove),
+	.driver = {
+		.name = "sndi2s0",
+		.owner = THIS_MODULE,
+		.pm = &snd_soc_pm_ops,
+	},
+};
+
+static int __init sunxi_sndi2s0_init(void)
+{
+	int err = 0;
+	if((err = platform_device_register(&sunxi_i2s0_device)) < 0)
+		return err;
+
+	if ((err = platform_driver_register(&sunxi_i2s0_driver)) < 0)
+		return err;	
+
+	return 0;
+}
 module_init(sunxi_sndi2s0_init);
+
+static void __exit sunxi_sndi2s0_exit(void)
+{
+	platform_driver_unregister(&sunxi_i2s0_driver);
+}
 module_exit(sunxi_sndi2s0_exit);
 
 MODULE_AUTHOR("huangxin");

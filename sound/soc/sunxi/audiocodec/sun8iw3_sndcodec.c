@@ -304,7 +304,7 @@ static void codec_resume_events(struct work_struct *work)
 	//by xzd
 	msleep(400);
 	codec_wr_prcm_control(MIC1G_MICBIAS_CTRL, 0x1, HMICBIASEN, 0x1);
-	printk("====codec_resume_events===\n");
+	pr_debug("====codec_resume_events===\n");
 }
 #endif
 static void get_audio_param(void)
@@ -314,42 +314,42 @@ static void get_audio_param(void)
 
 	type = script_get_item("audio0", "headphone_vol", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-		printk("[audiocodec] headphone_vol type err!\n");
+		pr_err("[audiocodec] headphone_vol type err!\n");
 	}  else { 
 		headphone_vol = val.val;
 	}
 
 	type = script_get_item("audio0", "earpiece_vol", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-		printk("[audiocodec] earpiece_vol type err!\n");
+		pr_err("[audiocodec] earpiece_vol type err!\n");
 	}  else { 
 		earpiece_vol = val.val;
 	}
 
 	type = script_get_item("audio0", "cap_vol", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-		printk("[audiocodec] cap_vol type err!\n");
+		pr_err("[audiocodec] cap_vol type err!\n");
 	}  else { 
 		cap_vol = val.val;
 	}
 
 	type = script_get_item("audio0", "headset_mic_vol", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-		printk("[audiocodec] headset_mic_vol type err!\n");
+		pr_err("[audiocodec] headset_mic_vol type err!\n");
 	}  else { 
 		phone_headset_mic_vol = val.val;
 	}
 
 	type = script_get_item("audio0", "main_mic_vol", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-		printk("[audiocodec] main_mic_vol type err!\n");
+		pr_err("[audiocodec] main_mic_vol type err!\n");
 	}  else { 
 		phone_main_mic_vol = val.val;
 	}
 
 	type = script_get_item("audio0", "pa_double_used", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-		printk("[audiocodec] pa_double_used type err!\n");
+		pr_err("[audiocodec] pa_double_used type err!\n");
 	}  else { 
 		pa_double_used = val.val;
 	}
@@ -357,14 +357,14 @@ static void get_audio_param(void)
 	if (!pa_double_used) {
 		type = script_get_item("audio0", "pa_single_vol", &val);
 		if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-			printk("[audiocodec] pa_single_vol type err!\n");
+			pr_err("[audiocodec] pa_single_vol type err!\n");
 		}  else {
 			pa_vol = val.val;
 		}
 	} else {
 		type = script_get_item("audio0", "pa_double_vol", &val);
 		if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-			printk("[audiocodec] pa_double_vol type err!\n");
+			pr_err("[audiocodec] pa_double_vol type err!\n");
 		}  else { 
 			pa_vol = val.val;
 		}
@@ -372,12 +372,12 @@ static void get_audio_param(void)
 	
 	type = script_get_item("audio0", "headphone_direct_used", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[audiocodec] headphone_direct_used type err!\n");
+        pr_err("[audiocodec] headphone_direct_used type err!\n");
     } else {
 		headphone_direct_used = val.val;
 	}
 
-	printk("headphone_vol=0x%x, earpiece_vol=0x%x, cap_vol=0x%x, \
+	pr_debug("headphone_vol=0x%x, earpiece_vol=0x%x, cap_vol=0x%x, \
 		phone_headset_mic_vol=0x%x, phone_main_mic_vol=0x%x, \
 		pa_double_used=0x%x, pa_vol=0x%x \n" \
 		,headphone_vol, earpiece_vol, cap_vol,  \
@@ -1879,10 +1879,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 		switch (substream->runtime->rate) {
 			case 44100:
 				if (clk_set_rate(codec_pll2clk, 22579200)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 22579200)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_DAC_FIFOC);
 				reg_val &=~(7<<29);
@@ -1891,10 +1891,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 22050:
 				if (clk_set_rate(codec_pll2clk, 22579200)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 22579200)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_DAC_FIFOC);
 				reg_val &=~(7<<29); 
@@ -1903,10 +1903,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 11025:
 				if (clk_set_rate(codec_pll2clk, 22579200)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 22579200)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_DAC_FIFOC);
 				reg_val &=~(7<<29); 
@@ -1915,10 +1915,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 48000:
 				if (clk_set_rate(codec_pll2clk, 24576000)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 24576000)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_DAC_FIFOC);
 				reg_val &=~(7<<29); 
@@ -1927,10 +1927,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 96000:
 				if (clk_set_rate(codec_pll2clk, 24576000)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 24576000)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_DAC_FIFOC);
 				reg_val &=~(7<<29);
@@ -1939,10 +1939,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 192000:
 				if (clk_set_rate(codec_pll2clk, 24576000)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 24576000)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_DAC_FIFOC);
 				reg_val &=~(7<<29);
@@ -1951,10 +1951,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 32000:
 				if (clk_set_rate(codec_pll2clk, 24576000)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 24576000)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_DAC_FIFOC);
 				reg_val &=~(7<<29); 
@@ -1963,10 +1963,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 24000:
 				if (clk_set_rate(codec_pll2clk, 24576000)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 24576000)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_DAC_FIFOC);
 				reg_val &=~(7<<29); 
@@ -1975,10 +1975,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 16000:
 				if (clk_set_rate(codec_pll2clk, 24576000)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 24576000)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_DAC_FIFOC);
 				reg_val &=~(7<<29); 
@@ -1987,10 +1987,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 12000:
 				if (clk_set_rate(codec_pll2clk, 24576000)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 24576000)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_DAC_FIFOC);
 				reg_val &=~(7<<29); 
@@ -1999,10 +1999,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 8000:
 				if (clk_set_rate(codec_pll2clk, 24576000)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 24576000)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_DAC_FIFOC);
 				reg_val &=~(7<<29);
@@ -2011,10 +2011,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			default:
 				if (clk_set_rate(codec_pll2clk, 24576000)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 24576000)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_DAC_FIFOC);
 				reg_val &=~(7<<29); 
@@ -2043,10 +2043,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 		switch (substream->runtime->rate) {
 			case 44100:
 				if (clk_set_rate(codec_pll2clk, 22579200)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 22579200)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_ADC_FIFOC);
 				reg_val &=~(7<<29);
@@ -2055,10 +2055,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 22050:
 				if (clk_set_rate(codec_pll2clk, 22579200)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 22579200)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_ADC_FIFOC);
 				reg_val &=~(7<<29); 
@@ -2067,10 +2067,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 11025:
 				if (clk_set_rate(codec_pll2clk, 22579200)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 22579200)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_ADC_FIFOC);
 				reg_val &=~(7<<29); 
@@ -2079,10 +2079,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 48000:
 				if (clk_set_rate(codec_pll2clk, 24576000)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 24576000)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_ADC_FIFOC);
 				reg_val &=~(7<<29); 
@@ -2091,10 +2091,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 32000:
 				if (clk_set_rate(codec_pll2clk, 24576000)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 24576000)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_ADC_FIFOC);
 				reg_val &=~(7<<29); 
@@ -2103,10 +2103,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 24000:
 				if (clk_set_rate(codec_pll2clk, 24576000)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 24576000)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_ADC_FIFOC);
 				reg_val &=~(7<<29); 
@@ -2115,10 +2115,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 16000:
 				if (clk_set_rate(codec_pll2clk, 24576000)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 24576000)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_ADC_FIFOC);
 				reg_val &=~(7<<29); 
@@ -2127,10 +2127,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 12000:
 				if (clk_set_rate(codec_pll2clk, 24576000)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 24576000)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_ADC_FIFOC);
 				reg_val &=~(7<<29); 
@@ -2139,10 +2139,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 8000:
 				if (clk_set_rate(codec_pll2clk, 24576000)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 24576000)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_ADC_FIFOC);
 				reg_val &=~(7<<29); 
@@ -2151,10 +2151,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			default:
 				if (clk_set_rate(codec_pll2clk, 24576000)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 24576000)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_ADC_FIFOC);
 				reg_val &=~(7<<29);
@@ -2250,7 +2250,7 @@ static int sndpcm_trigger(struct snd_pcm_substream *substream,
 			codec_capture_stop();
 			return 0;
 		default:
-			printk("error:%s,%d\n", __func__, __LINE__);
+			pr_err("error:%s,%d\n", __func__, __LINE__);
 			return -EINVAL;
 		}
 	}
@@ -2389,7 +2389,7 @@ static int sndpcm_suspend(struct snd_soc_codec *codec)
 {
 	/* check if called in talking standby */
 	if (check_scene_locked(SCENE_TALKING_STANDBY) == 0) {
-		printk("In talking standby, audio codec do not suspend!!\n");
+		pr_debug("In talking standby, audio codec do not suspend!!\n");
 		return 0;
 	}
 
@@ -2413,22 +2413,22 @@ static int sndpcm_suspend(struct snd_soc_codec *codec)
 	gpio_set_value(item.gpio.gpio, 0);
 
 	if ((NULL == codec_moduleclk)||(IS_ERR(codec_moduleclk))) {
-		printk("codec_moduleclk handle is invaled, just return\n");
+		pr_err("codec_moduleclk handle is invaled, just return\n");
 	} else {
 		clk_disable_unprepare(codec_moduleclk);
 	}
 
-	printk("[audio codec]:suspend end\n");
+	pr_debug("[audio codec]:suspend end\n");
 	return 0;
 }
 
 static int sndpcm_resume(struct snd_soc_codec *codec)
 {
 
-	printk("[audio codec]:resume start\n");
+	pr_debug("[audio codec]:resume start\n");
 
 	if (clk_prepare_enable(codec_moduleclk)) {
-		printk("open codec_moduleclk failed; \n");
+		pr_err("open codec_moduleclk failed; \n");
 	}
 
 	if (headphone_direct_used) {
@@ -2455,7 +2455,7 @@ static int sndpcm_resume(struct snd_soc_codec *codec)
 
 	codec_wr_control(SUNXI_DAC_FIFOC, 0x1, FIR_VERSION, 0x1);
 
-	printk("[audio codec]:resume end\n");
+	pr_debug("[audio codec]:resume end\n");
 	return 0;
 }
 
@@ -2524,7 +2524,7 @@ static ssize_t store_audio_reg(struct device *dev, struct device_attribute *attr
 	}
 
 	if (!(input_reg_group ==1 || input_reg_group ==2)){
-		printk("not exist reg group\n");
+		pr_err("not exist reg group\n");
 		ret = count;
 		goto out;
 	}
@@ -2545,7 +2545,7 @@ static ssize_t store_audio_reg(struct device *dev, struct device_attribute *attr
 	}
 
 	if (find_labels_reg_offset < 0){
-		printk("not exist reg offset\n");
+		pr_err("not exist reg offset\n");
 		ret = count;
 		goto out;
 	}
@@ -2586,24 +2586,24 @@ static int __init sndpcm_codec_probe(struct platform_device *pdev)
 	/* codec_pll2clk */
 	codec_pll2clk = clk_get(NULL, "pll2");
 	if ((!codec_pll2clk)||(IS_ERR(codec_pll2clk))) {
-		printk("try to get codec_pll2clk failed!\n");
+		pr_err("try to get codec_pll2clk failed!\n");
 	}
 	if (clk_prepare_enable(codec_pll2clk)) {
-		printk("enable codec_pll2clk failed; \n");
+		pr_err("enable codec_pll2clk failed; \n");
 	}
 	/* codec_moduleclk */
 	codec_moduleclk = clk_get(NULL, "adda");
 	if ((!codec_moduleclk)||(IS_ERR(codec_moduleclk))) {
-		printk("try to get codec_moduleclk failed!\n");
+		pr_err("try to get codec_moduleclk failed!\n");
 	}
 	if (clk_set_parent(codec_moduleclk, codec_pll2clk)) {
-		printk("err:try to set parent of codec_moduleclk to codec_pll2clk failed!\n");
+		pr_err("err:try to set parent of codec_moduleclk to codec_pll2clk failed!\n");
 	}
 	if (clk_set_rate(codec_moduleclk, 24576000)) {
-		printk("err:set codec_moduleclk clock freq 24576000 failed!\n");
+		pr_err("err:set codec_moduleclk clock freq 24576000 failed!\n");
 	}
 	if (clk_prepare_enable(codec_moduleclk)) {
-		printk("err:open codec_moduleclk failed; \n");
+		pr_err("err:open codec_moduleclk failed; \n");
 	}
 
 	codec_init();
@@ -2611,7 +2611,7 @@ static int __init sndpcm_codec_probe(struct platform_device *pdev)
 	/* check if hp_vcc_ldo exist, if exist enable it */
 	type = script_get_item("audio0", "audio_hp_ldo", &item);
 	if (SCIRPT_ITEM_VALUE_TYPE_STR != type) {
-		printk("script_get_item return type err, consider it no ldo\n");
+		pr_err("script_get_item return type err, consider it no ldo\n");
 	} else {
 		if (!strcmp(item.str, "none"))
 			hp_ldo = NULL;
@@ -2619,7 +2619,7 @@ static int __init sndpcm_codec_probe(struct platform_device *pdev)
 			hp_ldo_str = item.str;
 			hp_ldo = regulator_get(NULL, hp_ldo_str);
 			if (!hp_ldo) {
-				printk("get audio hp-vcc(%s) failed\n", hp_ldo_str);
+				pr_err("get audio hp-vcc(%s) failed\n", hp_ldo_str);
 				return -EFAULT;
 			}
 			regulator_set_voltage(hp_ldo, 3000000, 3000000);
@@ -2629,13 +2629,13 @@ static int __init sndpcm_codec_probe(struct platform_device *pdev)
 	/*get the default pa val(close)*/
 	type = script_get_item("audio0", "audio_pa_ctrl", &item);
 	if (SCIRPT_ITEM_VALUE_TYPE_PIO != type) {
-		printk("script_get_item return type err\n");
+		pr_err("script_get_item return type err\n");
 		return -EFAULT;
 	}
 	/*request gpio*/
 	req_status = gpio_request(item.gpio.gpio, NULL);
 	if (0 != req_status) {
-		printk("request gpio failed!\n");
+		pr_err("request gpio failed!\n");
 	}
 	gpio_direction_output(item.gpio.gpio, 1);
 
@@ -2645,7 +2645,7 @@ static int __init sndpcm_codec_probe(struct platform_device *pdev)
 
        err=sysfs_create_group(&pdev->dev.kobj, &audio_debug_attr_group);
        if (err){
-		printk("failed to create attr group\n");
+		pr_err("failed to create attr group\n");
        }
 
 	return 0;
@@ -2654,13 +2654,13 @@ static int __init sndpcm_codec_probe(struct platform_device *pdev)
 static int __exit sndpcm_codec_remove(struct platform_device *pdev)
 {
 	if ((NULL == codec_moduleclk)||(IS_ERR(codec_moduleclk))) {
-		printk("codec_moduleclk handle is invaled, just return\n");
+		pr_err("codec_moduleclk handle is invaled, just return\n");
 		return -EINVAL;
 	} else {
 		clk_disable_unprepare(codec_moduleclk);
 	}
 	if ((NULL == codec_pll2clk)||(IS_ERR(codec_pll2clk))) {
-		printk("codec_pll2clk handle is invaled, just return\n");
+		pr_err("codec_pll2clk handle is invaled, just return\n");
 		return -EINVAL;
 	} else {
 		clk_put(codec_pll2clk);
@@ -2701,7 +2701,7 @@ static void sunxi_codec_shutdown(struct platform_device *devptr)
 	gpio_set_value(item.gpio.gpio, 0);
 
 	if ((NULL == codec_moduleclk)||(IS_ERR(codec_moduleclk))) {
-		printk("codec_moduleclk handle is invaled, just return\n");
+		pr_err("codec_moduleclk handle is invaled, just return\n");
 	} else {
 		clk_disable_unprepare(codec_moduleclk);
 	}

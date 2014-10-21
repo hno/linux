@@ -34,7 +34,7 @@
 
 static const char *goodix_ts_name = "gt818";
 static struct workqueue_struct *goodix_wq;
-struct i2c_client * i2c_connect_client = NULL; 
+static struct i2c_client * i2c_connect_client = NULL; 
 static u8 config[GTP_CONFIG_LENGTH + GTP_ADDR_LENGTH]
                 = {GTP_REG_CONFIG_DATA >> 8, GTP_REG_CONFIG_DATA & 0xff};
 
@@ -51,16 +51,16 @@ static void goodix_ts_late_resume(struct early_suspend *h);
 #endif
 
 
-#if GTP_CREATE_WR_NODE
-extern s32 init_wr_node(struct i2c_client*);
-extern void uninit_wr_node(void);
-#endif
+//#if GTP_CREATE_WR_NODE
+//extern s32 init_wr_node(struct i2c_client*);
+//extern void uninit_wr_node(void);
+//#endif
 
 
 
-#if GTP_AUTO_UPDATE
-extern u8 gup_init_update_proc(struct goodix_ts_data *);
-#endif
+//#if GTP_AUTO_UPDATE
+//extern u8 gup_init_update_proc(struct goodix_ts_data *);
+//#endif
 
 #if GTP_ESD_PROTECT
 static struct delayed_work gtp_esd_check_work;
@@ -77,12 +77,12 @@ static void gtp_esd_check_func(struct work_struct *);
 
 static void goodix_init_events(struct work_struct *work);
 static void goodix_resume_events(struct work_struct *work);
-struct workqueue_struct *goodix_init_wq;
-struct workqueue_struct *goodix_resume_wq;
+static struct workqueue_struct *goodix_init_wq;
+static struct workqueue_struct *goodix_resume_wq;
 static DECLARE_WORK(goodix_init_work, goodix_init_events);
 static DECLARE_WORK(goodix_resume_work, goodix_resume_events);
 
-struct goodix_ts_data *ts_init;
+static struct goodix_ts_data *ts_init;
 
 
 static int screen_max_x = 0;
@@ -107,10 +107,10 @@ enum{
 };
 
 #define dprintk(level_mask,fmt,arg...)    if(unlikely(debug_mask & level_mask)) \
-        printk("***CTP***"fmt, ## arg)
+        pr_debug("***CTP***"fmt, ## arg)
 module_param_named(debug_mask,debug_mask,int,S_IRUGO | S_IWUSR | S_IWGRP);
 
-struct ctp_config_info config_info = {
+static struct ctp_config_info config_info = {
 	.input_type = CTP_TYPE,
 	.name = NULL,
 	.int_number = 0,
@@ -135,19 +135,19 @@ static int ctp_detect(struct i2c_client *client, struct i2c_board_info *info)
     int ret;  
     u8 buf[8] = {GTP_REG_VERSION >> 8, GTP_REG_VERSION & 0xff};
         if (!i2c_check_functionality(adapter, I2C_FUNC_SMBUS_BYTE_DATA)){
-        	printk("======return=====\n");
+        	pr_err("i2c_check_functionality err\n======return=====\n");
                 return -ENODEV;
         }
 
 
         if(twi_id == adapter->nr){
-                printk("%s: addr= %x\n",__func__,client->addr);
+                pr_debug("%s: addr= %x\n",__func__,client->addr);
                 msleep(50);
     			ret = gtp_i2c_read(client, buf, 6);
     			gtp_i2c_end_cmd(client);
 				if(buf[3] != 0x18)
 				{
-					printk("%s:IC is not gt818\n",__func__);
+					pr_debug("%s:IC is not gt818\n",__func__);
 					return -ENODEV;
 				}
     			GTP_INFO("IC VERSION:%02x%02x_%02x%02x", buf[3], buf[2], buf[5], buf[4]);
@@ -164,7 +164,7 @@ static int ctp_detect(struct i2c_client *client, struct i2c_board_info *info)
  * return value:
  *
  */
-void ctp_print_info(struct ctp_config_info info,int debug_level)
+static void ctp_print_info(struct ctp_config_info info,int debug_level)
 {
 	if(debug_level == DEBUG_INIT)
 	{
@@ -184,7 +184,7 @@ void ctp_print_info(struct ctp_config_info info,int debug_level)
  * ctp_wakeup - function
  *
  */
-int ctp_wakeup(int status,int ms)
+static int ctp_wakeup(int status,int ms)
 {
 	dprintk(DEBUG_INIT,"***CTP*** %s:status:%d,ms = %d\n",__func__,status,ms);
 
@@ -227,7 +227,7 @@ void gtp_set_int_value(int status)
         __gpio_set_value(CTP_IRQ_NUMBER, status);   
 }
 
-void gtp_set_io_int(void)
+static void gtp_set_io_int(void)
 {
         long unsigned int	config;
 		
@@ -241,7 +241,7 @@ void gtp_set_io_int(void)
         
 }
 
-void gtp_io_init(int ms)
+static void gtp_io_init(int ms)
 {       
         ctp_wakeup(0, 0);
         msleep(ms);
@@ -771,7 +771,7 @@ Output:
 	irq execute status.
 *******************************************************/
 
-irqreturn_t goodix_ts_irq_handler(int irq, void *dev_id)
+static irqreturn_t goodix_ts_irq_handler(int irq, void *dev_id)
 {	    
      struct goodix_ts_data *ts = (struct goodix_ts_data *)dev_id;
 	 dprintk(DEBUG_INT_INFO, "==========------TS Interrupt-----============\n");  
@@ -900,93 +900,94 @@ Input:
 Output:
 	sensor ID.
 *******************************************************/
-u8 gtp_get_sensor_id(struct i2c_client *client)
-{
-    u8 buf[8] = {0};
-    u8 sensor_id = 0;
-    u8 i = 0;
-    u8 count = 0;
-    
-    // step 1: setup sensorID port as input
-    buf[0] = 0x16;
-    buf[1] = 0x00;
-    gtp_i2c_read(client, buf, 3);
-    buf[2] &= 0xfd;
-    gtp_i2c_write(client, buf, 3);
-
-    // step2: setup SensorID as pullup, shutdown SensorID pulldown
-    buf[0] = 0x16;
-    buf[1] = 0x06;
-    gtp_i2c_read(client, buf, 4);
-    buf[2] |= 0x02;
-    buf[3] &= 0xfd;
-    gtp_i2c_write(client, buf, 4);
-    
-    msleep(1);
-    // step3: read 0x1602, result and 0x02, test equal 0, repeat 200 times
-    count = 0;
-    for (i = 0; i < 200; i++)
-    {
-        buf[0] = 0x16;
-        buf[1] = 0x02;
-        gtp_i2c_read(client, buf, 3);
-        buf[2] &= 0x02;
-        if (buf[2] == 0)
-        {
-            ++count;
-        }
-    }
-    // if count greater than 100, then assign sensorid as 2
-    if (count >= 100)
-    {
-        GTP_DEBUG("count = %d", count);
-        sensor_id = 2;
-        goto SENSOR_ID_NONC;
-    }
-    
-    // step4: setup SensorID as pulldown, shutdown SensorID pullup
-    buf[0] = 0x16;
-    buf[1] = 0x06;
-    gtp_i2c_read(client, buf, 4);
-    buf[2] &= 0xfd;
-    buf[3] |= 0x02;
-    gtp_i2c_write(client, buf, 4);
-    
-    msleep(1);
-    count = 0;
-    // step 5: do the same as step 3
-    for (i = 0; i < 200; ++i)
-    {
-        buf[0] = 0x16;
-        buf[1] = 0x02;
-        gtp_i2c_read(client, buf, 3);
-        buf[2] &= 0x02;
-        if (buf[2] != 0)
-        {
-            ++count;
-        }	
-    }
-    if (count >= 100)
-    {
-        GTP_DEBUG("count = %d", count);
-        sensor_id = 1;
-        goto SENSOR_ID_NONC;
-    }
-    
-    sensor_id = 0;
-    goto SENSOR_ID_NC;
-    
-SENSOR_ID_NONC:
-    buf[0] = 0x16;
-    buf[1] = 0x06;
-    gtp_i2c_read(client, buf, 4);
-    buf[2] &= 0xfd;
-    buf[3] &= 0xfd;
-    gtp_i2c_write(client, buf, 4);
-
-SENSOR_ID_NC:
-    return sensor_id;
-}
+/* static u8 gtp_get_sensor_id(struct i2c_client *client)
+ * {
+ *     u8 buf[8] = {0};
+ *     u8 sensor_id = 0;
+ *     u8 i = 0;
+ *     u8 count = 0;
+ *     
+ *     // step 1: setup sensorID port as input
+ *     buf[0] = 0x16;
+ *     buf[1] = 0x00;
+ *     gtp_i2c_read(client, buf, 3);
+ *     buf[2] &= 0xfd;
+ *     gtp_i2c_write(client, buf, 3);
+ * 
+ *     // step2: setup SensorID as pullup, shutdown SensorID pulldown
+ *     buf[0] = 0x16;
+ *     buf[1] = 0x06;
+ *     gtp_i2c_read(client, buf, 4);
+ *     buf[2] |= 0x02;
+ *     buf[3] &= 0xfd;
+ *     gtp_i2c_write(client, buf, 4);
+ *     
+ *     msleep(1);
+ *     // step3: read 0x1602, result and 0x02, test equal 0, repeat 200 times
+ *     count = 0;
+ *     for (i = 0; i < 200; i++)
+ *     {
+ *         buf[0] = 0x16;
+ *         buf[1] = 0x02;
+ *         gtp_i2c_read(client, buf, 3);
+ *         buf[2] &= 0x02;
+ *         if (buf[2] == 0)
+ *         {
+ *             ++count;
+ *         }
+ *     }
+ *     // if count greater than 100, then assign sensorid as 2
+ *     if (count >= 100)
+ *     {
+ *         GTP_DEBUG("count = %d", count);
+ *         sensor_id = 2;
+ *         goto SENSOR_ID_NONC;
+ *     }
+ *     
+ *     // step4: setup SensorID as pulldown, shutdown SensorID pullup
+ *     buf[0] = 0x16;
+ *     buf[1] = 0x06;
+ *     gtp_i2c_read(client, buf, 4);
+ *     buf[2] &= 0xfd;
+ *     buf[3] |= 0x02;
+ *     gtp_i2c_write(client, buf, 4);
+ *     
+ *     msleep(1);
+ *     count = 0;
+ *     // step 5: do the same as step 3
+ *     for (i = 0; i < 200; ++i)
+ *     {
+ *         buf[0] = 0x16;
+ *         buf[1] = 0x02;
+ *         gtp_i2c_read(client, buf, 3);
+ *         buf[2] &= 0x02;
+ *         if (buf[2] != 0)
+ *         {
+ *             ++count;
+ *         }	
+ *     }
+ *     if (count >= 100)
+ *     {
+ *         GTP_DEBUG("count = %d", count);
+ *         sensor_id = 1;
+ *         goto SENSOR_ID_NONC;
+ *     }
+ *     
+ *     sensor_id = 0;
+ *     goto SENSOR_ID_NC;
+ *     
+ * SENSOR_ID_NONC:
+ *     buf[0] = 0x16;
+ *     buf[1] = 0x06;
+ *     gtp_i2c_read(client, buf, 4);
+ *     buf[2] &= 0xfd;
+ *     buf[3] &= 0xfd;
+ *     gtp_i2c_write(client, buf, 4);
+ * 
+ * SENSOR_ID_NC:
+ *     return sensor_id;
+ * }
+ */
 
 /*******************************************************
 Function:
@@ -1053,7 +1054,7 @@ static s32 gtp_init_panel(struct goodix_ts_data *ts)
     #endif
     }
     GTP_DEBUG("SENSOR ID:%d", rd_cfg_buf[GTP_ADDR_LENGTH]);
-    printk("SENSOR ID:%d", rd_cfg_buf[GTP_ADDR_LENGTH]);
+    pr_debug("SENSOR ID:%d", rd_cfg_buf[GTP_ADDR_LENGTH]);
     if (rd_cfg_buf[GTP_ADDR_LENGTH] > 2)
     {
         GTP_ERROR("Invalid Sensor ID.");
@@ -1428,7 +1429,7 @@ static void goodix_init_events (struct work_struct *work)
 	ctp_wakeup(0,20);
 	ret = gtp_init_panel(ts_init);
 	if(ret < 0) {
-		printk("init panel fail!\n");
+		pr_err("init panel fail!\n");
 		return;
 	}else {
 		dprintk(DEBUG_INIT,"init panel succeed!\n");
@@ -1478,7 +1479,7 @@ static int goodix_ts_probe(struct i2c_client *client, const struct i2c_device_id
     GTP_INFO("GTP Driver Version:%s",GTP_DRIVER_VERSION);
     GTP_INFO("GTP Driver build@%s,%s", __TIME__,__DATE__);
     GTP_INFO("GTP I2C address:0x%02x", client->addr);
-	printk("gandy-----start gt818 probe\n");
+	pr_debug("gandy-----start gt818 probe\n");
     i2c_connect_client = client;
     if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) 
     {
@@ -1536,13 +1537,13 @@ static int goodix_ts_probe(struct i2c_client *client, const struct i2c_device_id
     ts_init = ts;
     goodix_init_wq = create_singlethread_workqueue("goodix_init");
     if (goodix_init_wq == NULL) {
-		printk("create goodix_wq fail!\n");
+		pr_err("create goodix_wq fail!\n");
 		return -ENOMEM;
      }
 
     goodix_resume_wq = create_singlethread_workqueue("goodix_resume");
      if (goodix_resume_wq == NULL) {
-		printk("create goodix_resume_wq fail!\n");
+		pr_err("create goodix_resume_wq fail!\n");
 		return -ENOMEM;
      }
 
@@ -1557,7 +1558,7 @@ static int goodix_ts_probe(struct i2c_client *client, const struct i2c_device_id
     gtp_esd_check_workqueue = create_workqueue("gtp_esd_check");
     queue_delayed_work(gtp_esd_check_workqueue, &gtp_esd_check_work, GTP_ESD_CHECK_CIRCLE); 
 #endif
-	printk("gt818--------probe success\n");
+	pr_debug("gt818--------probe success\n");
 
     return 0;
 }
@@ -1612,7 +1613,8 @@ static int goodix_ts_remove(struct i2c_client *client)
 	
     GTP_INFO("GTP driver is removing...");
     i2c_set_clientdata(client, NULL);
-    input_unregister_device(ts->input_dev);
+    if(ts)
+    	input_unregister_device(ts->input_dev);
     kfree(ts);
 
     return 0;
@@ -1821,7 +1823,7 @@ static int ctp_get_system_config(void)
         exchange_x_y_flag = config_info.exchange_x_y_flag;
 
 		if((screen_max_x == 0) || (screen_max_y == 0)){
-                printk("%s:read config error!\n",__func__);
+                pr_err("%s:read config error!\n",__func__);
                 return 0;
         }
         return 1;
@@ -1841,7 +1843,7 @@ static int __devinit goodix_ts_init(void)
 
     GTP_DEBUG_FUNC();	
     GTP_INFO("GTP driver install.");
-	printk("gt818 init\n");
+	pr_debug("gt818 init\n");
 
 /**************add by gandy************/
 
@@ -1849,23 +1851,23 @@ static int __devinit goodix_ts_init(void)
 
     dprintk(DEBUG_INIT,"****************************************************************\n");
     if (input_fetch_sysconfig_para(&(config_info.input_type))) {
-	    printk("%s: ctp_fetch_sysconfig_para err.\n", __func__);
+	    pr_err("%s: ctp_fetch_sysconfig_para err.\n", __func__);
 	return 0;
     } else {
 		ret = input_init_platform_resource(&(config_info.input_type));
 		if (0 != ret) {
-			printk("%s:ctp_ops.init_platform_resource err. \n", __func__);    
+			pr_err("%s:ctp_ops.init_platform_resource err. \n", __func__);    
 		}
 	}
         
     if(config_info.ctp_used == 0){
-	    printk("*** ctp_used set to 0 !\n");
-	    printk("*** if use ctp,please put the sys_config.fex ctp_used set to 1. \n");
+	    pr_err("*** ctp_used set to 0 !\n");
+	    pr_debug("*** if use ctp,please put the sys_config.fex ctp_used set to 1. \n");
 	    return 0;
     }
      
     if(!ctp_get_system_config()){
-        printk("%s:read config fail!\n",__func__);
+        pr_err("%s:read config fail!\n",__func__);
         return ret;
     }
 

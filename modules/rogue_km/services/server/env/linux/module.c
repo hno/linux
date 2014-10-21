@@ -204,8 +204,8 @@ EXPORT_SYMBOL(RGXHWPerfAcquireData);
 EXPORT_SYMBOL(RGXHWPerfReleaseData);
 #endif
 
-extern PVRSRV_ERROR RgxResume(IMG_VOID);
-extern PVRSRV_ERROR RgxSuspend(IMG_VOID);
+extern IMG_VOID RgxResume(IMG_VOID);
+extern IMG_VOID RgxSuspend(IMG_VOID);
 
 #if !defined(SUPPORT_DRM)
 /*
@@ -543,6 +543,8 @@ static void PVRSRVDriverShutdown(LDM_DEV *pDevice)
 
 	/* The bridge mutex is held on exit */
 	LinuxUnLockMutex(&gsPMMutex);
+	
+	RgxSuspend();
 }
 
 /*!

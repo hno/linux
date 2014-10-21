@@ -216,11 +216,6 @@ static int sunxi_sleep_all_core_finish(unsigned long val)
 		if(cpumask_equal(&tmp, &sunxi_cpu_idle_mask) && (!gic_pending_irq(0))){
 
 			raw_spin_unlock(&sunxi_cpu_idle_c2_lock);
-			/*call cpus interface to clear its irq pending*/
-			sunxi_enter_idle_para_info.flags = 0x01;
-			sunxi_enter_idle_para_info.resume_addr = NULL;
-			arisc_enter_cpuidle(NULL,NULL,(struct sunxi_enter_idle_para *)(&sunxi_enter_idle_para_info));
-
 			/* call cpus interface to power down cpu0*/
 			if(!gic_pending_irq(0)){
 
@@ -231,7 +226,7 @@ static int sunxi_sleep_all_core_finish(unsigned long val)
 				sunxi_enter_idle_para_info.resume_addr = (void *)(virt_to_phys(mcpm_entry_point));
 
 				arisc_enter_cpuidle(NULL,NULL,(struct sunxi_enter_idle_para *)(&sunxi_enter_idle_para_info));
-				sunxi_idle_cpu0_die();
+				sunxi_idle_cluster_die(A7_CLUSTER);
 			}else{
 				asm("wfi");
 			}

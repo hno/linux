@@ -21,6 +21,9 @@
  */
 
 #include "arisc_i.h"
+#include <mach/sunxi-chip.h>
+#include <asm/firmware.h>
+#include <linux/dma-mapping.h>
 
 /* local functions */
 static int     arisc_wait_ready(unsigned int timeout);
@@ -33,7 +36,7 @@ unsigned long arisc_sram_a2_vbase = (unsigned long)IO_ADDRESS(SUNXI_SRAM_A2_PBAS
 #if defined CONFIG_ARCH_SUN8IW1P1
 static unsigned int arisc_debug_baudrate = 57600;
 #elif (defined CONFIG_ARCH_SUN8IW3P1) || (defined CONFIG_ARCH_SUN8IW5P1) || (defined CONFIG_ARCH_SUN8IW6P1) ||\
-      (defined CONFIG_ARCH_SUN8IW7P1) || (defined CONFIG_ARCH_SUN9IW1P1)
+      (defined CONFIG_ARCH_SUN8IW7P1) || (defined CONFIG_ARCH_SUN8IW9P1) || (defined CONFIG_ARCH_SUN9IW1P1)
 static unsigned int arisc_debug_baudrate = 115200;
 #endif
 unsigned int arisc_debug_dram_crc_en = 0;
@@ -50,7 +53,7 @@ static struct arisc_p2wi_block_cfg block_cfg;
 static u8 regaddr = 0;
 static u8 data = 0;
 #elif (defined CONFIG_ARCH_SUN8IW3P1) || (defined CONFIG_ARCH_SUN8IW5P1) || (defined CONFIG_ARCH_SUN8IW6P1) ||\
-      (defined CONFIG_ARCH_SUN8IW7P1) || (defined CONFIG_ARCH_SUN9IW1P1)
+      (defined CONFIG_ARCH_SUN8IW7P1) || (defined CONFIG_ARCH_SUN8IW9P1) || (defined CONFIG_ARCH_SUN9IW1P1)
 static struct arisc_rsb_block_cfg block_cfg;
 static u32 devaddr = 0;
 static u8 regaddr = 0;
@@ -195,7 +198,7 @@ static ssize_t arisc_dram_crc_result_store(struct device *dev,
 	u32 error_count = 0;
 
 	sscanf(buf, "%u %u %u", &error, &total_count, &error_count);
-	if (((error != 0) && (error != 1)) || (total_count < 0) || (error_count < 0)) {
+	if ((error != 0) && (error != 1)) {
 		ARISC_WRN("invalid arisc dram crc result [%d] [%d] [%d] to set\n", error, total_count, error_count);
 		return size;
 	}
@@ -282,7 +285,7 @@ static ssize_t arisc_power_consum_store(struct device *dev,
 	unsigned long value;
 
 	if (kstrtoul(buf, 0, &value) < 0) {
-		if (1 != sscanf(buf, "%ld", &value)) {
+		if (1 != sscanf(buf, "%lu", &value)) {
 			ARISC_ERR("illegal value, only one para support");
 			return -EINVAL;
 		}
@@ -305,12 +308,20 @@ static const unsigned char pmu_powername[32][8] = {
 	"bldo1",  "bldo2", "bldo3", "bldo4", "cldo1", "cldo2", "cldo3", "swout",
 };
 #elif (defined CONFIG_ARCH_SUN8IW1P1) || (defined CONFIG_ARCH_SUN8IW3P1) || (defined CONFIG_ARCH_SUN8IW5P1) ||\
-      (defined CONFIG_ARCH_SUN8IW6P1) || (defined CONFIG_ARCH_SUN8IW7P1)
+      (defined CONFIG_ARCH_SUN8IW7P1) || (defined CONFIG_ARCH_SUN8IW9P1)
 #define SST_POWER_MASK 0x07ffff
 static const unsigned char pmu_powername[20][8] = {
 	"dc5ldo", "dcdc1",  "dcdc2",  "dcdc3", "dcdc4", "dcdc5", "aldo1", "aldo2",
 	"eldo1",  "eldo2",  "eldo3",  "dldo1", "dldo2", "dldo3", "dldo4", "dc1sw",
 	"aldo3",  "io0ldo", "io1ldo",
+};
+#elif (defined CONFIG_ARCH_SUN8IW6P1)
+#define SST_POWER_MASK 0xffffff
+static const unsigned char pmu_powername[26][10] = {
+	"dcdc1", "dcdc2",  "dcdc3",  "dcdc4", "dcdc5", "dcdc6", "dcdc7", "reserved0",
+	"eldo1",  "eldo2",  "eldo3",  "dldo1", "dldo2", "dldo3", "dldo4", "dc1sw",
+	"reserved1",  "reserved2",  "fldo1",  "fldo2", "fldo3", "aldo1", "aldo2", "aldo3",
+	"io0ldo",  "io1ldo",
 };
 #endif
 
@@ -473,7 +484,7 @@ static ssize_t arisc_freq_show(struct device *dev,
 #elif (defined CONFIG_ARCH_SUN8IW5P1) || (defined CONFIG_ARCH_SUN8IW7P1)
 	if (arisc_pll == 1)
 		pll = clk_get(NULL, "pll_cpu");
-#elif defined CONFIG_ARCH_SUN8IW6P1
+#elif (defined CONFIG_ARCH_SUN8IW6P1) || (defined CONFIG_ARCH_SUN8IW9P1)
 	if (arisc_pll == 1) {
 		pll = clk_get(NULL, "pll_cpu0");
 	} else if (arisc_pll == 2) {
@@ -482,11 +493,9 @@ static ssize_t arisc_freq_show(struct device *dev,
 #endif
 
 	if(!pll || IS_ERR(pll)){
-		printk("try to get pll%u failed!\n", arisc_pll);
+		ARISC_ERR("try to get pll%u failed!\n", arisc_pll);
 		return size;
 	}
-
-	//printk("pll%u:%u\n", arisc_pll, clk_get_rate(pll));
 
 	size = sprintf(buf, "%u\n", (unsigned int)clk_get_rate(pll));
 
@@ -511,7 +520,7 @@ static ssize_t arisc_freq_store(struct device *dev,
 		ARISC_WRN("pls echo like that: echo pll freq > freq\n");
 		return size;
 	}
-#elif (defined CONFIG_ARCH_SUN9IW1P1) || (defined CONFIG_ARCH_SUN8IW6P1)
+#elif (defined CONFIG_ARCH_SUN9IW1P1) || (defined CONFIG_ARCH_SUN8IW6P1) || (defined CONFIG_ARCH_SUN8IW9P1)
 	if (((pll != 1) && (pll != 2)) || (freq < 0) || (freq > 3000000)) {
 		ARISC_WRN("invalid pll [%u] or freq [%u] to set, this platform only support pll1 and pll2, freq [0, 3000000]KHz\n", pll, freq);
 		ARISC_WRN("pls echo like that: echo pll freq > freq\n");
@@ -630,7 +639,7 @@ static ssize_t arisc_p2wi_write_block_data_store(struct device *dev,
 }
 
 #elif (defined CONFIG_ARCH_SUN8IW3P1) || (defined CONFIG_ARCH_SUN8IW5P1) || (defined CONFIG_ARCH_SUN8IW6P1) ||\
-      (defined CONFIG_ARCH_SUN8IW7P1) || (defined CONFIG_ARCH_SUN9IW1P1)
+      (defined CONFIG_ARCH_SUN8IW7P1) || (defined CONFIG_ARCH_SUN8IW9P1) || (defined CONFIG_ARCH_SUN9IW1P1)
 static ssize_t arisc_rsb_read_block_data_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -638,7 +647,7 @@ static ssize_t arisc_rsb_read_block_data_show(struct device *dev,
 	u32 ret = 0;
 
 	if ((block_cfg.regaddr == NULL) || (block_cfg.data == NULL) ||
-		(block_cfg.devaddr < 0) || (block_cfg.devaddr > 0xff) || (*block_cfg.regaddr < 0) || (*block_cfg.regaddr > 0xff) ||
+		(block_cfg.devaddr > 0xff) ||
 		((block_cfg.datatype !=  RSB_DATA_TYPE_BYTE) && (block_cfg.datatype !=  RSB_DATA_TYPE_HWORD) && (block_cfg.datatype !=  RSB_DATA_TYPE_WORD))) {
 		ARISC_WRN("invalid rsb paras, devaddr:0x%x, regaddr:0x%x, datatype:0x%x\n", block_cfg.devaddr, block_cfg.regaddr ? *block_cfg.regaddr : 0, block_cfg.datatype);
 		ARISC_WRN("pls echo like that: echo devaddr regaddr datatype > rsb_read_block_data\n");
@@ -660,7 +669,7 @@ static ssize_t arisc_rsb_read_block_data_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
 	sscanf(buf, "%x %x %x", &devaddr, (u32 *)&regaddr, &datatype);
-	if ((devaddr < 0) || (devaddr > 0xff) || (regaddr < 0) || (regaddr > 0xff) ||
+	if ((devaddr > 0xff) ||
 	((datatype !=  RSB_DATA_TYPE_BYTE) && (datatype !=  RSB_DATA_TYPE_HWORD) && (datatype !=  RSB_DATA_TYPE_WORD))) {
 		ARISC_WRN("invalid rsb paras to set, devaddr:0x%x, regaddr:0x%x, datatype:0x%x\n", devaddr, regaddr, datatype);
 		ARISC_WRN("pls echo like that: echo devaddr regaddr datatype > rsb_read_block_data\n");
@@ -686,7 +695,7 @@ static ssize_t arisc_rsb_write_block_data_show(struct device *dev,
 	u32 ret = 0;
 
 	if ((block_cfg.regaddr == NULL) || (block_cfg.data == NULL) ||
-		(block_cfg.devaddr < 0) || (block_cfg.devaddr > 0xff) || (*block_cfg.regaddr < 0) || (*block_cfg.regaddr > 0xff) ||
+		(block_cfg.devaddr > 0xff) ||
 		((block_cfg.datatype !=  RSB_DATA_TYPE_BYTE) && (block_cfg.datatype !=  RSB_DATA_TYPE_HWORD) && (block_cfg.datatype !=  RSB_DATA_TYPE_WORD))) {
 		ARISC_WRN("invalid rsb paras, devaddr:0x%x, regaddr:0x%x, datatype:0x%x\n", block_cfg.devaddr, block_cfg.regaddr ? *block_cfg.regaddr : 0, block_cfg.datatype);
 		ARISC_WRN("pls echo like that: echo devaddr regaddr data datatype > rsb_write_block_data\n");
@@ -710,7 +719,7 @@ static ssize_t arisc_rsb_write_block_data_store(struct device *dev,
 	u32 ret = 0;
 
 	sscanf(buf, "%x %x %x %x", &devaddr, (u32 *)&regaddr, (u32 *)&data, &datatype);
-	if ((devaddr < 0) || (devaddr > 0xff) || (regaddr < 0) || (regaddr > 0xff) ||
+	if ((devaddr > 0xff) ||
 	((datatype !=  RSB_DATA_TYPE_BYTE) && (datatype !=  RSB_DATA_TYPE_HWORD) && (datatype !=  RSB_DATA_TYPE_WORD))) {
 		ARISC_WRN("invalid rsb paras, devaddr:0x%x, regaddr:0x%x, data:0x%x, datatype:0x%x\n", devaddr, regaddr, data, datatype);
 		ARISC_WRN("pls echo like that: echo devaddr regaddr data datatype > rsb_write_block_data\n");
@@ -764,6 +773,9 @@ static int sunxi_arisc_resume(struct device *dev)
 	standby_info_para_t sst_info;
 
 	atomic_set(&arisc_suspend_flag, 0);
+#if defined CONFIG_ARCH_SUN8IW7P1
+	arisc_cpux_ready_notify();
+#endif
 	arisc_query_wakeup_source(&wake_event);
 	if (wake_event & CPUS_WAKEUP_POWER_EXP) {
 		ARISC_LOG("power exception during standby, enable:0x%x" \
@@ -805,7 +817,7 @@ static struct device_attribute sunxi_arisc_attrs[] = {
 	__ATTR(p2wi_read_block_data,    S_IRUGO | S_IWUSR,  arisc_p2wi_read_block_data_show,    arisc_p2wi_read_block_data_store),
 	__ATTR(p2wi_write_block_data,   S_IRUGO | S_IWUSR,  arisc_p2wi_write_block_data_show,   arisc_p2wi_write_block_data_store),
 #elif (defined CONFIG_ARCH_SUN8IW3P1) || (defined CONFIG_ARCH_SUN8IW5P1) || (defined CONFIG_ARCH_SUN8IW6P1) ||\
-      (defined CONFIG_ARCH_SUN8IW7P1) || (defined CONFIG_ARCH_SUN9IW1P1)
+      (defined CONFIG_ARCH_SUN8IW7P1) || (defined CONFIG_ARCH_SUN8IW9P1) || (defined CONFIG_ARCH_SUN9IW1P1)
 	__ATTR(rsb_read_block_data,     S_IRUGO | S_IWUSR,  arisc_rsb_read_block_data_show,     arisc_rsb_read_block_data_store),
 	__ATTR(rsb_write_block_data,    S_IRUGO | S_IWUSR,  arisc_rsb_write_block_data_show,    arisc_rsb_write_block_data_store),
 #endif
@@ -1036,6 +1048,49 @@ static int  sunxi_arisc_clk_cfg(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
+#elif (defined CONFIG_ARCH_SUN8IW9P1)
+	struct clk *pllddr0 = NULL;
+	struct clk *pllddr1 = NULL;
+	struct clk *pllperiph = NULL;
+	struct clk *hosc = NULL;
+	struct clk *losc = NULL;
+
+	ARISC_INF("device [%s] clk resource request enter\n", dev_name(&pdev->dev));
+	/* config PLL5 for dram clk */
+	pllddr0 = clk_get(NULL, PLL_DDR0_CLK);
+	if(!pllddr0 || IS_ERR(pllddr0)){
+		ARISC_ERR("try to get pll_ddr0 failed!\n");
+		return -EINVAL;
+	}
+
+	if(clk_prepare_enable(pllddr0)) {
+		ARISC_ERR("try to enable pll_ddr0 output failed!\n");
+		return -EINVAL;
+	}
+
+	pllddr1 = clk_get(NULL, PLL_DDR1_CLK);
+	if(!pllddr1 || IS_ERR(pllddr1)){
+		ARISC_ERR("try to get pll_ddr1 failed!\n");
+		return -EINVAL;
+	}
+
+	if(clk_prepare_enable(pllddr1)) {
+		ARISC_ERR("try to enable pll_ddr1 output failed!\n");
+		return -EINVAL;
+	}
+
+	/* config PLL6 for cpus clk */
+	pllperiph = clk_get(NULL, PLL_PERIPH0_CLK);
+	if(!pllperiph || IS_ERR(pllperiph)){
+		ARISC_ERR("try to get pll_periph failed!\n");
+		return -EINVAL;
+	}
+
+	if(clk_prepare_enable(pllperiph)) {
+		ARISC_ERR("try to enable pll_periph output failed!\n");
+		return -EINVAL;
+	}
+
 #elif defined CONFIG_ARCH_SUN9IW1P1
 	struct clk *pll3 = NULL;
 	struct clk *pll4 = NULL;
@@ -1130,7 +1185,7 @@ static int  sunxi_arisc_pin_cfg(struct platform_device *pdev)
 #if defined CONFIG_ARCH_SUN8IW1P1
 	pin_count = script_get_pio_list ("s_p2twi0", &pin_list);
 #elif (defined CONFIG_ARCH_SUN8IW3P1) || (defined CONFIG_ARCH_SUN8IW5P1) || (defined CONFIG_ARCH_SUN8IW6P1) || \
-      (defined CONFIG_ARCH_SUN8IW7P1)
+      (defined CONFIG_ARCH_SUN8IW7P1) || (defined CONFIG_ARCH_SUN8IW9P1)
 	pin_count = script_get_pio_list ("s_rsb0", &pin_list);
 #elif defined CONFIG_ARCH_SUN9IW1P1
 	pin_count = script_get_pio_list ("s_rsb0", &pin_list);
@@ -1154,17 +1209,16 @@ static int  sunxi_arisc_pin_cfg(struct platform_device *pdev)
 		pin_config_set(SUNXI_PINCTRL, pin_name, config);
 		if (pin_cfg->pull != GPIO_PULL_DEFAULT) {
 			config = SUNXI_PINCFG_PACK(SUNXI_PINCFG_TYPE_PUD, pin_cfg->pull);
-		pin_config_set (SUNXI_PINCTRL, pin_name, config);
+			pin_config_set (SUNXI_PINCTRL, pin_name, config);
 		}
 		if (pin_cfg->drv_level != GPIO_DRVLVL_DEFAULT) {
-		config = SUNXI_PINCFG_PACK(SUNXI_PINCFG_TYPE_DRV, pin_cfg->drv_level);
-		pin_config_set (SUNXI_PINCTRL, pin_name, config);
+			config = SUNXI_PINCFG_PACK(SUNXI_PINCFG_TYPE_DRV, pin_cfg->drv_level);
+			pin_config_set (SUNXI_PINCTRL, pin_name, config);
 		}
 		if (pin_cfg->data != GPIO_DATA_DEFAULT) {
 			config = SUNXI_PINCFG_PACK(SUNXI_PINCFG_TYPE_DAT, pin_cfg->data);
 			pin_config_set (SUNXI_PINCTRL, pin_name, config);
 		}
-
 	}
 
 	/*
@@ -1176,7 +1230,7 @@ static int  sunxi_arisc_pin_cfg(struct platform_device *pdev)
 		ARISC_WRN("sys_config.fex have no arisc s_uart0 config!");
 		script_val.val = 0;
 	}
-	if (script_val.val) {
+	if (1 == script_val.val) {
 		pin_count = script_get_pio_list ("s_uart0", &pin_list);
 		if (pin_count == 0) {
 			/* "s_uart0" have no pin configuration */
@@ -1194,20 +1248,17 @@ static int  sunxi_arisc_pin_cfg(struct platform_device *pdev)
 			pin_config_set(SUNXI_PINCTRL, pin_name, config);
 			if (pin_cfg->pull != GPIO_PULL_DEFAULT) {
 				config = SUNXI_PINCFG_PACK(SUNXI_PINCFG_TYPE_PUD, pin_cfg->pull);
-			pin_config_set (SUNXI_PINCTRL, pin_name, config);
+				pin_config_set (SUNXI_PINCTRL, pin_name, config);
 			}
 			if (pin_cfg->drv_level != GPIO_DRVLVL_DEFAULT) {
-			config = SUNXI_PINCFG_PACK(SUNXI_PINCFG_TYPE_DRV, pin_cfg->drv_level);
-			pin_config_set (SUNXI_PINCTRL, pin_name, config);
+				config = SUNXI_PINCFG_PACK(SUNXI_PINCFG_TYPE_DRV, pin_cfg->drv_level);
+				pin_config_set (SUNXI_PINCTRL, pin_name, config);
 			}
 			if (pin_cfg->data != GPIO_DATA_DEFAULT) {
 				config = SUNXI_PINCFG_PACK(SUNXI_PINCFG_TYPE_DAT, pin_cfg->data);
 				pin_config_set (SUNXI_PINCTRL, pin_name, config);
 			}
-
 		}
-
-
 	}
 	ARISC_INF("arisc uart debug config [%s] [%s] : %d\n", "s_uart0", "s_uart_used", script_val.val);
 
@@ -1238,20 +1289,17 @@ static int  sunxi_arisc_pin_cfg(struct platform_device *pdev)
 			pin_config_set(SUNXI_PINCTRL, pin_name, config);
 			if (pin_cfg->pull != GPIO_PULL_DEFAULT) {
 				config = SUNXI_PINCFG_PACK(SUNXI_PINCFG_TYPE_PUD, pin_cfg->pull);
-			pin_config_set (SUNXI_PINCTRL, pin_name, config);
+				pin_config_set (SUNXI_PINCTRL, pin_name, config);
 			}
 			if (pin_cfg->drv_level != GPIO_DRVLVL_DEFAULT) {
-			config = SUNXI_PINCFG_PACK(SUNXI_PINCFG_TYPE_DRV, pin_cfg->drv_level);
-			pin_config_set (SUNXI_PINCTRL, pin_name, config);
+				config = SUNXI_PINCFG_PACK(SUNXI_PINCFG_TYPE_DRV, pin_cfg->drv_level);
+				pin_config_set (SUNXI_PINCTRL, pin_name, config);
 			}
 			if (pin_cfg->data != GPIO_DATA_DEFAULT) {
 				config = SUNXI_PINCFG_PACK(SUNXI_PINCFG_TYPE_DAT, pin_cfg->data);
 				pin_config_set (SUNXI_PINCTRL, pin_name, config);
 			}
-
 		}
-
-
 	}
 	ARISC_INF("arisc jtag debug config [%s] [%s] : %d\n", "s_jtag0", "s_jtag_used", script_val.val);
 
@@ -1260,13 +1308,143 @@ static int  sunxi_arisc_pin_cfg(struct platform_device *pdev)
 	return 0;
 }
 
+static s32 sunxi_arisc_para_init(struct arisc_para *para)
+{
+	script_item_u script_val;
+	script_item_value_type_e type;
+
+	/* init para */
+	memset(para, 0, ARISC_PARA_SIZE);
+#if defined CONFIG_ARCH_SUN9IW1P1
+
+	/* parse arisc->machine */
+	para->machine = ARISC_MACHINE_PAD;
+	type = script_get_item("arisc", "machine", &script_val);
+	if (SCIRPT_ITEM_VALUE_TYPE_STR != type) {
+		ARISC_ERR("arisc->machine config type err or can not be found!\n");
+		return -EINVAL;
+	}
+
+	if (!strcmp(script_val.str, "homlet proto")) {
+		para->machine = ARISC_MACHINE_HOMLET;
+	}
+	ARISC_LOG("arisc->machine:%s\n", script_val.str);
+
+	/* parse arisc->oz_scale_delay */
+	type = script_get_item("arisc", "oz_scale_delay", &script_val);
+	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
+		ARISC_ERR("arisc->oz_scale_delay config type err or can not be found!\n");
+		return -EINVAL;
+	}
+
+	para->oz_scale_delay = script_val.val;
+	ARISC_LOG("arisc->oz_scale_delay:%u\n", para->oz_scale_delay);
+
+	/* parse arisc->oz_onoff_delay */
+	type = script_get_item("arisc", "oz_onoff_delay", &script_val);
+	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
+		ARISC_ERR("arisc->oz_onoff_delay config type err or can not be found!\n");
+		return -EINVAL;
+	}
+
+	para->oz_onoff_delay = script_val.val;
+	ARISC_LOG("arisc->oz_onoff_delay:%u\n", para->oz_onoff_delay);
+#endif
+	/* parse s_uart_pin_used */
+	type = script_get_item("s_uart0", "s_uart_used", &script_val);
+	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
+		ARISC_WRN("sys_config.fex have no arisc s_uart0 config!");
+		script_val.val = 0;
+	}
+	if (1 == script_val.val)
+		para->uart_pin_used = script_val.val;
+	else
+		para->uart_pin_used = 0;
+
+	return 0;
+}
+
+static void sunxi_arisc_setup_para(struct arisc_para *para)
+{
+	void *dest;
+
+	dest = (void *)(arisc_sram_a2_vbase + ARISC_PARA_ADDR_OFFSET);
+
+	/* copy arisc parameters to target address */
+	memcpy(dest, (void *)para, ARISC_PARA_SIZE);
+	ARISC_INF("setup arisc para sram_a2 finished\n");
+}
+
+int sunxi_deassert_arisc(void)
+{
+	ARISC_INF("set arisc reset to de-assert state\n");
+#if (defined CONFIG_ARCH_SUN8IW1P1) || (defined CONFIG_ARCH_SUN8IW3P1) || (defined CONFIG_ARCH_SUN8IW5P1) || \
+    (defined CONFIG_ARCH_SUN8IW6P1) || (defined CONFIG_ARCH_SUN8IW7P1) || (defined CONFIG_ARCH_SUN8IW9P1)
+	{
+		volatile unsigned long value;
+		value = readl((IO_ADDRESS(SUNXI_R_CPUCFG_PBASE) + 0x0));
+		value &= ~1;
+		writel(value, (IO_ADDRESS(SUNXI_R_CPUCFG_PBASE) + 0x0));
+		value = readl((IO_ADDRESS(SUNXI_R_CPUCFG_PBASE) + 0x0));
+		value |= 1;
+		writel(value, (IO_ADDRESS(SUNXI_R_CPUCFG_PBASE) + 0x0));
+	}
+#elif defined CONFIG_ARCH_SUN9IW1P1
+	{
+		volatile unsigned long value;
+		value = readl((IO_ADDRESS(SUNXI_R_PRCM_PBASE) + 0x0));
+		value &= ~1;
+		writel(value, (IO_ADDRESS(SUNXI_R_PRCM_PBASE) + 0x0));
+		value = readl((IO_ADDRESS(SUNXI_R_PRCM_PBASE) + 0x0));
+		value |= 1;
+		writel(value, (IO_ADDRESS(SUNXI_R_PRCM_PBASE) + 0x0));
+	}
+#endif
+
+	return 0;
+}
+
+u32 sunxi_load_arisc(void *image, u32 image_size, void *para, u32 para_size)
+{
+	u32   ret;
+	void *dest;
+	
+	if (sunxi_soc_is_secure()) {
+		ret = call_firmware_op(load_arisc, image, image_size, 
+		                       para, para_size, ARISC_PARA_ADDR_OFFSET);
+	} else {
+		/* clear sram_a2 area */
+		memset((void *)arisc_sram_a2_vbase, 0, SUNXI_SRAM_A2_SIZE);
+		
+		/* load arisc system binary data to sram_a2 */
+		memcpy((void *)arisc_sram_a2_vbase, image, image_size);
+		ARISC_INF("load arisc image finish\n");
+		
+		/* setup arisc parameters */
+		dest = (void *)(arisc_sram_a2_vbase + ARISC_PARA_ADDR_OFFSET);
+		memcpy(dest, (void *)para, para_size);
+		ARISC_INF("setup arisc para finish\n");
+		
+		/* relese arisc reset */
+		sunxi_deassert_arisc();
+		ARISC_INF("release arisc reset finish\n");
+	}
+	ARISC_INF("load arisc finish\n");
+	
+	return 0;
+}
+
 static int  sunxi_arisc_probe(struct platform_device *pdev)
 {
-	int binary_len;
-	int ret;
+	int   binary_len;
+	int   ret;
+	struct arisc_para para;
+	u32    message_addr;
+	u32    message_phys;
+	u32    message_size;
 
 	ARISC_INF("arisc initialize\n");
-
+	
 	/* cfg sunxi arisc clk */
 	ret = sunxi_arisc_clk_cfg(pdev);
 	if (ret) {
@@ -1285,20 +1463,25 @@ static int  sunxi_arisc_probe(struct platform_device *pdev)
 	ARISC_INF("sram_a2 lengt(%x)\n", (unsigned int)SUNXI_SRAM_A2_SIZE);
 
 #if (defined CONFIG_ARCH_SUN8IW1P1) || (defined CONFIG_ARCH_SUN8IW3P1) || (defined CONFIG_ARCH_SUN8IW5P1) || \
-    (defined CONFIG_ARCH_SUN8IW6P1)
+    (defined CONFIG_ARCH_SUN8IW6P1) || (defined CONFIG_ARCH_SUN8IW9P1)
 	binary_len = 0x13000;
 #elif (defined CONFIG_ARCH_SUN8IW7P1)
-	binary_len = 0x0B000;
+	binary_len = SUNXI_SRAM_A2_SIZE;
 #elif defined CONFIG_ARCH_SUN9IW1P1
 	binary_len = (int)(&arisc_binary_end) - (int)(&arisc_binary_start);
 #endif
-	/* clear sram_a2 area */
-	memset((void *)arisc_sram_a2_vbase, 0, SUNXI_SRAM_A2_SIZE);
-	/* load arisc system binary data to sram_a2 */
-	memcpy((void *)arisc_sram_a2_vbase, (void *)(&arisc_binary_start), binary_len);
-	ARISC_INF("move arisc binary data [addr = %x, len = %x] to sram_a2 finished\n",
-			 (unsigned int)(arisc_binary_start), (unsigned int)binary_len);
 
+#if (defined CONFIG_ARCH_SUN8IW7P1)
+	if ((int)(&arisc_binary_end) - (int)(&arisc_binary_start) - binary_len > SUPER_STANDBY_MEM_SIZE)
+		ARISC_ERR("reserve dram space littler than cpus code!");
+	memcpy((void *)phys_to_virt(SUPER_STANDBY_MEM_BASE), \
+	       (void *)(((unsigned char *)&arisc_binary_start) + binary_len), \
+	       (int)(&arisc_binary_end) - (int)(&arisc_binary_start) - binary_len);
+	ARISC_INF("move arisc binary data1 [addr = %p, len = %x] to dram:%p finished\n",
+			 (void *)(((unsigned char *)&arisc_binary_start) + binary_len), \
+			 (int)(&arisc_binary_end) - (int)(&arisc_binary_start) - binary_len, \
+			 (void *)SUPER_STANDBY_MEM_BASE);
+#endif
 	/* initialize hwspinlock */
 	ARISC_INF("hwspinlock initialize\n");
 	arisc_hwspinlock_init();
@@ -1306,35 +1489,37 @@ static int  sunxi_arisc_probe(struct platform_device *pdev)
 	/* initialize hwmsgbox */
 	ARISC_INF("hwmsgbox initialize\n");
 	arisc_hwmsgbox_init();
+	
+	/* setup arisc parameter */
+	sunxi_arisc_para_init(&para);
+	sunxi_arisc_setup_para(&para);
 
+	/* allocate shared message buffer,
+	 * the shared buffer should be non-cacheable.
+	 * secure    : sram-a2 last 4k byte;
+	 * non-secure: dram non-cacheable buffer.
+	 */
+	if (sunxi_soc_is_secure()) {
+		message_addr = (u32)dma_alloc_coherent(NULL, PAGE_SIZE, &(message_phys), GFP_KERNEL);
+		message_size = PAGE_SIZE;
+		para.message_pool_phys = message_phys;	 
+		para.message_pool_size = message_size;
+	} else {
+		/* use sram-a2 last 4k byte */
+		message_addr = (u32)arisc_sram_a2_vbase + ARISC_MESSAGE_POOL_START;
+		message_size = ARISC_MESSAGE_POOL_END - ARISC_MESSAGE_POOL_START;
+		para.message_pool_phys = ARISC_MESSAGE_POOL_START;
+		para.message_pool_size = ARISC_MESSAGE_POOL_END - ARISC_MESSAGE_POOL_START;
+	}
+	
 	/* initialize message manager */
 	ARISC_INF("message manager initialize\n");
-	arisc_message_manager_init();
+	arisc_message_manager_init((void *)message_addr, message_size);
 
-	/* set arisc cpu reset to de-assert state */
-	ARISC_INF("set arisc reset to de-assert state\n");
-#if (defined CONFIG_ARCH_SUN8IW1P1) || (defined CONFIG_ARCH_SUN8IW3P1) || (defined CONFIG_ARCH_SUN8IW5P1) || \
-    (defined CONFIG_ARCH_SUN8IW6P1) || (defined CONFIG_ARCH_SUN8IW7P1)
-	{
-		volatile unsigned long value;
-		value = readl((IO_ADDRESS(SUNXI_R_CPUCFG_PBASE) + 0x0));
-		value &= ~1;
-		writel(value, (IO_ADDRESS(SUNXI_R_CPUCFG_PBASE) + 0x0));
-		value = readl((IO_ADDRESS(SUNXI_R_CPUCFG_PBASE) + 0x0));
-		value |= 1;
-		writel(value, (IO_ADDRESS(SUNXI_R_CPUCFG_PBASE) + 0x0));
-	}
-#elif defined CONFIG_ARCH_SUN9IW1P1
-	{
-		volatile unsigned long value;
-		value = readl((IO_ADDRESS(SUNXI_R_PRCM_PBASE) + 0x0));
-		value &= ~1;
-		writel(value, (IO_ADDRESS(SUNXI_R_PRCM_PBASE) + 0x0));
-		value = readl((IO_ADDRESS(SUNXI_R_PRCM_PBASE) + 0x0));
-		value |= 1;
-		writel(value, (IO_ADDRESS(SUNXI_R_PRCM_PBASE) + 0x0));
-	}
-#endif
+
+	/* load arisc */
+	sunxi_load_arisc((void *)(&arisc_binary_start), binary_len, 
+	                 (void *)(&para), sizeof(struct arisc_para));
 
 	/* wait arisc ready */
 	ARISC_INF("wait arisc ready....\n");
@@ -1362,26 +1547,29 @@ static int  sunxi_arisc_probe(struct platform_device *pdev)
 #endif
 
 #if (defined CONFIG_ARCH_SUN8IW1P1) || (defined CONFIG_ARCH_SUN8IW6P1) || \
-    (defined CONFIG_ARCH_SUN8IW7P1) || (defined CONFIG_ARCH_SUN9IW1P1)
+    (defined CONFIG_ARCH_SUN9IW1P1)
 	/* config ir config paras */
 	if (arisc_config_ir_paras()) {
 		ARISC_WRN("config ir paras failed\n");
 	}
 #endif
 
-#if (defined CONFIG_ARCH_SUN8IW1P1) || (defined CONFIG_ARCH_SUN8IW3P1) || (defined CONFIG_ARCH_SUN8IW5P1)
+#if (defined CONFIG_ARCH_SUN8IW1P1) || (defined CONFIG_ARCH_SUN8IW3P1) || \
+    (defined CONFIG_ARCH_SUN8IW5P1) || (defined CONFIG_ARCH_SUN8IW6P1)
 	/* config pmu config paras */
 	if (arisc_config_pmu_paras()) {
 		ARISC_WRN("config pmu paras failed\n");
 	}
 #endif
+
 #ifndef CONFIG_ARCH_SUN8IW7P1
 	/* config dram config paras */
 	if (arisc_config_dram_paras()) {
 		ARISC_WRN("config dram paras failed\n");
 	}
 #endif
-#if (defined CONFIG_ARCH_SUN8IW5P1) || (defined CONFIG_ARCH_SUN9IW1P1)
+
+#if (defined CONFIG_ARCH_SUN8IW5P1) || (defined CONFIG_ARCH_SUN8IW6P1) || (defined CONFIG_ARCH_SUN9IW1P1)
 	/* config standby power paras */
 	if (arisc_sysconfig_sstpower_paras()) {
 		ARISC_WRN("config sst power paras failed\n");

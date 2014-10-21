@@ -19,6 +19,11 @@
 #elif defined (CONFIG_DEBUG_SUNXI_UART1)
 #define UART_PADDR	SUNXI_UART1_PBASE
 #define UART_VADDR	(0xf0000000 + SUNXI_UART1_PBASE)
+
+#elif defined (CONFIG_DEBUG_SUNXI_UART2)
+#define UART_PADDR	SUNXI_UART2_PBASE
+#define UART_VADDR	(0xf0000000 + SUNXI_UART2_PBASE)
+
 #else
 #error "Please select a uart port"
 #endif

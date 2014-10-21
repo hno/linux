@@ -118,7 +118,6 @@ void restore_mapping(unsigned long vaddr)
 	
 	if(addr != backup_tbl[0].vaddr){
 		while(1);
-		return;
 	}
 
 	*((volatile __u32 *)(PAGE_TBL_ADDR)) = backup_tbl[0].entry_val;

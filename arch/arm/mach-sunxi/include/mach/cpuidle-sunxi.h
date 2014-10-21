@@ -52,7 +52,7 @@ extern int sun9i_cluster_power_set(unsigned int cluster, bool enable);
 
 #if defined(CONFIG_ARCH_SUN8IW6P1)
 #define SUN8I_IDLE_CPU_IS_WFI_MODE(cluster, cpu) (readl(IO_ADDRESS(SUNXI_R_CPUCFG_PBASE) + SUNXI_CLUSTER_CPU_STATUS(cluster)) & (1 << (16 + cpu)))
-extern int sun8i_cpu_power_control(unsigned int cluster, unsigned int cpu, bool enable);
+extern int sun8i_cpu_power_set(unsigned int cluster, unsigned int cpu, bool enable);
 extern int sun8i_cluster_power_control(unsigned int cluster, bool enable);
 #endif
 
@@ -77,7 +77,7 @@ static inline void sunxi_cpuidle_power_up_cpu(unsigned int cpu)
 
 #if defined(CONFIG_ARCH_SUN8IW6P1)
 	mcpm_set_entry_vector(cpu_id, cluster_id, NULL);
-	sun8i_cpu_power_control(cluster_id,cpu_id,1);
+	sun8i_cpu_power_set(cluster_id,cpu_id, 1);
 	mcpm_set_entry_vector(cpu_id, cluster_id, cpu_resume);
 #endif
 
@@ -101,7 +101,7 @@ static inline void sunxi_cpuidle_power_down_cpu(unsigned int cpu)
 #endif
 
 #if defined(CONFIG_ARCH_SUN8IW6P1)
-	sun8i_cpu_power_control(cluster_id,cpu_id,0);
+	sun8i_cpu_power_set(cluster_id,cpu_id, 0);
 #endif
 
 #if defined(CONFIG_ARCH_SUN8IW1P1) || defined(CONFIG_ARCH_SUN8IW3P1) || defined(CONFIG_ARCH_SUN8IW5P1)
@@ -112,22 +112,21 @@ static inline void sunxi_cpuidle_power_down_cpu(unsigned int cpu)
 static inline bool SUNXI_CPU_IS_WFI_MODE(unsigned int cpu)
 {
 	unsigned int cluster_id,cpu_id,mpidr;
-
+	int ret = 0;
 	mpidr = cpu_logical_map(cpu);
 	cpu_id = MPIDR_AFFINITY_LEVEL(mpidr, 0);
 	cluster_id = MPIDR_AFFINITY_LEVEL(mpidr, 1);
 
 #if defined(CONFIG_ARCH_SUN9IW1P1)
 	return SUN9I_IDLE_CPU_IS_WFI_MODE(cluster_id, cpu_id);
-#endif
-
-#if defined(CONFIG_ARCH_SUN8IW6P1)
+#elif defined(CONFIG_ARCH_SUN8IW6P1)
 	return SUN8I_IDLE_CPU_IS_WFI_MODE(cluster_id, cpu_id);
-#endif
-
-#if defined(CONFIG_ARCH_SUN8IW1P1) || defined(CONFIG_ARCH_SUN8IW3P1) || defined(CONFIG_ARCH_SUN8IW5P1)
+#elif defined(CONFIG_ARCH_SUN8IW1P1) || defined(CONFIG_ARCH_SUN8IW3P1) || defined(CONFIG_ARCH_SUN8IW5P1)
 	return IDLE_CPU_IS_WFI_MODE(cpu);
+#else
+	return ret;
 #endif
+    return ret;
 }
 /* end for cross platform */
 
@@ -138,57 +137,73 @@ static inline bool SUNXI_CPU_IS_WFI_MODE(unsigned int cpu)
 
 static inline void sunxi_idle_cpu_die(void)
 {
-    unsigned long actlr;
+	unsigned long actlr;
+
 	gic_cpu_exit(0);
-    /* step1: disable cache */
-    asm("mrc    p15, 0, %0, c1, c0, 0" : "=r" (actlr) );
-    actlr &= ~(1<<2);
-    asm("mcr    p15, 0, %0, c1, c0, 0\n" : : "r" (actlr));
-    /* step2: clean and ivalidate L1 cache */
-    flush_cache_louis();
-    /* step3: execute a CLREX instruction */
-    asm("clrex" : : : "memory", "cc");
-    /* step4: switch cpu from SMP mode to AMP mode, aim is to disable cache coherency */
-    asm("mrc    p15, 0, %0, c1, c0, 1" : "=r" (actlr) );
-    actlr &= ~(1<<6);
-    asm("mcr    p15, 0, %0, c1, c0, 1\n" : : "r" (actlr));
-    /* step5: execute an ISB instruction */
-    isb();
-    /* step6: execute a DSB instruction  */
-    dsb();
+
+	/* step1: disable cache */
+	asm("mrc    p15, 0, %0, c1, c0, 0" : "=r" (actlr) );
+	actlr &= ~(1<<2);
+	asm("mcr    p15, 0, %0, c1, c0, 0\n" : : "r" (actlr));
+
+	/* step2: clean and ivalidate L1 cache */
+	flush_cache_louis();
+
+	/* step3: execute a CLREX instruction */
+	asm("clrex" : : : "memory", "cc");
+
+	/* step4: switch cpu from SMP mode to AMP mode, aim is to disable cache coherency */
+	asm("mrc    p15, 0, %0, c1, c0, 1" : "=r" (actlr) );
+	actlr &= ~(1<<6);
+	asm("mcr    p15, 0, %0, c1, c0, 1\n" : : "r" (actlr));
+
+	/* step5: execute an ISB instruction */
+	isb();
+
+	/* step6: execute a DSB instruction  */
+	dsb();
+
+	/* step7: execute a WFI instruction */
 	while(1){
-		/* step7: execute a WFI instruction */
 		asm("wfi" : : : "memory", "cc");
 	}
 }
 
-static inline void sunxi_idle_cpu0_die(void)
+static inline void sunxi_idle_cluster_die(unsigned int cluster)
 {
-    unsigned long actlr;
+	unsigned long actlr;
 
 	gic_cpu_exit(0);
-    /* step1: disable cache */
-    asm("mrc    p15, 0, %0, c1, c0, 0" : "=r" (actlr) );
-    actlr &= ~(1<<2);
-    asm("mcr    p15, 0, %0, c1, c0, 0\n" : : "r" (actlr));
-    /* step2: clean and ivalidate L1 cache */
-    flush_cache_all();
+
+	/* step1: disable cache */
+	asm("mrc    p15, 0, %0, c1, c0, 0" : "=r" (actlr) );
+	actlr &= ~(1<<2);
+	asm("mcr    p15, 0, %0, c1, c0, 0\n" : : "r" (actlr));
+
+	/* step2: clean and ivalidate L1 cache */
+	flush_cache_all();
 	outer_flush_all();
-    /* step3: execute a CLREX instruction */
-    asm("clrex" : : : "memory", "cc");
-    /* step4: switch cpu from SMP mode to AMP mode, aim is to disable cache coherency */
-    asm("mrc    p15, 0, %0, c1, c0, 1" : "=r" (actlr) );
-    actlr &= ~(1<<6);
-    asm("mcr    p15, 0, %0, c1, c0, 1\n" : : "r" (actlr));
-	__mcpm_outbound_leave_critical(A7_CLUSTER, CLUSTER_DOWN);
+
+	/* step3: execute a CLREX instruction */
+	asm("clrex" : : : "memory", "cc");
+
+	/* step4: switch cpu from SMP mode to AMP mode, aim is to disable cache coherency */
+	asm("mrc    p15, 0, %0, c1, c0, 1" : "=r" (actlr) );
+	actlr &= ~(1<<6);
+	asm("mcr    p15, 0, %0, c1, c0, 1\n" : : "r" (actlr));
+	__mcpm_outbound_leave_critical(cluster, CLUSTER_DOWN);
+
 	/* disable cluster cci snoop */
-	disable_cci_snoops(A7_CLUSTER);
-    /* step5: execute an ISB instruction */
-    isb();
-    /* step6: execute a DSB instruction  */
-    dsb();
+	disable_cci_snoops(cluster);
+
+	/* step5: execute an ISB instruction */
+	isb();
+
+	/* step6: execute a DSB instruction  */
+	dsb();
+
+	/* step7: execute a WFI instruction */
 	while(1){
-		/* step7: execute a WFI instruction */
 		asm("wfi" : : : "memory", "cc");
 	}
 }

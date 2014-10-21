@@ -155,6 +155,7 @@ static inline int __axp_write(unsigned char *devaddr, struct i2c_client *client,
 #ifdef	CONFIG_AXP_TWI_USED
 	int ret;
 
+	axp_reg_debug(reg, 1, &val);
 	ret = i2c_smbus_write_byte_data(client, reg, val);
 	if (ret < 0) {
 		dev_err(&client->dev, "failed writing 0x%02x to 0x%02x\n",
@@ -173,6 +174,8 @@ static inline int __axp_write(unsigned char *devaddr, struct i2c_client *client,
 	arisc_rsb_block_cfg_t rsb_data;
 	unsigned int data;
 #endif
+
+	axp_reg_debug(reg, 1, &val);
 
 #if defined CONFIG_ARCH_SUN8IW1P1
 	p2wi_data.len = 1;
@@ -218,7 +221,7 @@ static inline int __axp_writes(unsigned char *devaddr, struct i2c_client *client
 {
 #ifdef	CONFIG_AXP_TWI_USED
 	int ret;
-
+	axp_reg_debug(reg, len, val);
 	ret = i2c_smbus_write_i2c_block_data(client, reg, len, val);
 	if (ret < 0) {
 		dev_err(&client->dev, "failed writings to 0x%02x\n", reg);
@@ -237,8 +240,7 @@ static inline int __axp_writes(unsigned char *devaddr, struct i2c_client *client
 	unsigned int data_temp[AXP_TRANS_BYTE_MAX];
 #endif
 
-	if ((reg == 0x48) && (len == 9)) {
-	}
+	axp_reg_debug(reg, len, val);
 
 	/* fetch first register address */
 	first_flag = 1;

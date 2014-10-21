@@ -50,10 +50,10 @@ static int sunxi_ths_bind(struct thermal_zone_device *thermal,
     int state_mismatch = 0;
     unsigned int lowest,highest;
 #endif
-	if (NULL == ths_zone->sunxi_ths_sensor_conf->name)
+	if (!strlen(ths_zone->sunxi_ths_sensor_conf->name))
 		return -EINVAL;
 
-	printk(KERN_DEBUG "%s : %s", __func__, cdev->type);
+	pr_debug("%s : %s", __func__, cdev->type);
 
 	/* No matching cooling device */
 	if (strcmp(ths_zone->sunxi_ths_sensor_conf->name, cdev->type) != 0)
@@ -72,13 +72,13 @@ static int sunxi_ths_bind(struct thermal_zone_device *thermal,
 		}
 		lower = ths_zone->sunxi_ths_sensor_conf->cooling_data->freq_data[i].freq_clip_min;
 		upper = ths_zone->sunxi_ths_sensor_conf->cooling_data->freq_data[i].freq_clip_max;
-        if(lower >max_state || upper> max_state)
-        {
-            state_mismatch =1;
-            if(upper >highest)
-                highest = upper;
-        }
-    }
+	        if(lower >max_state || upper> max_state)
+	        {
+	            state_mismatch =1;
+	            if(upper >highest)
+	                highest = upper;
+	        }
+    	}
 #endif
 	/* Bind the thermal zone to the cpufreq cooling device */
 	for (i = 0; i < ths_zone->sunxi_ths_sensor_conf->trip_data->trip_count; i++) {
@@ -98,23 +98,23 @@ static int sunxi_ths_bind(struct thermal_zone_device *thermal,
 			ths_zone->sunxi_ths_sensor_conf->cooling_data->freq_data[i].freq_clip_min);
 
 		upper = max_state - upper;
-		printk(KERN_DEBUG "ths_zone trip = %d, lower = %ld, upper = %ld\n",
+		pr_debug("ths_zone trip = %d, lower = %ld, upper = %ld\n",
 			ths_zone->sunxi_ths_sensor_conf->trip_data->trip_val[i],
 			lower, upper);
 #else
-         lower = ths_zone->sunxi_ths_sensor_conf->cooling_data->freq_data[i].freq_clip_min;
-         upper = ths_zone->sunxi_ths_sensor_conf->cooling_data->freq_data[i].freq_clip_max;
-        if(state_mismatch)
-        {
+	         lower = ths_zone->sunxi_ths_sensor_conf->cooling_data->freq_data[i].freq_clip_min;
+	         upper = ths_zone->sunxi_ths_sensor_conf->cooling_data->freq_data[i].freq_clip_max;
+	        if(state_mismatch)
+	        {
 
-            lower = ((max_state+1)*(lower-lowest))/(highest-lowest+1);
-            upper = ((max_state+1)*(upper-lowest))/(highest-lowest+1);
-        }
-        lower=(lower>max_state)?0:lower;
-        upper=(upper>max_state)?max_state:upper;
-		printk(KERN_DEBUG "ths_zone trip = %d, adjust lower = %ld, upper = %ld\n",
-			ths_zone->sunxi_ths_sensor_conf->trip_data->trip_val[i],
-			lower, upper);
+	            lower = ((max_state+1)*(lower-lowest))/(highest-lowest+1);
+	            upper = ((max_state+1)*(upper-lowest))/(highest-lowest+1);
+	        }
+	        lower=(lower>max_state)?0:lower;
+	        upper=(upper>max_state)?max_state:upper;
+			pr_debug("ths_zone trip = %d, adjust lower = %ld, upper = %ld\n",
+				ths_zone->sunxi_ths_sensor_conf->trip_data->trip_val[i],
+				lower, upper);
 #endif
 		if (thermal_zone_bind_cooling_device(thermal, i, cdev,
 							upper, lower)) {
@@ -223,7 +223,7 @@ static int sunxi_ths_set_mode(struct thermal_zone_device *thermal,
 
 	ths_zone->mode = mode;
 	thermal_zone_device_update(ths_zone->therm_dev);
-	pr_info("thermal polling set for duration=%d msec\n",
+	pr_debug("thermal polling set for duration=%d msec\n",
 				ths_zone->therm_dev->polling_delay);
 	return 0;
 }
@@ -314,8 +314,8 @@ static int sunxi_ths_get_trend(struct thermal_zone_device *thermal,
 	struct sunxi_thermal_zone *ths_zone = thermal->devdata;
 
 	ret = sunxi_ths_get_trip_temp(thermal, trip, &trip_temp);
-	if (ret < 0)
-		return ret;
+	if(ret < 0)
+        return ret;
 
 	if (thermal->temperature >= trip_temp)
 		simple_trend = THERMAL_TREND_RAISING;
@@ -323,10 +323,10 @@ static int sunxi_ths_get_trend(struct thermal_zone_device *thermal,
 		simple_trend = THERMAL_TREND_DROPPING;
 
 	ret = sunxi_ths_get_trip_temp(thermal, trip+1, &trip_next);
-	if (ret < 0)
+	if(ret < 0)
         trip_next = 0;
 	ret = sunxi_ths_get_trip_temp(thermal, trip+1, &trip_pre);
-	if (ret < 0)
+	if(ret < 0)
         trip_pre = 0;
     if(!ths_zone->sunxi_ths_sensor_conf->trend)
         *trend = simple_trend;
@@ -361,7 +361,7 @@ void sunxi_ths_unregister_thermal(struct sunxi_thermal_zone *ths_zone)
             kfree(ths_zone->ptrend);
             ths_zone->ptrend = NULL;
        }
-	pr_info("suxi_ths: Kernel Thermal management unregistered\n");
+	pr_debug("suxi_ths: Kernel Thermal management unregistered\n");
 }
 EXPORT_SYMBOL(sunxi_ths_unregister_thermal);
 int sunxi_ths_register_thermal(struct sunxi_thermal_zone *ths_zone)
@@ -379,7 +379,7 @@ int sunxi_ths_register_thermal(struct sunxi_thermal_zone *ths_zone)
 	}
 	ths_zone->mode = THERMAL_DEVICE_ENABLED;
 
-	pr_info("suxi_ths: Kernel Thermal management registered\n");
+	pr_debug("suxi_ths: Kernel Thermal management registered\n");
 	return 0;
 
 err_unregister:

@@ -432,7 +432,7 @@ static int __init ir_mce_kbd_decode_init(void)
 {
 	ir_raw_handler_register(&mce_kbd_handler);
 
-	printk(KERN_INFO "IR MCE Keyboard/mouse protocol handler initialized\n");
+	pr_debug("IR MCE Keyboard/mouse protocol handler initialized\n");
 	return 0;
 }
 

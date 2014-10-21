@@ -117,7 +117,7 @@ enum {
 };
 static u32 debug_mask = 0;
 #define dprintk(level_mask, fmt, arg...)	if (unlikely(debug_mask & level_mask)) \
-	printk(KERN_DEBUG fmt , ## arg)
+	pr_debug(fmt , ## arg)
 
 module_param_named(debug_mask, debug_mask, int, 0644);
 
@@ -134,7 +134,7 @@ static void sunxikbd_clk_cfg(void)
 
 	key_clk_source = clk_get(NULL, APB0_CLK);
 	if (!key_clk_source || IS_ERR(key_clk_source)) {
-		printk(KERN_DEBUG "try to get key_clk_source failed!\n");
+		pr_err("try to get key_clk_source failed!\n");
 		return;
 	}
 
@@ -143,15 +143,15 @@ static void sunxikbd_clk_cfg(void)
 
 	key_clk = clk_get(NULL, LRADC_CLK);
 	if (!key_clk || IS_ERR(key_clk)) {
-		printk(KERN_DEBUG "try to get key clock failed!\n");
+		pr_err("try to get key clock failed!\n");
 		return;
 	}
 
 	if(clk_set_parent(key_clk, key_clk_source))
-		printk("%s: set key_clk parent to key_clk_source failed!\n", __func__);
+		pr_err("%s: set key_clk parent to key_clk_source failed!\n", __func__);
 
 	if (clk_prepare_enable(key_clk)) {
-			printk(KERN_DEBUG "try to enable key_clk failed!\n");
+			pr_err("try to enable key_clk failed!\n");
 	}
 
 	return;
@@ -161,7 +161,7 @@ static void sunxikbd_clk_uncfg(void)
 {
 
 	if(NULL == key_clk || IS_ERR(key_clk)) {
-		printk("key_clk handle is invalid, just return!\n");
+		pr_err("key_clk handle is invalid, just return!\n");
 		return;
 	} else {
 		clk_disable_unprepare(key_clk);
@@ -170,7 +170,7 @@ static void sunxikbd_clk_uncfg(void)
 	}
 
 	if(NULL == key_clk_source || IS_ERR(key_clk_source)) {
-		printk("key_clk_source handle is invalid, just return!\n");
+		pr_err("key_clk_source handle is invalid, just return!\n");
 		return;
 	} else {
 		clk_put(key_clk_source);
@@ -501,7 +501,7 @@ static int __init sunxikbd_init(void)
 	
 	sunxikbd_dev = input_allocate_device();
 	if (!sunxikbd_dev) {
-		printk(KERN_DEBUG "sunxikbd: not enough memory for input device\n");
+		pr_err("sunxikbd: not enough memory for input device\n");
 		err = -ENOMEM;
 		goto fail1;
 	}
@@ -515,7 +515,7 @@ static int __init sunxikbd_init(void)
 
 #ifdef REPORT_REPEAT_KEY_BY_INPUT_CORE
 	sunxikbd_dev->evbit[0] = BIT_MASK(EV_KEY)|BIT_MASK(EV_REP);
-	printk(KERN_DEBUG "REPORT_REPEAT_KEY_BY_INPUT_CORE is defined, support report repeat key value. \n");
+	pr_info("REPORT_REPEAT_KEY_BY_INPUT_CORE is defined, support report repeat key value. \n");
 #else
 	sunxikbd_dev->evbit[0] = BIT_MASK(EV_KEY);
 #endif
@@ -542,7 +542,7 @@ static int __init sunxikbd_init(void)
 
 	if (request_irq(SW_INT_IRQNO_LRADC, sunxi_isr_key, 0, "sunxikbd", NULL)) {
 		err = -EBUSY;
-		printk(KERN_DEBUG "request irq failure. \n");
+		pr_err("request irq failure. \n");
 		goto fail2;
 	}
 
@@ -584,7 +584,7 @@ fail3:
 fail2:	
 	input_free_device(sunxikbd_dev);
 fail1:
-	printk(KERN_DEBUG "sunxikbd_init failed. \n");
+	pr_err("sunxikbd_init failed. \n");
 
 	return err;
 }

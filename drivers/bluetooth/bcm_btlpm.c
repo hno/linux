@@ -110,7 +110,7 @@ static struct hci_dev *bluesleep_hdev;
 #endif
 
 #if BT_BLUEDROID_SUPPORT
-static struct platform_device *bluesleep_uart_dev = NULL;
+static struct platform_device *bluesleep_uart_dev;
 #endif
 static struct bluesleep_info *bsi;
 
@@ -276,12 +276,11 @@ static void bluesleep_outgoing_data(void)
 static struct uart_port *bluesleep_get_uart_port(void)
 {
 	struct uart_port *uport = NULL;
-	if (bluesleep_uart_dev){
+	if (bluesleep_uart_dev)
 		uport = platform_get_drvdata(bluesleep_uart_dev);
-		if(uport)
-            BT_DBG("%s get uart_port from blusleep_uart_dev: %s, port irq: %d",
+
+  BT_DBG("%s get uart_port from blusleep_uart_dev: %s, port irq: %d", 
 		           __FUNCTION__, bluesleep_uart_dev->name, uport->irq);
-    }
 
 	return uport;
 }

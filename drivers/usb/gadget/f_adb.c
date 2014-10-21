@@ -30,11 +30,8 @@
 #define ADB_BULK_BUFFER_SIZE           4096
 
 /* number of tx requests to allocate */
-#ifdef CONFIG_ARCH_SUN9I
-#define TX_REQ_MAX 1
-#else
 #define TX_REQ_MAX 4
-#endif
+
 static const char adb_shortname[] = "android_adb";
 
 struct adb_dev {

@@ -410,13 +410,6 @@ config LEDS_OT200
 	  This option enables support for the LEDs on the Bachmann OT200.
 	  Say Y to enable LEDs on the Bachmann OT200.
 
-config LEDS_SUNXI
-	tristate "LED support for SUNXI"
-	depends on LEDS_CLASS
-	default m
-	help
-	  LED support for SUNXI.
-
 config LEDS_TRIGGERS
 	bool "LED Trigger support"
 	depends on LEDS_CLASS

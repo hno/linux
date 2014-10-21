@@ -78,6 +78,15 @@ struct regulator *regu;
 #elif defined CONFIG_ARCH_SUN8IW6P1
 #define MACC_REGS_BASE      (0x01C0E000)           // Media ACCelerate
 
+#elif defined CONFIG_ARCH_SUN8IW7P1
+#define MACC_REGS_BASE      (0x01C0E000)           // Media ACCelerate
+
+#elif defined CONFIG_ARCH_SUN8IW8P1
+#define MACC_REGS_BASE      (0x01C0E000)           // Media ACCelerate
+
+#elif defined CONFIG_ARCH_SUN8IW9P1
+#define MACC_REGS_BASE      (0x01C0E000)           // Media ACCelerate
+
 #else
 	#error "Unknown chip type!"
 #endif
@@ -128,6 +137,9 @@ struct cedar_dev {
 	u32 en_irq_value;                   /* value of video encoder engine irq          */
 	u32 irq_has_enable;
 	u32 ref_count;
+
+	u32 jpeg_irq_flag;                    /* flag of video jpeg dec irq generated */
+	u32 jpeg_irq_value;                   /* value of video jpeg dec  irq */
 };
 
 struct ve_info {
@@ -194,9 +206,33 @@ static irqreturn_t VideoEngineInterupt(int irq, void *dev)
 		    wake_up_interruptible(&wait_ve);        //ioctl
 		}
     }
- 
+
+#if defined CONFIG_ARCH_SUN8IW8P1
+	if(modual_sel&(0x20))
+	{
+		ve_int_status_reg = (unsigned int)(addrs.regs_macc + 0xe00 + 0x1c);    
+	    ve_int_ctrl_reg = (unsigned int)(addrs.regs_macc + 0xe00 + 0x14);
+		interrupt_enable = readl(ve_int_ctrl_reg) & (0x38);
+		
+		status = readl(ve_int_status_reg);
+
+    	if((status&0x7) && interrupt_enable) 
+    	{
+		    //disable interrupt
+		    val = readl(ve_int_ctrl_reg);
+		    writel(val & (~0x38), ve_int_ctrl_reg);
+	
+		    cedar_devp->jpeg_irq_value = 1;
+		    cedar_devp->jpeg_irq_flag = 1;
+			
+		    //any interrupt will wake up wait queue
+		    wake_up_interruptible(&wait_ve);
+		}
+	}
+#endif
+
     modual_sel &= 0xf;
- 	if(modual_sel<4)
+ 	if(modual_sel<=4)
  	{
 		// estimate Which video format
 	    switch (modual_sel)
@@ -221,6 +257,13 @@ static irqreturn_t VideoEngineInterupt(int irq, void *dev)
 	            ve_int_ctrl_reg = (unsigned int)(addrs.regs_macc + 0x400 + 0x14);
 				interrupt_enable = readl(ve_int_ctrl_reg) & (0xf);
 	            break;
+				
+			case 4: //hevc		
+				ve_int_status_reg = (unsigned int)(addrs.regs_macc + 0x500 + 0x38); 	   
+				ve_int_ctrl_reg = (unsigned int)(addrs.regs_macc + 0x500 + 0x30);
+				interrupt_enable = readl(ve_int_ctrl_reg) & (0xf);
+				break;
+
 	        default:   
 	        	ve_int_status_reg = (unsigned int)(addrs.regs_macc + 0x100 + 0x1c);           
 	            ve_int_ctrl_reg = (unsigned int)(addrs.regs_macc + 0x100 + 0x14);
@@ -606,7 +649,22 @@ long cedardev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	        cedar_devp->en_irq_flag = 0;	
 
 			return cedar_devp->en_irq_value;
-		
+
+#if defined CONFIG_ARCH_SUN8IW8P1
+
+        case IOCTL_WAIT_JPEG_DEC:            
+            ve_timeout = (int)arg;
+            cedar_devp->jpeg_irq_value = 0;
+            
+            spin_lock_irqsave(&cedar_spin_lock, flags);
+            if(cedar_devp->jpeg_irq_flag)
+            	cedar_devp->jpeg_irq_value = 1;
+            spin_unlock_irqrestore(&cedar_spin_lock, flags);
+            
+            wait_event_interruptible_timeout(wait_ve, cedar_devp->jpeg_irq_flag, ve_timeout*HZ);            
+	        cedar_devp->jpeg_irq_flag = 0;	
+			return cedar_devp->jpeg_irq_value;	
+#endif
 		case IOCTL_ENABLE_VE:
             if (clk_prepare_enable(ve_moduleclk)) {
             	printk("try to enable ve_moduleclk failed!\n");
@@ -759,6 +817,7 @@ static int cedardev_open(struct inode *inode, struct file *filp)
 	/* init other resource here */
     cedar_devp->de_irq_flag = 0;
     cedar_devp->en_irq_flag = 0;
+	cedar_devp->jpeg_irq_flag = 0;
 	up(&cedar_devp->sem);
 	nonseekable_open(inode, filp);	
 	return 0;
@@ -790,6 +849,7 @@ static int cedardev_release(struct inode *inode, struct file *filp)
 	/* release other resource here */
     cedar_devp->de_irq_flag = 1;
     cedar_devp->en_irq_flag = 1;
+	cedar_devp->jpeg_irq_flag = 1;
 	up(&cedar_devp->sem);
 
 	kfree(info);
@@ -1066,7 +1126,29 @@ static int cedardev_init(void)
 		printk("try to get ve_parent_pll_clk fail\n");
 		return -EINVAL;
 	}
-	
+
+#elif ((defined CONFIG_ARCH_SUN8IW7P1) || (defined CONFIG_ARCH_SUN8IW8P1) || (defined CONFIG_ARCH_SUN8IW9P1))
+
+	/*VE_SRAM mapping to AC320*/
+	val = readl(0xf1c00000);
+	val &= 0x80000000;
+	writel(val,0xf1c00000); 
+
+	/*remapping SRAM to MACC for codec test*/
+	val = readl(0xf1c00000);
+	val |= 0x7fffffff;
+	writel(val,0xf1c00000);
+
+	//clear bootmode bit for give sram to ve
+	val = readl(0xf1c00004);
+	val &= 0xfeffffff;
+	writel(val,0xf1c00004);
+
+	ve_parent_pll_clk = clk_get(NULL, "pll_ve");
+	if ((!ve_parent_pll_clk)||IS_ERR(ve_parent_pll_clk)) {
+		printk("try to get ve_parent_pll_clk fail\n");
+		return -EINVAL;
+	}
 #else
 
 	#error "Unknown chip type!"

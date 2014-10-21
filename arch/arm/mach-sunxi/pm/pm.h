@@ -19,6 +19,7 @@
 #include "mem_printk.h"
 #include "mem_divlibc.h"
 #include "mem_int.h"
+#include "mem_gpio.h"
 #include "mem_tmr.h"
 #include "mem_tmstmp.h"
 #include "mem_clk.h"
@@ -32,23 +33,42 @@
 
 #include "linux/power/aw_pm.h"
 
-extern int debug_mask;
+extern __u32 debug_mask;
 typedef enum{
 	PM_STANDBY_PRINT_STANDBY 		= (1U << 0),
 	PM_STANDBY_PRINT_RESUME 		= (1U << 1),
-	PM_STANDBY_PRINT_IO_STATUS 		= (1U << 2),
-	PM_STANDBY_PRINT_CACHE_TLB_MISS 	= (1U << 3),
-	PM_STANDBY_PRINT_CCU_STATUS 		= (1U << 4),
-	PM_STANDBY_PRINT_CPUS_IO_STATUS 	= (1U << 5),
-	PM_STANDBY_PRINT_RESUME_IO_STATUS 	= (1U << 6),
-	PM_STANDBY_ENABLE_JTAG			= (1U << 7),
-	PM_STANDBY_PRINT_CCI400_REG		= (1U << 8),
-	PM_STANDBY_PRINT_GTBUS_REG		= (1U << 9),
-	PM_STANDBY_TEST				= (1U << 10)
+	PM_STANDBY_ENABLE_JTAG			= (1U << 2),
+	PM_STANDBY_PRINT_PORT		 	= (1U << 3),
+	PM_STANDBY_PRINT_IO_STATUS 		= (1U << 4),
+	PM_STANDBY_PRINT_CACHE_TLB_MISS 	= (1U << 5),
+	PM_STANDBY_PRINT_CCU_STATUS 		= (1U << 6),
+	PM_STANDBY_PRINT_PWR_STATUS 		= (1U << 7),
+	PM_STANDBY_PRINT_CPUS_IO_STATUS 	= (1U << 8),
+	PM_STANDBY_PRINT_CCI400_REG		= (1U << 9),
+	PM_STANDBY_PRINT_GTBUS_REG		= (1U << 10),
+	PM_STANDBY_TEST				= (1U << 11),
+	PM_STANDBY_PRINT_RESUME_IO_STATUS 	= (1U << 12)
 }debug_mask_flag;
+
+extern unsigned int parse_bitmap_en;
+typedef enum{
+	DEBUG_WAKEUP_SRC		=   (0x01<<0),
+	DEBUG_WAKEUP_GPIO_MAP	    	=   (0x01<<1),
+	DEBUG_WAKEUP_GPIO_GROUP_MAP 	=   (0x01<<2),
+	DEBUG_PWR_DM_MAP	    	=   (0x01<<3)
+
+}parse_bitmap_en_flag;
 
 #define likely(x)	__builtin_expect(!!(x), 1)
 #define unlikely(x)	__builtin_expect(!!(x), 0)
+
+#define uk_printf(s, size, fmt, args...) do { \
+	if(NULL != s){			\
+	    s += scnprintf(s, size, fmt, ## args);	\
+	}else{				\
+	    printk(fmt, ## args);		\
+	}					\
+    }while(0)
 
 struct mmu_state {
 	/* CR0 */
@@ -215,10 +235,6 @@ struct twi_state{
 	__u32 twi_reg_backup[7];
 };
 
-struct gpio_state{
-	__u32 gpio_reg_back[GPIO_REG_LENGTH];
-};
-
 struct sram_state{
 	__u32 sram_reg_back[SRAM_REG_LENGTH];
 };
@@ -226,8 +242,6 @@ struct sram_state{
 //save module state
 __s32 mem_twi_save(struct twi_state *ptwi_state);
 __s32 mem_twi_restore(struct twi_state *ptwi_state);
-__s32 mem_gpio_save(struct gpio_state *pgpio_state);
-__s32 mem_gpio_restore(struct gpio_state *pgpio_state);
 __s32 mem_sram_save(struct sram_state *psram_state);
 __s32 mem_sram_restore(struct sram_state *psram_state);
 __s32 mem_ccu_save(struct ccm_state *ccm_reg);

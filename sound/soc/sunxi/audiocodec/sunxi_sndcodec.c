@@ -23,7 +23,7 @@
 #include <sound/soc-dapm.h>
 #include <linux/io.h>
 
-#ifdef CONFIG_ARCH_SUN8IW5
+#if defined CONFIG_ARCH_SUN8IW5 || defined CONFIG_ARCH_SUN8IW9
 static int sunxi_sndpcm_hw_params(struct snd_pcm_substream *substream,
                                        struct snd_pcm_hw_params *params)
 {
@@ -56,13 +56,13 @@ static int sunxi_sndpcm_hw_params(struct snd_pcm_substream *substream,
        /*set system fmt:api2s:master aif1:slave*/
        ret = snd_soc_dai_set_fmt(cpu_dai, 0);
        if (ret < 0) {
-               printk("%s, line:%d\n", __func__, __LINE__);
+               pr_err("%s, line:%d\n", __func__, __LINE__);
                return ret;
        }
 
        ret = snd_soc_dai_set_clkdiv(cpu_dai, 0, sample_rate);
        if (ret < 0) {
-               printk("%s, line:%d\n", __func__, __LINE__);
+               pr_err("%s, line:%d\n", __func__, __LINE__);
                return ret;
        }
 
@@ -82,9 +82,9 @@ static struct snd_soc_dai_link sunxi_sndpcm_dai_link = {
 	.platform_name 	= "sunxi-pcm-codec-audio",
 	.codec_name 	= "sunxi-pcm-codec",
 
-       #ifdef CONFIG_ARCH_SUN8IW5
-       .ops = &sunxi_sndpcm_ops,
-       #endif
+#if defined CONFIG_ARCH_SUN8IW5 || defined CONFIG_ARCH_SUN8IW9
+    .ops = &sunxi_sndpcm_ops,
+#endif
 };
 
 static struct snd_soc_card snd_soc_sunxi_sndpcm = {
@@ -94,32 +94,63 @@ static struct snd_soc_card snd_soc_sunxi_sndpcm = {
 	.num_links 	= 1,
 };
 
-static struct platform_device *sunxi_sndpcm_device;
-
-static int __init sunxi_sndpcm_init(void)
+static int __devinit sunxi_sndpcm_dev_probe(struct platform_device *pdev)
 {
 	int ret = 0;
+	struct snd_soc_card *card = &snd_soc_sunxi_sndpcm;
+	card->dev = &pdev->dev;
 
-	sunxi_sndpcm_device = platform_device_alloc("soc-audio", 0);
-	if(!sunxi_sndpcm_device)
-		return -ENOMEM;
-	platform_set_drvdata(sunxi_sndpcm_device, &snd_soc_sunxi_sndpcm);
-	ret = platform_device_add(sunxi_sndpcm_device);		
-	if (ret) {			
-		platform_device_put(sunxi_sndpcm_device);
+	ret = snd_soc_register_card(card);
+	if (ret) {
+		dev_err(&pdev->dev, "snd_soc_register_card() failed: %d\n",
+			ret);
 	}
-
 	return ret;
 }
 
-static void __exit sunxi_sndpcm_exit(void)
+static int __exit sunxi_sndpcm_dev_remove(struct platform_device *pdev)
 {
-	platform_device_unregister(sunxi_sndpcm_device);
+	struct snd_soc_card *card = platform_get_drvdata(pdev);
+
+	snd_soc_unregister_card(card);
+	return 0;
 }
 
-module_init(sunxi_sndpcm_init);
-module_exit(sunxi_sndpcm_exit);
+/*data relating*/
+static struct platform_device sunxi_sndpcm_device = {
+	.name 	= "audiocodec",
+	.id 	= PLATFORM_DEVID_NONE,
+};
 
+/*method relating*/
+static struct platform_driver sunxi_sndpcm_driver = {
+	.probe = sunxi_sndpcm_dev_probe,
+	.remove = __exit_p(sunxi_sndpcm_dev_remove),
+	.driver = {
+		.name = "audiocodec",
+		.owner = THIS_MODULE,
+		.pm = &snd_soc_pm_ops,
+	},
+};
+
+static int __init sunxi_sndpcm_init(void)
+{
+	int err = 0;
+	if((err = platform_device_register(&sunxi_sndpcm_device)) < 0)
+		return err;
+
+	if ((err = platform_driver_register(&sunxi_sndpcm_driver)) < 0)
+		return err;	
+
+	return 0;
+}
+module_init(sunxi_sndpcm_init);
+
+static void __exit sunxi_sndpcm_exit(void)
+{
+	platform_driver_unregister(&sunxi_sndpcm_driver);
+}
+module_exit(sunxi_sndpcm_exit);
 MODULE_AUTHOR("huangxin");
 MODULE_DESCRIPTION("SUNXI_sndpcm ALSA SoC audio driver");
 MODULE_LICENSE("GPL");

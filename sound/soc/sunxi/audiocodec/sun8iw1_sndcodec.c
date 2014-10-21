@@ -224,7 +224,7 @@ static void codec_init(void)
 //	codec_chip_ver = sw_get_ic_ver();
 	type = script_get_item("audio0", "headphone_direct_used", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-       printk("[audiocodec] headphone_direct_used type err!\n");
+       pr_err("[audiocodec] headphone_direct_used type err!\n");
     }
 	headphone_direct_used = val.val;
 //	if (headphone_direct_used && (codec_chip_ver != MAGIC_VER_A31A)) {
@@ -268,20 +268,20 @@ static int codec_pa_play_open(void)
 
 	type = script_get_item("audio0", "pa_double_used", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-		printk("[audiocodec] pa_double_used type err!\n");
+		pr_err("[audiocodec] pa_double_used type err!\n");
 	}
 
 	pa_double_used = val.val;
 	if (!pa_double_used) {
 		type = script_get_item("audio0", "pa_single_vol", &val);
 		if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-			printk("[audiocodec] pa_single_vol type err!\n");
+			pr_err("[audiocodec] pa_single_vol type err!\n");
 		}
 		pa_vol = val.val;
 	} else {
 		type = script_get_item("audio0", "pa_double_vol", &val);
 		if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-			printk("[audiocodec] pa_double_vol type err!\n");
+			pr_err("[audiocodec] pa_double_vol type err!\n");
 		}
 		pa_vol = val.val;
 	}
@@ -341,7 +341,7 @@ static int codec_headphone_play_open(void)
 
 	type = script_get_item("audio0", "headphone_vol", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-   	printk("[audiocodec], headphone_vol type err!\n");
+   	pr_err("[audiocodec], headphone_vol type err!\n");
     }
 	headphone_vol = val.val;
 	/*mute l_pa and r_pa*/
@@ -384,7 +384,7 @@ static int codec_earpiece_play_open(void)
 
 	type = script_get_item("audio0", "earpiece_vol", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-   	printk("[audiocodec] headphone_vol type err!\n");
+   	pr_err("[audiocodec] headphone_vol type err!\n");
     }
 	earpiece_vol = val.val;
 	/*mute l_pa and r_pa*/
@@ -442,27 +442,27 @@ static int codec_pa_and_headset_play_open(void)
 	int pa_double_used = 0;
 	type = script_get_item("audio0", "pa_double_used", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-		printk("[audiocodec] pa_double_used type err!\n");
+		pr_err("[audiocodec] pa_double_used type err!\n");
 	}
 
 	pa_double_used = val.val;
 	if (!pa_double_used) {
 		type = script_get_item("audio0", "pa_single_vol", &val);
 		if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-			printk("[audiocodec] pa_single_vol type err!\n");
+			pr_err("[audiocodec] pa_single_vol type err!\n");
 		}
 		pa_vol = val.val;
 	} else {
 		type = script_get_item("audio0", "pa_double_vol", &val);
 		if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-			printk("[audiocodec] pa_double_vol type err!\n");
+			pr_err("[audiocodec] pa_double_vol type err!\n");
 		}
 		pa_vol = val.val;
 	}
 
 	type = script_get_item("audio0", "headphone_vol", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-       	printk("[audiocodec] headphone_vol type err!\n");
+       	pr_err("[audiocodec] headphone_vol type err!\n");
     	}
 	headphone_vol = val.val;
 
@@ -661,7 +661,7 @@ static int codec_capture_open(void)
 
 	type = script_get_item("audio0", "cap_vol", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-		printk("[audiocodec] cap_vol type err!\n");
+		pr_err("[audiocodec] cap_vol type err!\n");
 	}
 	cap_vol = val.val;
 
@@ -708,7 +708,7 @@ static int codec_play_start(void)
 
 	type = script_get_item("audio0", "headphone_vol", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[audiocodec] headphone_vol type err!\n");
+        pr_err("[audiocodec] headphone_vol type err!\n");
     }
 	headphone_vol = val.val;
 	/*enable dac drq*/
@@ -750,7 +750,7 @@ static int codec_play_stop(void)
 
 	type = script_get_item("audio0", "headphone_vol", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[audiocodec] headphone_vol type err!\n");
+        pr_err("[audiocodec] headphone_vol type err!\n");
     }
 	headphone_vol = val.val;
 
@@ -887,19 +887,19 @@ static int codec_set_speakerout_lntor(struct snd_kcontrol *kcontrol,
 	int pa_double_used = 0;
 	type = script_get_item("audio0", "pa_double_used", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-       printk("[audiocodec] pa_double_used type err!\n");
+       pr_err("[audiocodec] pa_double_used type err!\n");
     }
     pa_double_used = val.val;
     if (!pa_double_used) {
 		type = script_get_item("audio0", "pa_single_vol", &val);
 		if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-	        printk("[audiocodec] pa_single_vol type err!\n");
+	        pr_err("[audiocodec] pa_single_vol type err!\n");
 	    }
 		pa_vol = val.val;
 	} else {
 		type = script_get_item("audio0", "pa_double_vol", &val);
 		if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-	        printk("[audiocodec] pa_double_vol type err!\n");
+	        pr_err("[audiocodec] pa_double_vol type err!\n");
 	    }
 		pa_vol = val.val;
 	}
@@ -969,19 +969,19 @@ static int codec_set_speakerout(struct snd_kcontrol *kcontrol,
 	int pa_double_used = 0;
 	type = script_get_item("audio0", "pa_double_used", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[audiocodec] pa_double_used type err!\n");
+        pr_err("[audiocodec] pa_double_used type err!\n");
     }
     pa_double_used = val.val;
     if (!pa_double_used) {
 		type = script_get_item("audio0", "pa_single_vol", &val);
 		if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-	        printk("[audiocodec] pa_single_vol type err!\n");
+	        pr_err("[audiocodec] pa_single_vol type err!\n");
 	    }
 		pa_vol = val.val;
 	} else {
 		type = script_get_item("audio0", "pa_double_vol", &val);
 		if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-	        printk("[audiocodec] pa_double_vol type err!\n");
+	        pr_err("[audiocodec] pa_double_vol type err!\n");
 	    }
 		pa_vol = val.val;
 	}
@@ -1051,7 +1051,7 @@ static int codec_set_headphoneout_lntor(struct snd_kcontrol *kcontrol,
 
 	type = script_get_item("audio0", "headphone_vol", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[audiocodec] headphone_vol type err!\n");
+        pr_err("[audiocodec] headphone_vol type err!\n");
     }
 	headphone_vol = val.val;
 
@@ -1118,7 +1118,7 @@ static int codec_set_headphoneout(struct snd_kcontrol *kcontrol,
 
 	type = script_get_item("audio0", "headphone_vol", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[audiocodec] headphone_vol type err!\n");
+        pr_err("[audiocodec] headphone_vol type err!\n");
     }
 	headphone_vol = val.val;
 
@@ -1183,7 +1183,7 @@ static int codec_set_earpieceout(struct snd_kcontrol *kcontrol,
 
 	type = script_get_item("audio0", "earpiece_vol", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[audiocodec] headphone_vol type err!\n");
+        pr_err("[audiocodec] headphone_vol type err!\n");
     }
 	earpiece_vol = val.val;
 
@@ -1510,7 +1510,7 @@ static int codec_set_mainmic(struct snd_kcontrol *kcontrol,
 
 	type = script_get_item("audio0", "main_mic_vol", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-		printk("[audiocodec] codec_set_mainmic type err!\n");
+		pr_err("[audiocodec] codec_set_mainmic type err!\n");
     }
 
 	codec_mainmic_en = ucontrol->value.integer.value[0];
@@ -1599,7 +1599,7 @@ static int codec_set_headsetmic(struct snd_kcontrol *kcontrol,
 
 	type = script_get_item("audio0", "headset_mic_vol", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-	    printk("[audiocodec] codec_set_headsetmic type err!\n");
+	    pr_err("[audiocodec] codec_set_headsetmic type err!\n");
     }
 
 	codec_headsetmic_en = ucontrol->value.integer.value[0];
@@ -1728,7 +1728,7 @@ static int codec_set_spk(struct snd_kcontrol *kcontrol,
 	script_item_value_type_e  type;
 
 	codec_speaker_en = ucontrol->value.integer.value[0];
-	printk("%s, line:%d, codec_speaker_en:%d\n", __func__, __LINE__, codec_speaker_en);
+	pr_debug("%s, line:%d, codec_speaker_en:%d\n", __func__, __LINE__, codec_speaker_en);
 	
 	if (codec_speaker_en) {
 		ret = codec_pa_play_open();
@@ -1756,7 +1756,7 @@ static int codec_set_spk(struct snd_kcontrol *kcontrol,
 
 		type = script_get_item("audio0", "headphone_vol", &val);
 		if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-			printk("[audiocodec] headphone_vol type err!\n");
+			pr_err("[audiocodec] headphone_vol type err!\n");
 		}
 		headphone_vol = val.val;
 		reg_val = codec_rdreg(SUNXI_DAC_ACTL);
@@ -1802,7 +1802,7 @@ static int codec_set_spk_headset_earpiece(struct snd_kcontrol *kcontrol,
 	script_item_value_type_e  type;
 
 	codec_speaker_headset_earpiece_en = ucontrol->value.integer.value[0];
-printk("%s, line:%d, codec_speaker_headset_earpiece_en:%d\n", __func__, __LINE__, codec_speaker_headset_earpiece_en);
+pr_debug("%s, line:%d, codec_speaker_headset_earpiece_en:%d\n", __func__, __LINE__, codec_speaker_headset_earpiece_en);
 	if (codec_speaker_headset_earpiece_en == 1) {
 		ret = codec_pa_play_open();
 	} else if (codec_speaker_headset_earpiece_en == 0) {
@@ -1829,7 +1829,7 @@ printk("%s, line:%d, codec_speaker_headset_earpiece_en:%d\n", __func__, __LINE__
 
 		type = script_get_item("audio0", "headphone_vol", &val);
 		if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-			printk("[audiocodec] headphone_vol type err!\n");
+			pr_err("[audiocodec] headphone_vol type err!\n");
 		}
 		headphone_vol = val.val;
 		reg_val = codec_rdreg(SUNXI_DAC_ACTL);
@@ -1845,7 +1845,7 @@ printk("%s, line:%d, codec_speaker_headset_earpiece_en:%d\n", __func__, __LINE__
 			}
 		}
 	} else if (codec_speaker_headset_earpiece_en == 2) {
-		printk("%s, line:%d\n", __func__, __LINE__);
+		pr_debug("%s, line:%d\n", __func__, __LINE__);
 		codec_wr_control(SUNXI_PA_CTRL, 0x3, HPCOM_CTL, 0x0);
 		codec_pa_and_headset_play_open();
 	} else if (codec_speaker_headset_earpiece_en == 3) {
@@ -1886,10 +1886,10 @@ static void sndpcm_shutdown(struct snd_pcm_substream *substream,
 	int headphone_vol = 0;
 	script_item_u val;
 	script_item_value_type_e  type;
-	printk("%s, line:%d\n", __func__, __LINE__);
+	pr_debug("%s, line:%d\n", __func__, __LINE__);
 	type = script_get_item("audio0", "headphone_vol", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[audiocodec] headphone_vol type err!\n");
+        pr_err("[audiocodec] headphone_vol type err!\n");
     }
 	headphone_vol = val.val;
 
@@ -1926,10 +1926,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 		switch (substream->runtime->rate) {
 			case 44100:
 				if (clk_set_rate(codec_pll2clk, 22579200)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 22579200)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_DAC_FIFOC);
 				reg_val &=~(7<<29);
@@ -1938,10 +1938,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 22050:
 				if (clk_set_rate(codec_pll2clk, 22579200)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 22579200)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_DAC_FIFOC);
 				reg_val &=~(7<<29); 
@@ -1950,10 +1950,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 11025:
 				if (clk_set_rate(codec_pll2clk, 22579200)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 22579200)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_DAC_FIFOC);
 				reg_val &=~(7<<29); 
@@ -1962,10 +1962,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 48000:
 				if (clk_set_rate(codec_pll2clk, 24576000)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 24576000)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_DAC_FIFOC);
 				reg_val &=~(7<<29); 
@@ -1974,10 +1974,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 96000:
 				if (clk_set_rate(codec_pll2clk, 24576000)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 24576000)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_DAC_FIFOC);
 				reg_val &=~(7<<29);
@@ -1986,10 +1986,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 192000:
 				if (clk_set_rate(codec_pll2clk, 24576000)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 24576000)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_DAC_FIFOC);
 				reg_val &=~(7<<29);
@@ -1998,10 +1998,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 32000:
 				if (clk_set_rate(codec_pll2clk, 24576000)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 24576000)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_DAC_FIFOC);
 				reg_val &=~(7<<29); 
@@ -2010,10 +2010,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 24000:
 				if (clk_set_rate(codec_pll2clk, 24576000)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 24576000)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_DAC_FIFOC);
 				reg_val &=~(7<<29); 
@@ -2022,10 +2022,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 16000:
 				if (clk_set_rate(codec_pll2clk, 24576000)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 24576000)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_DAC_FIFOC);
 				reg_val &=~(7<<29); 
@@ -2034,10 +2034,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 12000:
 				if (clk_set_rate(codec_pll2clk, 24576000)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 24576000)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_DAC_FIFOC);
 				reg_val &=~(7<<29); 
@@ -2046,10 +2046,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 8000:
 				if (clk_set_rate(codec_pll2clk, 24576000)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 24576000)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_DAC_FIFOC);
 				reg_val &=~(7<<29);
@@ -2058,10 +2058,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			default:
 				if (clk_set_rate(codec_pll2clk, 24576000)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 24576000)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_DAC_FIFOC);
 				reg_val &=~(7<<29); 
@@ -2090,10 +2090,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 		switch (substream->runtime->rate) {
 			case 44100:
 				if (clk_set_rate(codec_pll2clk, 22579200)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 22579200)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_ADC_FIFOC);
 				reg_val &=~(7<<29);
@@ -2102,10 +2102,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 22050:
 				if (clk_set_rate(codec_pll2clk, 22579200)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 22579200)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_ADC_FIFOC);
 				reg_val &=~(7<<29); 
@@ -2114,10 +2114,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 11025:
 				if (clk_set_rate(codec_pll2clk, 22579200)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 22579200)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_ADC_FIFOC);
 				reg_val &=~(7<<29); 
@@ -2126,10 +2126,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 48000:
 				if (clk_set_rate(codec_pll2clk, 24576000)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 24576000)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_ADC_FIFOC);
 				reg_val &=~(7<<29); 
@@ -2138,10 +2138,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 32000:
 				if (clk_set_rate(codec_pll2clk, 24576000)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 24576000)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_ADC_FIFOC);
 				reg_val &=~(7<<29); 
@@ -2150,10 +2150,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 24000:
 				if (clk_set_rate(codec_pll2clk, 24576000)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 24576000)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_ADC_FIFOC);
 				reg_val &=~(7<<29); 
@@ -2162,10 +2162,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 16000:
 				if (clk_set_rate(codec_pll2clk, 24576000)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 24576000)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_ADC_FIFOC);
 				reg_val &=~(7<<29); 
@@ -2174,10 +2174,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 12000:
 				if (clk_set_rate(codec_pll2clk, 24576000)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 24576000)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_ADC_FIFOC);
 				reg_val &=~(7<<29); 
@@ -2186,10 +2186,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			case 8000:
 				if (clk_set_rate(codec_pll2clk, 24576000)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 24576000)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_ADC_FIFOC);
 				reg_val &=~(7<<29); 
@@ -2198,10 +2198,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 				break;
 			default:
 				if (clk_set_rate(codec_pll2clk, 24576000)) {
-					printk("set codec_pll2clk rate fail\n");
+					pr_err("set codec_pll2clk rate fail\n");
 				}
 				if (clk_set_rate(codec_moduleclk, 24576000)) {
-					printk("set codec_moduleclk rate fail\n");
+					pr_err("set codec_moduleclk rate fail\n");
 				}
 				reg_val = readl(baseaddr + SUNXI_ADC_FIFOC);
 				reg_val &=~(7<<29); 
@@ -2294,7 +2294,7 @@ static int sndpcm_trigger(struct snd_pcm_substream *substream,
 			codec_capture_stop();
 			return 0;
 		default:
-			printk("error:%s,%d\n", __func__, __LINE__);
+			pr_err("error:%s,%d\n", __func__, __LINE__);
 			return -EINVAL;
 		}
 	}
@@ -2440,10 +2440,10 @@ static int sndpcm_suspend(struct snd_soc_codec *codec)
 	item.gpio.data = 0;
 	type = script_get_item("audio0", "headphone_vol", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-    	printk("[audiocodec] headphone_vol type err!\n");
+    	pr_err("[audiocodec] headphone_vol type err!\n");
     }
 	headphone_vol = val.val;
-	printk("[audio codec]:suspend\n");
+	pr_debug("[audio codec]:suspend\n");
 
 	codec_wr_control(SUNXI_ADDAC_TUNE, 0x1, ZERO_CROSS_EN, 0x0);
 	for (i = headphone_vol; i > 0 ; i--) {
@@ -2476,12 +2476,12 @@ static int sndpcm_suspend(struct snd_soc_codec *codec)
 
 	gpio_set_value(item.gpio.gpio, 0);
 	if ((NULL == codec_moduleclk)||(IS_ERR(codec_moduleclk))) {
-		printk("codec_moduleclk handle is invaled, just return\n");
+		pr_err("codec_moduleclk handle is invaled, just return\n");
 		return -EINVAL;
 	} else {
 		clk_disable_unprepare(codec_moduleclk);
 	}
-	printk("[audio codec]:suspend end\n");
+	pr_debug("[audio codec]:suspend end\n");
 	return 0;
 }
 
@@ -2494,15 +2494,15 @@ static int sndpcm_resume(struct snd_soc_codec *codec)
 
 //	codec_chip_ver = sw_get_ic_ver();
 	
-	printk("[audio codec]:resume start\n");
+	pr_debug("[audio codec]:resume start\n");
 
 	if (clk_prepare_enable(codec_moduleclk)) {
-		printk("open codec_moduleclk failed; \n");
+		pr_err("open codec_moduleclk failed; \n");
 	}
 	
 	type = script_get_item("audio0", "headphone_direct_used", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[audiocodec] headphone_direct_used type err!\n");
+        pr_err("[audiocodec] headphone_direct_used type err!\n");
     }
 	headphone_direct_used = val.val;
 //	if (headphone_direct_used && (codec_chip_ver != MAGIC_VER_A31A)) {
@@ -2528,7 +2528,7 @@ static int sndpcm_resume(struct snd_soc_codec *codec)
 //	}
 
 	codec_wr_control(SUNXI_DAC_FIFOC, 0x1, FIR_VERSION, 0x1);
-	printk("[audio codec]:resume end\n");
+	pr_debug("[audio codec]:resume end\n");
 	return 0;
 }
 
@@ -2553,24 +2553,24 @@ static int __init sndpcm_codec_probe(struct platform_device *pdev)
 	/* codec_pll2clk */
 	codec_pll2clk = clk_get(NULL, "pll2");
 	if ((!codec_pll2clk)||(IS_ERR(codec_pll2clk))) {
-		printk("try to get codec_pll2clk failed!\n");
+		pr_err("try to get codec_pll2clk failed!\n");
 	}
 	if (clk_prepare_enable(codec_pll2clk)) {
-		printk("enable codec_pll2clk failed; \n");
+		pr_err("enable codec_pll2clk failed; \n");
 	}
 	/* codec_moduleclk */
 	codec_moduleclk = clk_get(NULL, "adda");
 	if ((!codec_moduleclk)||(IS_ERR(codec_moduleclk))) {
-		printk("try to get codec_moduleclk failed!\n");
+		pr_err("try to get codec_moduleclk failed!\n");
 	}
 	if (clk_set_parent(codec_moduleclk, codec_pll2clk)) {
-		printk("err:try to set parent of codec_moduleclk to codec_pll2clk failed!\n");
+		pr_err("err:try to set parent of codec_moduleclk to codec_pll2clk failed!\n");
 	}
 	if (clk_set_rate(codec_moduleclk, 24576000)) {
-		printk("err:set codec_moduleclk clock freq 24576000 failed!\n");
+		pr_err("err:set codec_moduleclk clock freq 24576000 failed!\n");
 	}
 	if (clk_prepare_enable(codec_moduleclk)) {
-		printk("err:open codec_moduleclk failed; \n");
+		pr_err("err:open codec_moduleclk failed; \n");
 	}
 
 	codec_init();
@@ -2578,7 +2578,7 @@ static int __init sndpcm_codec_probe(struct platform_device *pdev)
 	/* check if hp_vcc_ldo exist, if exist enable it */
 	type = script_get_item("audio0", "audio_hp_ldo", &item);
 	if (SCIRPT_ITEM_VALUE_TYPE_STR != type) {
-		printk("script_get_item return type err, consider it no ldo\n");
+		pr_err("script_get_item return type err, consider it no ldo\n");
 	} else {
 		if (!strcmp(item.str, "none"))
 			hp_ldo = NULL;
@@ -2586,7 +2586,7 @@ static int __init sndpcm_codec_probe(struct platform_device *pdev)
 			hp_ldo_str = item.str;
 			hp_ldo = regulator_get(NULL, hp_ldo_str);
 			if (!hp_ldo) {
-				printk("get audio hp-vcc(%s) failed\n", hp_ldo_str);
+				pr_err("get audio hp-vcc(%s) failed\n", hp_ldo_str);
 				return -EFAULT;
 			}
 			regulator_set_voltage(hp_ldo, 3000000, 3000000);
@@ -2596,13 +2596,13 @@ static int __init sndpcm_codec_probe(struct platform_device *pdev)
 	/*get the default pa val(close)*/
 	type = script_get_item("audio0", "audio_pa_ctrl", &item);
 	if (SCIRPT_ITEM_VALUE_TYPE_PIO != type) {
-		printk("script_get_item return type err\n");
+		pr_err("script_get_item return type err\n");
 		return -EFAULT;
 	}
 	/*request gpio*/
 	req_status = gpio_request(item.gpio.gpio, NULL);
 	if (0 != req_status) {
-		printk("request gpio failed!\n");
+		pr_err("request gpio failed!\n");
 	}
 	gpio_direction_output(item.gpio.gpio, 1);
 	
@@ -2613,13 +2613,13 @@ static int __init sndpcm_codec_probe(struct platform_device *pdev)
 static int __exit sndpcm_codec_remove(struct platform_device *pdev)
 {
 	if ((NULL == codec_moduleclk)||(IS_ERR(codec_moduleclk))) {
-		printk("codec_moduleclk handle is invaled, just return\n");
+		pr_err("codec_moduleclk handle is invaled, just return\n");
 		return -EINVAL;
 	} else {
 		clk_disable_unprepare(codec_moduleclk);
 	}
 	if ((NULL == codec_pll2clk)||(IS_ERR(codec_pll2clk))) {
-		printk("codec_pll2clk handle is invaled, just return\n");
+		pr_err("codec_pll2clk handle is invaled, just return\n");
 		return -EINVAL;
 	} else {
 		clk_put(codec_pll2clk);
@@ -2646,7 +2646,7 @@ static void sunxi_codec_shutdown(struct platform_device *devptr)
 	item.gpio.data = 0;
 	type = script_get_item("audio0", "headphone_vol", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-    	printk("[audiocodec] headphone_vol type err!\n");
+    	pr_err("[audiocodec] headphone_vol type err!\n");
     }
 	headphone_vol = val.val;
 
@@ -2684,7 +2684,7 @@ static void sunxi_codec_shutdown(struct platform_device *devptr)
 	gpio_set_value(item.gpio.gpio, 0);
 
 	if ((NULL == codec_moduleclk)||(IS_ERR(codec_moduleclk))) {
-		printk("codec_moduleclk handle is invaled, just return\n");
+		pr_err("codec_moduleclk handle is invaled, just return\n");
 	} else {
 		clk_disable(codec_moduleclk);
 	}

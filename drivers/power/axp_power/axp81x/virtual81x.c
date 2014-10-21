@@ -158,12 +158,6 @@ static struct platform_driver regulator_virtual_consumer_driver[] = {
 		.probe		= regulator_virtual_consumer_probe,
 		.remove		= regulator_virtual_consumer_remove,
 		.driver		= {
-			.name		= "reg-81x-cs-fldo3",
-		},
-	},{
-		.probe		= regulator_virtual_consumer_probe,
-		.remove		= regulator_virtual_consumer_remove,
-		.driver		= {
 			.name		= "reg-81x-cs-dcdc1",
 		},
 	},{

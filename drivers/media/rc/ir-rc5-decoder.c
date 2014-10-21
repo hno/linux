@@ -172,7 +172,7 @@ static int __init ir_rc5_decode_init(void)
 {
 	ir_raw_handler_register(&rc5_handler);
 
-	printk(KERN_INFO "IR RC5(x) protocol handler initialized\n");
+	pr_info("IR RC5(x) protocol handler initialized\n");
 	return 0;
 }
 

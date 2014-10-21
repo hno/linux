@@ -45,6 +45,7 @@
 #include <asm/smp_plat.h>
 #include <asm/mach/irq.h>
 #include <asm/hardware/gic.h>
+#include <mach/sunxi-chip.h>
 
 union gic_base {
 	void __iomem *common_base;
@@ -152,7 +153,7 @@ static inline unsigned int gic_irq(struct irq_data *d)
 static void gic_mask_irq(struct irq_data *d)
 {
 	u32 mask = 1 << (gic_irq(d) % 32);
-
+	
 	raw_spin_lock(&irq_controller_lock);
 	writel_relaxed(mask, gic_dist_base(d) + GIC_DIST_ENABLE_CLEAR + (gic_irq(d) / 32) * 4);
 	if (gic_arch_extn.irq_mask)
@@ -170,7 +171,51 @@ static void gic_unmask_irq(struct irq_data *d)
 	writel_relaxed(mask, gic_dist_base(d) + GIC_DIST_ENABLE_SET + (gic_irq(d) / 32) * 4);
 	raw_spin_unlock(&irq_controller_lock);
 }
+#ifdef CONFIG_ARCH_SUN8IW6P1
+static unsigned int get_irqnr_from_active(unsigned int cpu)
+{
+    int i=0,found=0;
+    unsigned int state,irq_active;
+    unsigned int check_reg_num;
+    if(cpu)
+        check_reg_num=1;
+    else
+        check_reg_num=5;
 
+    for(i=0;i<check_reg_num;i++)
+    {
+        state = readl_relaxed(gic_data_dist_base(&gic_data[0])+GIC_DIST_ACTIVE_BIT+i*4);
+        if(state)
+        {
+            irq_active=ffs(state);
+            irq_active = irq_active-1 + i*32;
+            found=1;
+            break;
+        }
+    }
+    if(found)
+        return irq_active;
+    else
+        return 0x3ff;
+}
+static void check_irq_active_after_eoi(unsigned int cpu,unsigned int irqnr)
+{
+    unsigned int irqactive,loop=0;
+    while(loop < 5)
+    {
+        irqactive = get_irqnr_from_active(cpu);
+        if(irqnr == irqactive)
+        {
+            writel_relaxed(irqnr, gic_data_cpu_base(&gic_data[0])+GIC_CPU_EOI);
+            loop++;
+            pr_warn("%s CPU %d after loop %d irqnr %d irqactive %d\n",__func__,cpu,loop,irqnr,irqactive);
+        }
+        else
+            return;
+    }
+	panic("%s CPU %d after loop %d irqnr %d irqactive %d\n",__func__,cpu,loop,irqnr,irqactive);
+}
+#endif
 static void gic_eoi_irq(struct irq_data *d)
 {
 	if (gic_arch_extn.irq_eoi) {
@@ -178,8 +223,14 @@ static void gic_eoi_irq(struct irq_data *d)
 		gic_arch_extn.irq_eoi(d);
 		raw_spin_unlock(&irq_controller_lock);
 	}
-
-	writel_relaxed(gic_irq(d), gic_cpu_base(d) + GIC_CPU_EOI);
+	if (sunxi_soc_is_secure()) {
+		writel_relaxed(gic_irq(d), gic_cpu_base(d) + GIC_CPU_AEOI);
+	} else {
+		writel_relaxed(gic_irq(d), gic_cpu_base(d) + GIC_CPU_EOI);
+#ifdef CONFIG_ARCH_SUN8IW6P1
+        check_irq_active_after_eoi(raw_smp_processor_id(),gic_irq(d));
+#endif
+	}
 }
 
 static int gic_set_type(struct irq_data *d, unsigned int type)
@@ -296,7 +347,11 @@ asmlinkage void __exception_irq_entry gic_handle_irq(struct pt_regs *regs)
 	void __iomem *cpu_base = gic_data_cpu_base(gic);
 
 	do {
-		irqstat = readl_relaxed(cpu_base + GIC_CPU_INTACK);
+		if (sunxi_soc_is_secure()) {
+			irqstat = readl_relaxed(cpu_base + GIC_CPU_AINTACK);
+		} else {
+			irqstat = readl_relaxed(cpu_base + GIC_CPU_INTACK);	
+		}
 		irqnr = irqstat & ~0x1c00;
 
 		if (likely(irqnr > 15 && irqnr < 1021)) {
@@ -305,7 +360,14 @@ asmlinkage void __exception_irq_entry gic_handle_irq(struct pt_regs *regs)
 			continue;
 		}
 		if (irqnr < 16) {
-			writel_relaxed(irqstat, cpu_base + GIC_CPU_EOI);
+			if (sunxi_soc_is_secure()) {
+				writel_relaxed(irqstat, cpu_base + GIC_CPU_AEOI);
+			} else {
+				writel_relaxed(irqstat, cpu_base + GIC_CPU_EOI);	
+#ifdef CONFIG_ARCH_SUN8IW6P1
+                check_irq_active_after_eoi(raw_smp_processor_id(),irqnr);
+#endif
+			}
 #ifdef CONFIG_SMP
 			handle_IPI(irqnr, regs);
 #endif
@@ -325,7 +387,11 @@ static void gic_handle_cascade_irq(unsigned int irq, struct irq_desc *desc)
 	chained_irq_enter(chip, desc);
 
 	raw_spin_lock(&irq_controller_lock);
-	status = readl_relaxed(gic_data_cpu_base(chip_data) + GIC_CPU_INTACK);
+	if (sunxi_soc_is_secure()) {
+		status = readl_relaxed(gic_data_cpu_base(chip_data) + GIC_CPU_AINTACK);
+	} else {
+		status = readl_relaxed(gic_data_cpu_base(chip_data) + GIC_CPU_INTACK);
+	}
 	raw_spin_unlock(&irq_controller_lock);
 
 	gic_irq = (status & 0x3ff);
@@ -399,7 +465,11 @@ static void __init gic_dist_init(struct gic_chip_data *gic)
 	for (i = 32; i < gic_irqs; i += 32)
 		writel_relaxed(0xffffffff, base + GIC_DIST_ENABLE_CLEAR + i * 4 / 32);
 
-	writel_relaxed(1, base + GIC_DIST_CTRL);
+	if (sunxi_soc_is_secure()) {
+		writel_relaxed(0x3, base + GIC_DIST_CTRL);
+	} else {
+		writel_relaxed(0x1, base + GIC_DIST_CTRL);
+	}
 }
 
 static void __cpuinit gic_cpu_init(struct gic_chip_data *gic)
@@ -438,7 +508,12 @@ static void __cpuinit gic_cpu_init(struct gic_chip_data *gic)
 		writel_relaxed(0xa0a0a0a0, dist_base + GIC_DIST_PRI + i * 4 / 4);
 
 	writel_relaxed(0xf0, base + GIC_CPU_PRIMASK);
-	writel_relaxed(1, base + GIC_CPU_CTRL);
+
+	if (sunxi_soc_is_secure()) {
+		writel_relaxed(0xb, base + GIC_CPU_CTRL);
+	} else {
+		writel_relaxed(0x1, base + GIC_CPU_CTRL);
+	}
 }
 
 #ifdef CONFIG_CPU_PM
@@ -515,8 +590,12 @@ static void gic_dist_restore(unsigned int gic_nr)
 	for (i = 0; i < DIV_ROUND_UP(gic_irqs, 32); i++)
 		writel_relaxed(gic_data[gic_nr].saved_spi_enable[i],
 			dist_base + GIC_DIST_ENABLE_SET + i * 4);
-
-	writel_relaxed(1, dist_base + GIC_DIST_CTRL);
+	
+	if (sunxi_soc_is_secure()) {
+		writel_relaxed(0x3, dist_base + GIC_DIST_CTRL);
+	} else {
+		writel_relaxed(0x1, dist_base + GIC_DIST_CTRL);
+	}
 }
 
 static void gic_cpu_save(unsigned int gic_nr)
@@ -573,7 +652,12 @@ static void gic_cpu_restore(unsigned int gic_nr)
 		writel_relaxed(0xa0a0a0a0, dist_base + GIC_DIST_PRI + i * 4);
 
 	writel_relaxed(0xf0, cpu_base + GIC_CPU_PRIMASK);
-	writel_relaxed(1, cpu_base + GIC_CPU_CTRL);
+	
+	if (sunxi_soc_is_secure()) {
+		writel_relaxed(0xb, cpu_base + GIC_CPU_CTRL);
+	} else {
+		writel_relaxed(0x1, cpu_base + GIC_CPU_CTRL);
+	}
 }
 
 static int gic_notifier(struct notifier_block *self, unsigned long cmd,	void *v)
@@ -774,7 +858,7 @@ void gic_raise_softirq(const struct cpumask *mask, unsigned int irq)
 {
 	int cpu;
 	unsigned long flags, map = 0;
-
+	
         raw_spin_lock_irqsave(&irq_controller_lock, flags);
 
 	/* Convert our logical CPU mask into a physical one. */
@@ -790,7 +874,11 @@ void gic_raise_softirq(const struct cpumask *mask, unsigned int irq)
 	dsb();
 
 	/* this always happens on GIC0 */
-	writel_relaxed(map << 16 | irq, gic_data_dist_base(&gic_data[0]) + GIC_DIST_SOFTINT);
+	if (sunxi_soc_is_secure()) {
+		writel_relaxed(((map << 16) | (1 << 15) | irq), gic_data_dist_base(&gic_data[0]) + GIC_DIST_SOFTINT);
+	} else {
+		writel_relaxed(((map << 16) | irq), gic_data_dist_base(&gic_data[0]) + GIC_DIST_SOFTINT);
+	}
         raw_spin_unlock_irqrestore(&irq_controller_lock, flags);
 }
 #endif

@@ -81,7 +81,11 @@ static int axp_get_voltage(struct regulator_dev *rdev)
 		return ret;
 
 	mask = ((1 << info->vol_nbits) - 1)  << info->vol_shift;
-	switch_val = ((info->switch_uV- info->min_uV + info->step1_uV - 1) / info->step1_uV);
+	if (info->step1_uV != 0) {
+		switch_val = ((info->switch_uV- info->min_uV + info->step1_uV - 1) / info->step1_uV);
+	} else {
+		switch_val = 0;
+	}
 	val = (val & mask) >> info->vol_shift;
 
 	if ((info->switch_uV != 0) && (info->step2_uV!= 0) &&
@@ -371,7 +375,7 @@ static ssize_t frequency_store(struct device *dev,
 	struct regulator_dev *rdev = dev_get_drvdata(dev);
 	struct axp_regulator_info *info = rdev_get_drvdata(rdev);
 	struct device *axp_dev = to_axp_dev(rdev);
-	uint8_t val,tmp;
+	uint8_t val;
 	int var;
 
 	var = simple_strtoul(buf, NULL, 10);
@@ -383,10 +387,8 @@ static ssize_t frequency_store(struct device *dev,
 	val = (var -750)/75;
 	val &= 0x0F;
 
-	axp_read(axp_dev, info->freq_reg, &tmp);
-	tmp &= 0xF0;
-	val |= tmp;
-	axp_write(axp_dev, info->freq_reg, val);
+	axp_update(axp_dev, info->freq_reg, val, 0x0F);
+
 	return count;
 }
 
@@ -420,14 +422,19 @@ static int __devinit axp_regulator_probe(struct platform_device *pdev)
 	struct  axp_reg_init * platform_data = (struct  axp_reg_init *)(pdev->dev.platform_data);
 	struct axp_regulator_info *info = platform_data->info;
 	int ret;
-
-	if ((30 > info->desc.id) || (40 <= info->desc.id))
-		info->desc.ops = &axp_ops;
-	if ((30 <= info->desc.id) && (40 > info->desc.id))
-		info->desc.ops = &axp_ldoio01_ops;
+#ifdef CONFIG_AW_AXP20
+	if(!info->desc.ops)
+#endif
+	{
+		if ((AXP_LDOIO_ID_START > info->desc.id) || (AXP_DCDC_ID_START <= info->desc.id))
+			info->desc.ops = &axp_ops;
+		if ((AXP_LDOIO_ID_START <= info->desc.id) && (AXP_DCDC_ID_START > info->desc.id))
+			info->desc.ops = &axp_ldoio01_ops;
+	}
 
 	rdev = regulator_register(&info->desc, &pdev->dev, &(platform_data->axp_reg_init_data), info, NULL);
 	if (IS_ERR(rdev)) {
+		printk("fuck\n");
 		dev_err(&pdev->dev, "failed to register regulator %s\n",
 				info->desc.name);
 		return PTR_ERR(rdev);

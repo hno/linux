@@ -316,6 +316,7 @@ struct isp_exif_attribute {
 	__u32 iso_speed;
 	__u32 flash_fire;
 	__u32 brightness;
+	__s32 reserved[16];
 };
 
 struct isp_stat_buf {
@@ -1335,7 +1336,32 @@ enum v4l2_colorfx {
 #define V4L2_CID_FRAME_RATE             (V4L2_CID_PRIVATE_BASE+7)
 /* Add take picture by yang */
 #define V4L2_CID_TAKE_PICTURE           (V4L2_CID_PRIVATE_BASE+8)
+enum v4l2_take_picture {
+	V4L2_TAKE_PICTURE_STOP	= 0,
+	V4L2_TAKE_PICTURE_NORM	= 1,
+	V4L2_TAKE_PICTURE_FAST	= 2,
+	V4L2_TAKE_PICTURE_FLASH	= 3,
+	V4L2_TAKE_PICTURE_HDR	= 4,
+};
 #define V4L2_CID_HDR                   (V4L2_CID_PRIVATE_BASE+9)
+typedef union
+{
+	unsigned int dwval;
+	struct
+	{
+		unsigned int af_sharp             : 16 ; 
+		unsigned int hdr_cnt                    :  4 ; 
+		unsigned int flash_ok             : 1 ;
+		unsigned int capture_ok        :  1 ; 
+		unsigned int fast_capture_ok        :  1 ; 
+		unsigned int res0        :  9 ; 
+	} bits;
+} IMAGE_FLAG_t;
+
+#define V4L2_GAIN_SHIFT				0
+#define V4L2_SHARP_LEVEL_SHIFT		8
+#define V4L2_SHARP_MIN_SHIFT		20
+#define V4L2_NDF_SHIFT				26
 
 /* Add horizontal visual angle by yang */
 #define  V4L2_CID_HOR_VISUAL_ANGLE	(V4L2_CID_PRIVATE_BASE+10)

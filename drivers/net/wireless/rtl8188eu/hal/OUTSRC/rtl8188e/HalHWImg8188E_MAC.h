@@ -19,8 +19,8 @@
 ******************************************************************************/
 
 #if (RTL8188E_SUPPORT == 1)
-#ifndef __INC_MP_MAC_HW_IMG_8188E_H
-#define __INC_MP_MAC_HW_IMG_8188E_H
+#ifndef __INC_MAC_8188E_HW_IMG_H
+#define __INC_MAC_8188E_HW_IMG_H
 
 //static BOOLEAN CheckCondition(const u4Byte Condition, const u4Byte Hex);
 
@@ -29,16 +29,7 @@
 ******************************************************************************/
 
 HAL_STATUS
-ODM_ReadAndConfig_MP_8188E_MAC_REG( // TC: Test Chip, MP: MP Chip
-	IN   PDM_ODM_T  pDM_Odm
-);
-
-/******************************************************************************
-*                           MAC_REG_ICUT.TXT
-******************************************************************************/
-
-HAL_STATUS
-ODM_ReadAndConfig_MP_8188E_MAC_REG_ICUT( // TC: Test Chip, MP: MP Chip
+ODM_ReadAndConfig_MAC_REG_8188E(
 	IN   PDM_ODM_T  pDM_Odm
 );
 

@@ -1081,22 +1081,27 @@ static long ion_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	{
 		struct ion_allocation_data data;
 
-		if (copy_from_user(&data, (void __user *)arg, sizeof(data))) {
-			printk("%s(%d) err: copy_from_user failed\n", __func__, __LINE__);
+		if (copy_from_user(&data, (void __user *)arg, sizeof(data)))
 			return -EFAULT;
-		}
+
+#ifdef CONFIG_ARCH_SUNXI /* auto select CARVEOUT or CMA heap */
+               if (data.heap_id_mask & (ION_HEAP_TYPE_DMA_MASK | ION_HEAP_CARVEOUT_MASK)) {
+                       data.heap_id_mask &= ~(ION_HEAP_TYPE_DMA_MASK | ION_HEAP_CARVEOUT_MASK);
+#ifdef CONFIG_CMA
+                       data.heap_id_mask |= ION_HEAP_TYPE_DMA_MASK;
+#else
+                       data.heap_id_mask |= ION_HEAP_CARVEOUT_MASK;
+#endif
+               }
+#endif
 		data.handle = ion_alloc(client, data.len, data.align,
 					     data.heap_id_mask, data.flags);
 
-		if (IS_ERR(data.handle)) {
-			printk("%s(%d) err: ion alloc failed, size 0x%x, head_id_mask 0x%x\n", __func__, __LINE__, data.len,
-				data.heap_id_mask);
+		if (IS_ERR(data.handle))
 			return PTR_ERR(data.handle);
-		}
 
 		if (copy_to_user((void __user *)arg, &data, sizeof(data))) {
 			ion_free(client, data.handle);
-			printk("%s(%d) err: copy_to_user failed\n", __func__, __LINE__);
 			return -EFAULT;
 		}
 		break;
@@ -1107,17 +1112,13 @@ static long ion_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		bool valid;
 
 		if (copy_from_user(&data, (void __user *)arg,
-				   sizeof(struct ion_handle_data))) {
-			printk("%s(%d) err: copy_from_user failed\n", __func__, __LINE__);
+				   sizeof(struct ion_handle_data)))
 			return -EFAULT;
-		}
 		mutex_lock(&client->lock);
 		valid = ion_handle_validate(client, data.handle);
 		mutex_unlock(&client->lock);
-		if (!valid) {
-			printk("%s(%d) err: ion_handle_validate failed\n", __func__, __LINE__);
+		if (!valid)
 			return -EINVAL;
-		}
 		ion_free(client, data.handle);
 		break;
 	}
@@ -1126,19 +1127,13 @@ static long ion_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	{
 		struct ion_fd_data data;
 
-		if (copy_from_user(&data, (void __user *)arg, sizeof(data))) {
-			printk("%s(%d) err: copy_from_user failed\n", __func__, __LINE__);
+		if (copy_from_user(&data, (void __user *)arg, sizeof(data)))
 			return -EFAULT;
-		}
 		data.fd = ion_share_dma_buf_fd(client, data.handle);
-		if (copy_to_user((void __user *)arg, &data, sizeof(data))) {
-			printk("%s(%d) err: copy_to_user failed\n", __func__, __LINE__);
+		if (copy_to_user((void __user *)arg, &data, sizeof(data)))
 			return -EFAULT;
-		}
-		if (data.fd < 0) {
-			printk("%s(%d) err: data.fd %d\n", __func__, __LINE__, data.fd);
+		if (data.fd < 0)
 			return data.fd;
-		}
 		break;
 	}
 	case ION_IOC_IMPORT:
@@ -1146,35 +1141,26 @@ static long ion_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		struct ion_fd_data data;
 		int ret = 0;
 		if (copy_from_user(&data, (void __user *)arg,
-				   sizeof(struct ion_fd_data))) {
-			printk("%s(%d) err: copy_from_user failed\n", __func__, __LINE__);
+				   sizeof(struct ion_fd_data)))
 			return -EFAULT;
-		}
 		data.handle = ion_import_dma_buf(client, data.fd);
 		if (IS_ERR(data.handle)) {
 			ret = PTR_ERR(data.handle);
 			data.handle = NULL;
-			printk("%s(%d) err: ion_import_dma_buf failed\n", __func__, __LINE__);
 		}
 		if (copy_to_user((void __user *)arg, &data,
-				 sizeof(struct ion_fd_data))) {
-			printk("%s(%d) err: copy_to_user failed\n", __func__, __LINE__);
+				 sizeof(struct ion_fd_data)))
 			return -EFAULT;
-		}
-		if (ret < 0) {
-			printk("%s(%d) err: ret 0x%x\n", __func__, __LINE__, ret);
+		if (ret < 0)
 			return ret;
-		}
 		break;
 	}
 	case ION_IOC_SYNC:
 	{
 		struct ion_fd_data data;
 		if (copy_from_user(&data, (void __user *)arg,
-				   sizeof(struct ion_fd_data))) {
-			printk("%s(%d) err: copy_from_user failed\n", __func__, __LINE__);
+				   sizeof(struct ion_fd_data)))
 			return -EFAULT;
-		}
 		ion_sync_for_device(client, data.fd);
 		break;
 	}
@@ -1183,19 +1169,14 @@ static long ion_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		struct ion_device *dev = client->dev;
 		struct ion_custom_data data;
 
-		if (!dev->custom_ioctl) {
-			printk("%s(%d) err!\n", __func__, __LINE__);
+		if (!dev->custom_ioctl)
 			return -ENOTTY;
-		}
 		if (copy_from_user(&data, (void __user *)arg,
-				sizeof(struct ion_custom_data))) {
-			printk("%s(%d) err: copy_from_user failed\n", __func__, __LINE__);
+				sizeof(struct ion_custom_data)))
 			return -EFAULT;
-		}
 		return dev->custom_ioctl(client, data.cmd, data.arg);
 	}
 	default:
-		printk("%s(%d) err: unknow cmd 0x%x\n", __func__, __LINE__, cmd);
 		return -ENOTTY;
 	}
 	return 0;

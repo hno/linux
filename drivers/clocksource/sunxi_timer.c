@@ -45,7 +45,12 @@
 
 static void __iomem *timer_base;
 static spinlock_t timer0_spin_lock;
+
+#ifdef CONFIG_GENERIC_CLOCKEVENTS_BROADCAST
 extern void smp_timer_broadcast(const struct cpumask *mask);
+#else
+#define smp_timer_broadcast	NULL
+#endif
 
 static void sunxi_clkevt_mode(enum clock_event_mode mode,
 			      struct clock_event_device *clk)

@@ -165,15 +165,20 @@
 
 /* The global infor of SPI channel. */
 
-#ifdef CONFIG_ARCH_SUN8IW1P1
+#if defined(CONFIG_ARCH_SUN8IW1P1) || defined(CONFIG_ARCH_SUN9IW1P1)
 #define SUNXI_SPI_NUM			4
 #endif
 #if defined(CONFIG_ARCH_SUN8IW3P1) || defined(CONFIG_ARCH_SUN8IW5P1) \
-								   || defined(CONFIG_ARCH_SUN8IW6P1)
+		|| defined(CONFIG_ARCH_SUN8IW6P1) || defined(CONFIG_ARCH_SUN8IW7P1) \
+		|| defined(CONFIG_ARCH_SUN8IW9P1)
 #define SUNXI_SPI_NUM			2
 #endif
-#ifdef CONFIG_ARCH_SUN9IW1P1
-#define SUNXI_SPI_NUM			4
+#ifdef CONFIG_ARCH_SUN8IW8P1
+#define SUNXI_SPI_NUM			1
+#endif
+
+#ifndef SUNXI_SPI_NUM
+#define SUNXI_SPI_NUM			1
 #endif
 
 #define SUNXI_SPI_DEV_NAME		"spi"
@@ -204,24 +209,24 @@
 #define SUNXI_CS_BITMAP(ch)     (ch%2 == 0 ? 1 : 3)
 #define SUNXI_CS_NUM(ch)        (ch%2 == 0 ? 1 : 2)
 #endif
-#if defined(CONFIG_ARCH_SUN8IW3P1) || defined(CONFIG_ARCH_SUN8IW5P1) \
-								   || defined(CONFIG_ARCH_SUN8IW6P1)
-#define SUNXI_CS_BITMAP(ch)     1
-#define SUNXI_CS_NUM(ch)        1
-#endif
 #ifdef CONFIG_ARCH_SUN9IW1P1
 #define SUNXI_CS_BITMAP(ch)     (ch == 3 ? 7 : 1)
 #define SUNXI_CS_NUM(ch)        (ch == 3 ? 4 : 1)
+#endif
+
+#ifndef SUNXI_CS_BITMAP
+#define SUNXI_CS_BITMAP(ch)     1
+#define SUNXI_CS_NUM(ch)        1
 #endif
 
 /* About CLK */
 
 #ifdef CONFIG_ARCH_SUN9IW1P1
 #define SPI_PLL_CLK		PLL4_CLK
-#elif defined CONFIG_ARCH_SUN8IW5
-#define SPI_PLL_CLK             PLL_PERIPH_CLK
-#else
+#elif defined(CONFIG_ARCH_SUN8IW3) || defined(CONFIG_ARCH_SUN8IW1)
 #define SPI_PLL_CLK		PLL6_CLK
+#else
+#define SPI_PLL_CLK     PLL_PERIPH_CLK
 #endif
 
 /* About DMA */

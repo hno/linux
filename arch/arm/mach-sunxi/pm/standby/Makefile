@@ -2,9 +2,11 @@
 always  := standby.code resume1.code
 targets := standby.elf resume1.elf
 
+GCOV_PROFILE=no
+
 #use "-Os" flags.
 #Don't use "-O2" flags.
-KBUILD_CFLAGS := -g -c -nostdlib -march=armv7-a -marm -fno-unwind-tables -fno-asynchronous-unwind-tables -mlittle-endian -O2 --min_array_alignment=4 --no_unaligned_access
+KBUILD_CFLAGS := -g -c -nostdlib -march=armv7-a -marm -fno-unwind-tables -fno-asynchronous-unwind-tables -mlittle-endian -O2 -mno-unaligned-access
 
 #Include the cur dir.
 KBUILD_CPPFLAGS += -I.
@@ -37,6 +39,7 @@ standby-y := 	common.o         	\
 		./../mem_divlib.o		\
 		./../mem_divlibc.o		\
 		./../mem_int.o			\
+                ./../mem_gpio.o                 \
 		./../mem_tmr.o			\
 		./../mem_tmstmp.o		\
 		./../mem_clk.o			\
@@ -74,6 +77,7 @@ resume1-y :=   super/common.o                \
                ../mem_divlib.o               \
                ../mem_divlibc.o              \
                ../mem_int.o                  \
+               ../mem_gpio.o                 \
                ../mem_tmr.o                  \
                ../mem_tmstmp.o               \
 	       ../mem_hwspinlock.o	     \

@@ -344,6 +344,38 @@ static ssize_t axp19_ovtemclsen_store(struct device *dev,
 	return count;
 }
 
+static ssize_t axp19_regs_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	uint8_t val[20];
+	int count = 0, i = 0;
+
+	axp_reads(dev,axp_reg_addr,20,val);
+	for (i=0;i<20;i++) {
+		count += sprintf(buf+count,"REG[0x%x]=0x%x\n",axp_reg_addr+i,val[i]);
+	}
+	return count;
+}
+
+static ssize_t axp19_regs_store(struct device *dev,
+				struct device_attribute *attr, const char *buf, size_t count)
+{
+	int tmp;
+	uint8_t val[3];
+
+	tmp = simple_strtoul(buf, NULL, 16);
+	if( tmp < 256 )
+		axp_reg_addr = tmp;
+	else {
+		axp_reg_addr= (tmp >> 16) & 0xFF;
+		val[0] = (tmp >> 8) & 0xFF;
+		val[1] = axp_reg_addr + 1;
+		val[2] = tmp & 0xFF;
+		axp_writes(dev,axp_reg_addr,3,val);
+	}
+	return count;
+}
+
 static ssize_t axp19_reg_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -378,5 +410,6 @@ static struct device_attribute axp19_mfd_attrs[] = {
 	AXP_MFD_ATTR(axp19_pekdelay),
 	AXP_MFD_ATTR(axp19_pekclose),
 	AXP_MFD_ATTR(axp19_ovtemclsen),
+	AXP_MFD_ATTR(axp19_regs),
 	AXP_MFD_ATTR(axp19_reg),
 };

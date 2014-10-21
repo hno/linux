@@ -98,7 +98,7 @@ config USB
 	  traditional PC serial port.  The bus supplies power to peripherals
 	  and allows for hot swapping.  Up to 127 USB peripherals can be
 	  connected to a single USB host in a tree structure.
-	  
+
 	  The USB host is the root of the tree, the peripherals are the
 	  leaves and the inner nodes are special USB devices called hubs.
 	  Most PCs now have USB host ports, used to connect peripherals
@@ -127,8 +127,6 @@ config USB
 source "drivers/usb/core/Kconfig"
 
 source "drivers/usb/dwc3/Kconfig"
-
-source "drivers/usb/sunxi_usb/usb3/Kconfig"
 
 source "drivers/usb/mon/Kconfig"
 
@@ -187,7 +185,5 @@ source "drivers/usb/atm/Kconfig"
 source "drivers/usb/gadget/Kconfig"
 
 source "drivers/usb/otg/Kconfig"
-
-source "drivers/usb/sunxi_usb/Kconfig"
 
 endif # USB_SUPPORT

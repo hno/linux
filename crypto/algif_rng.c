@@ -24,10 +24,11 @@
 #include <linux/net.h>
 #include <net/sock.h>
 
-#include "../drivers/crypto/sunxi/sunxi_ss.h"
-
-static u32 gs_debug_mask = 1;
-module_param_named(debug_mask, gs_debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP);
+/* For debug */
+#define RNG_DBG(fmt, arg...) pr_debug("%s()%d - "fmt, __func__, __LINE__, ##arg)
+#define RNG_ERR(fmt, arg...) pr_err("%s()%d - "fmt, __func__, __LINE__, ##arg)
+#define RNG_EXIT()  		 RNG_DBG("%s \n", "Exit")
+#define RNG_ENTER() 		 RNG_DBG("%s \n", "Enter ...")
 
 struct rng_ctx {
 	unsigned int len;
@@ -44,10 +45,10 @@ static int rng_recvmsg(struct kiocb *unused, struct socket *sock,
 	char *buf = NULL;
 	int nbyte = 0;
 
-	SS_DBG("flags = %#x \n", flags);
+	RNG_DBG("flags = %#x \n", flags);
 
 	if ((iov->iov_base == NULL) || (iov->iov_len == 0)) {
-		SS_ERR("Invalid parameter: base %p, len %d \n", iov->iov_base, iov->iov_len);
+		RNG_ERR("Invalid parameter: base %p, len %d \n", iov->iov_base, iov->iov_len);
 		return -EINVAL;
 	}
 
@@ -90,19 +91,19 @@ static struct proto_ops algif_rng_ops = {
 
 static void *rng_bind(const char *name, u32 type, u32 mask)
 {
-	SS_DBG("name = %s, type = %d, mask = %#x \n", name, type, mask);
+	RNG_DBG("name = %s, type = %d, mask = %#x \n", name, type, mask);
 	return crypto_alloc_rng(name, type, mask);
 }
 
 static void rng_release(void *private)
 {
-	SS_ENTER();
+	RNG_DBG("enter rng_release\n");
 	crypto_free_rng(private);
 }
 
 static int rng_setkey(void *private, const u8 *key, unsigned int keylen)
 {
-	SS_DBG("keylen = %d \n", keylen);
+	RNG_DBG("keylen = %d \n", keylen);
 	return crypto_rng_reset(private, (u8 *)key, keylen);
 }
 
@@ -111,7 +112,7 @@ static void rng_sock_destruct(struct sock *sk)
 	struct alg_sock *ask = alg_sk(sk);
 	struct rng_ctx *ctx = ask->private;
 
-	SS_ENTER();
+	RNG_ENTER();
 	sock_kfree_s(sk, ctx, ctx->len);
 	af_alg_release_parent(sk);
 }
@@ -122,7 +123,7 @@ static int rng_accept_parent(void *private, struct sock *sk)
 	struct alg_sock *ask = alg_sk(sk);
 	unsigned int len = sizeof(*ctx);
 
-	SS_ENTER();
+	RNG_ENTER();
 	ctx = sock_kmalloc(sk, len, GFP_KERNEL);
 	if (!ctx)
 		return -ENOMEM;
@@ -147,7 +148,7 @@ static const struct af_alg_type algif_type_rng = {
 
 static int __init algif_rng_init(void)
 {
-	SS_ENTER();
+	RNG_ENTER();
 	return af_alg_register_type(&algif_type_rng);
 }
 
@@ -155,7 +156,7 @@ static void __exit algif_rng_exit(void)
 {
 	int err = af_alg_unregister_type(&algif_type_rng);
 	BUG_ON(err);
-	SS_DBG("err = %d \n", err);
+	RNG_DBG("err = %d \n", err);
 }
 
 module_init(algif_rng_init);

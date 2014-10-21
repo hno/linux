@@ -1073,27 +1073,13 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 	 * Indicate DDR mode (if supported).
 	 */
 	if (mmc_card_highspeed(card)) {
-		if ((card->ext_csd.card_type & EXT_CSD_CARD_TYPE_DDR_1_8V)
-			&& ((host->caps & (MMC_CAP_1_8V_DDR |
-			     MMC_CAP_UHS_DDR50))
-				== (MMC_CAP_1_8V_DDR | MMC_CAP_UHS_DDR50)))
+		if ((card->ext_csd.raw_card_type & EXT_CSD_CARD_TYPE_DDR_1_8V)
+			&& ((host->caps & MMC_CAP_1_8V_DDR) == MMC_CAP_1_8V_DDR )) 
 				ddr = MMC_1_8V_DDR_MODE;
-		else if ((card->ext_csd.card_type & EXT_CSD_CARD_TYPE_DDR_1_2V)
-			&& ((host->caps & (MMC_CAP_1_2V_DDR |
-			     MMC_CAP_UHS_DDR50))
-				== (MMC_CAP_1_2V_DDR | MMC_CAP_UHS_DDR50)))
+		else if ((card->ext_csd.raw_card_type & EXT_CSD_CARD_TYPE_DDR_1_2V) 
+			&& ((host->caps & MMC_CAP_1_2V_DDR)== MMC_CAP_1_2V_DDR))
 				ddr = MMC_1_2V_DDR_MODE;
 	}
-
-#if 0
-	if(ddr == MMC_1_8V_DDR_MODE){
-		pr_info("mmc and host support ddr mode%s,%x,%x\n",__FUNCTION__,card->ext_csd.card_type,host->caps);
-	}else{
-		pr_info("mmc and host not support ddr mode%s,%x,%x\n",__FUNCTION__,card->ext_csd.card_type,host->caps);
-		ddr = MMC_1_8V_DDR_MODE;
-	}
-#endif 
-	
 
 	/*
 	 * Indicate HS200 SDR mode (if supported).
@@ -1356,7 +1342,9 @@ static int mmc_suspend(struct mmc_host *host)
 
 	mmc_claim_host(host);
 	
-#ifndef CONFIG_ARCH_SUN8IW5P1
+#if defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1) || defined(CONFIG_ARCH_SUN9IW1P1)
+
+#else
 	if (mmc_card_can_sleep(host)) {
 		err = mmc_card_sleep(host);
 		if (!err)
@@ -1386,7 +1374,9 @@ static int mmc_resume(struct mmc_host *host)
 
 	mmc_claim_host(host);
 	
-#ifndef CONFIG_ARCH_SUN8IW5P1
+#if defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1) || defined(CONFIG_ARCH_SUN9IW1P1)
+
+#else
 	if (mmc_card_is_sleep(host->card)) {
 		err = mmc_card_awake(host);
 		mmc_card_clr_sleep(host->card);

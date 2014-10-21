@@ -23,7 +23,7 @@
 
 struct sunxi_reg_ops {
         u32 (*reg_readl)(void __iomem * reg);
-        u32 (*reg_writel)(u32 val,void __iomem * reg);
+        void (*reg_writel)(u32 val,void __iomem * reg);
 };
 extern void sunx_clk_default_source(void);
 

@@ -17,9 +17,11 @@
 #include <linux/kernel.h>
 #include <mach/sys_config.h>
 #include <linux/slab.h>
+#include <linux/bootmem.h>
 
-#define SCRIPT_MALLOC(x)	kzalloc((x), GFP_KERNEL)
-#define SCRIPT_FREE(x)		kfree(x)
+#define SCRIPT_MALLOC(size)        alloc_bootmem((unsigned long)size)
+#define SCRIPT_FREE(addr, size)    free_bootmem((unsigned long)addr, (unsigned long)size)
+
 
 #define ITEM_TYPE_TO_STR(type)	((SCIRPT_ITEM_VALUE_TYPE_INT == (type)) ?  "int"    :	\
 				((SCIRPT_ITEM_VALUE_TYPE_STR == (type))  ?  "string" :	\
@@ -68,8 +70,9 @@ typedef struct
 #pragma pack(1)
 typedef struct
 {
-    int  main_cnt;
-    int  version[3];
+    unsigned int main_cnt;
+    unsigned int length;
+    unsigned int version[2];
     script_origin_main_key_t    main_key;
 } script_origin_head_t;
 #pragma pack()
@@ -486,10 +489,18 @@ bool script_is_main_key_exist(char *main_key)
 }
 EXPORT_SYMBOL(script_is_main_key_exist);
 
+
+unsigned script_get_length(void)
+{
+	script_origin_head_t         *orign_head = __va(SYS_CONFIG_MEMBASE);
+
+	return orign_head->length;
+}
+EXPORT_SYMBOL(script_get_length);
 /*
  * init script
  */
-static int __init script_init(void)
+int __init script_init(void)
 {
     int     i, j, count;
 
@@ -623,28 +634,30 @@ err_out:
     if(g_script) {
         for(i=0; i<script_hdr->main_cnt; i++) {
             main_key = &g_script[i];
+            origin_sub = (script_origin_sub_key_t *)((unsigned int)script_hdr + (origin_main[i].offset<<2));
 
             if(main_key->subkey_val) {
                 for(j=0; j<origin_main[i].sub_cnt; j++) {
                     if(main_key->subkey[j].type == SCIRPT_ITEM_VALUE_TYPE_STR) {
-                        SCRIPT_FREE(main_key->subkey_val[j].str);
+                        if (main_key->subkey_val[j].str) {
+				SCRIPT_FREE(main_key->subkey_val[j].str, (origin_sub[j].pattern.cnt<<2) + 1);
+			}
                     }
                 }
-
-                SCRIPT_FREE(main_key->subkey_val);
+                SCRIPT_FREE(main_key->subkey_val, sizeof(script_item_u));
             }
+
             if(main_key->subkey) {
-                SCRIPT_FREE(main_key->subkey);
+                SCRIPT_FREE(main_key->subkey, sizeof(script_sub_key_t));
             }
         }
 
-        SCRIPT_FREE(g_script);
+        SCRIPT_FREE(g_script, script_hdr->main_cnt*sizeof(script_main_key_t));
         g_script = 0;
     }
 
     return -1;
 }
-core_initcall(script_init);
 
 /* string for dump all items */
 #define DUMP_ALL_STR	"all"

@@ -61,7 +61,7 @@ static int headphone_state = 0;
 *	CIRCLE_COUNT == 1, check the earphone state four times(audio_hmic_irq:one time and earphone_switch_timer_poll:three times)
 *	CIRCLE_COUNT == 2, check the earphone state five times(audio_hmic_irq:one time and earphone_switch_timer_poll:four times)
 */
-#define CIRCLE_COUNT			3
+#define CIRCLE_COUNT			2
 
 #define HEADSET_DEBOUNCE 		3
 static int debounce_val[HEADSET_DEBOUNCE+1];
@@ -96,6 +96,7 @@ struct gpio_switch_data {
 	struct work_struct work;
 	struct semaphore sem;
 	struct timer_list timer;
+	struct timer_list mute_timer;
 	spinlock_t 	 lock;
 
 	struct work_struct hook_work;
@@ -103,7 +104,12 @@ struct gpio_switch_data {
 	struct input_dev *key;
 };
 
-
+static void earphone_open_mute(unsigned long data)
+{
+	SWITCH_DBG("%s,line:%d\n", __func__, __LINE__);
+	hmic_wr_prcm_control(DAC_PA_SRC, 0x1, 2, 0x1);
+	hmic_wr_prcm_control(DAC_PA_SRC, 0x1, 3, 0x1);
+}
 
 static void earphone_switch_timer_poll(unsigned long data)
 {
@@ -245,7 +251,7 @@ static void earphone_switch_timer_poll(unsigned long data)
 	}else{
 		if (tmp > 1) {
 
-			if (switch_data->check_three_count > CIRCLE_COUNT) {
+			if (switch_data->check_three_count > (CIRCLE_COUNT-1)) {
 				/*it means the three sections earphone has plun in*/
 				switch_data->state 		= 2;
 				schedule_work(&switch_data->work);
@@ -286,7 +292,7 @@ static void earphone_switch_work(struct work_struct *work)
 		container_of(work, struct gpio_switch_data, work);
 
 	SWITCH_DBG("te:%d\n", switch_data->state);
-	//printk("*********************/*************switch_data->state:%d\n",switch_data->state);
+	//pr_err("*********************/*************switch_data->state:%d\n",switch_data->state);
 	down(&switch_data->sem);
 	switch_set_state(&switch_data->sdev, switch_data->state);
 	up(&switch_data->sem);
@@ -310,6 +316,9 @@ static irqreturn_t audio_hmic_irq(int irq, void *dev_id)
 	if (switch_data == NULL) {
 		return IRQ_NONE;
 	}
+		/*mute headphone pa*/
+	hmic_wr_prcm_control(DAC_PA_SRC, 0x1, 2, 0x0);
+	hmic_wr_prcm_control(DAC_PA_SRC, 0x1, 3, 0x0);
 	tmp = hmic_rdreg(SUNXI_HMIC_DATA);
 	
 	if ((0x1<<HMIC_DATA_IRQ_PEND)&tmp) {
@@ -428,7 +437,17 @@ static irqreturn_t audio_hmic_irq(int irq, void *dev_id)
 		mod_timer(&switch_data->timer, jiffies +  HZ/8 );
 
 	}
-
+	if (((&switch_data->mute_timer) != NULL)) {
+				del_timer(&switch_data->mute_timer);
+	}
+	init_timer(&switch_data->mute_timer);
+	switch_data->mute_timer.function = earphone_open_mute;
+	switch_data->mute_timer.data = (unsigned long)switch_data;
+	if (headphone_direct_used) {
+		mod_timer(&switch_data->mute_timer, jiffies +  HZ);
+	} else{
+		mod_timer(&switch_data->mute_timer, jiffies +  (HZ+HZ/2));
+	}
 	hmic_wr_control(SUNXI_HMIC_DATA, 0x1, HMIC_KEY_DOWN_IRQ_PEND, 0x1);
 	hmic_wr_control(SUNXI_HMIC_DATA, 0x1, HMIC_EARPHONE_IN_IRQ_PEND, 0x1);
 	hmic_wr_control(SUNXI_HMIC_DATA, 0x1, HMIC_KEY_UP_IRQ_PEND, 0x1);
@@ -450,7 +469,12 @@ static void sunxi_hppa_enable(void) {
 
 static void sunxi_hbias_enable(void) {
 	/*audio codec hardware bug. the HBIASADCEN bit must be enable in init*/
+	#ifdef CONFIG_ARCH_SUN8IW5
 	hmic_wr_prcm_control(MIC1G_MICBIAS_CTRL, 0x1, HMICBIAS_MODE, 0x1);
+	#else/*CONFIG_ARCH_SUN8IW8*/
+	hmic_wr_prcm_control(MIC1G_MICBIAS_CTRL, 0x1, HMICADCEN, 0x1);
+	#endif
+	//hmic_wr_prcm_control(MIC1G_MICBIAS_CTRL, 0x1, HMICBIAS_MODE, 0x1);
 	hmic_wr_prcm_control(MIC1G_MICBIAS_CTRL, 0x1, HMICBIASEN, 0x1);
 
 }
@@ -465,7 +489,7 @@ static void codec_init_events(struct work_struct *work)
 	msleep(450);
 	type = script_get_item("audio0", "headphone_mute_used", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[audiocodec] headphone_mute_used type err!\n");
+        pr_err("[audiocodec] headphone_mute_used type err!\n");
     }
 	headphone_mute_used = val.val;
 	if (headphone_mute_used) {
@@ -475,7 +499,7 @@ static void codec_init_events(struct work_struct *work)
 	/*audio codec hardware bug. the HBIASADCEN bit must be enable in init*/
 	sunxi_hbias_enable();
 
-	printk("====codec_init_events===\n");
+	pr_debug("====codec_init_events===\n");
 }
 
 static void switch_resume_events(struct work_struct *work)
@@ -500,7 +524,7 @@ static void switch_resume_events(struct work_struct *work)
 	msleep(450);
 	type = script_get_item("audio0", "headphone_mute_used", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[audiocodec] headphone_mute_used type err!\n");
+        pr_err("[audiocodec] headphone_mute_used type err!\n");
     }
 	headphone_mute_used = val.val;
 	if (headphone_mute_used) {
@@ -509,7 +533,12 @@ static void switch_resume_events(struct work_struct *work)
 	msleep(200);
 	
 	/*audio codec hardware bug. the HBIASADCEN bit must be enable in init*/
+	#ifdef CONFIG_ARCH_SUN8IW5
 	hmic_wr_prcm_control(MIC1G_MICBIAS_CTRL, 0x1, HMICBIAS_MODE, 0x1);
+	#else/*CONFIG_ARCH_SUN8IW8*/
+	hmic_wr_prcm_control(MIC1G_MICBIAS_CTRL, 0x1, HMICADCEN, 0x1);
+	#endif
+	//hmic_wr_prcm_control(MIC1G_MICBIAS_CTRL, 0x1, HMICBIAS_MODE, 0x1);
 	hmic_wr_prcm_control(MIC1G_MICBIAS_CTRL, 0x1, HMICBIASEN, 0x1);
 	SWITCH_DBG("%s,line:%d\n", __func__, __LINE__);
 	msleep(200);
@@ -582,7 +611,7 @@ static int gpio_switch_probe(struct platform_device *pdev)
 
 	type = script_get_item("audio0", "headphone_direct_used", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-		printk("[audiocodec] type err!\n");
+		pr_err("[audiocodec] type err!\n");
 	}
 	headphone_direct_used = val.val;
 
@@ -603,7 +632,7 @@ static int gpio_switch_probe(struct platform_device *pdev)
 
 	switch_data = kzalloc(sizeof(struct gpio_switch_data), GFP_KERNEL);
 	if (!switch_data) {
-		printk("%s,line:%d\n", __func__, __LINE__);
+		pr_err("%s,line:%d\n", __func__, __LINE__);
 		return -ENOMEM;
 	}
 
@@ -625,7 +654,7 @@ static int gpio_switch_probe(struct platform_device *pdev)
  	/* create input device */
 	switch_data->key = input_allocate_device();
 	if (!switch_data->key) {
-		printk(KERN_ERR "gpio_switch_probe: not enough memory for input device\n");
+		pr_err(KERN_ERR "gpio_switch_probe: not enough memory for input device\n");
 		ret = -ENOMEM;
 		goto err_input_allocate_device;
 	}
@@ -645,7 +674,7 @@ static int gpio_switch_probe(struct platform_device *pdev)
 
 	ret = input_register_device(switch_data->key);
 	if (ret) {
-		printk(KERN_ERR "gpio_switch_probe: input_register_device failed\n");
+		pr_err(KERN_ERR "gpio_switch_probe: input_register_device failed\n");
 		goto err_input_register_device;
 	}
 
@@ -660,41 +689,41 @@ static int gpio_switch_probe(struct platform_device *pdev)
 
 	ret = request_irq(78, audio_hmic_irq, 0, "audio_hmic_irq", switch_data);
 	if (ret < 0) {
-		printk("request irq err\n");
+		pr_err("request irq err\n");
 		ret = -EINVAL;
 		goto err_request_irq;
 	}
 
 	resume_switch_work_queue = create_singlethread_workqueue("switch_resume");
 	if (resume_switch_work_queue == NULL) {
-		printk("[switch_headset] try to create workqueue for codec failed!\n");
+		pr_err("[switch_headset] try to create workqueue for codec failed!\n");
 		ret = -ENOMEM;
 		goto err_switch_work_queue;
 	}
 
 	init_work_queue = create_singlethread_workqueue("codec_init");
 	if (init_work_queue == NULL) {
-		printk("[codec] try to create workqueue for codec failed!\n");
+		pr_err("[codec] try to create workqueue for codec failed!\n");
 		ret = -ENOMEM;
 		goto err_switch_work_queue;
 	}
 
 	type = script_get_item("audio0", "headphone_mute_used", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-		printk("[audiocodec] headphone_mute_used type err!\n");
+		pr_err("[audiocodec] headphone_mute_used type err!\n");
 	}
 	headphone_mute_used = val.val;
 	if (headphone_mute_used) {
 		/*get the default headphone mute val(close)*/
 		type = script_get_item("audio0", "audio_mute_ctrl", &item_mute);
 		if (SCIRPT_ITEM_VALUE_TYPE_PIO != type) {
-			printk("script_get_item return type err\n");
+			pr_err("script_get_item return type err\n");
 			return -EFAULT;
 		}
 		/*request gpio*/
 		req_mute_status = gpio_request(item_mute.gpio.gpio, NULL);
 		if (0 != req_mute_status) {
-			printk("request gpio headphone mute failed!\n");
+			pr_err("request gpio headphone mute failed!\n");
 		}
 		gpio_direction_output(item_mute.gpio.gpio, 1);
 		/*config gpio info of headphone_mute_used, the default pa config is close(check sys_config.fex).*/
@@ -727,15 +756,15 @@ static int switch_suspend(struct platform_device *pdev,pm_message_t state)
 	int headphone_mute_used = 0;
 	script_item_u val;
 	script_item_value_type_e  type;
-	printk("[headset]:suspend start\n");
+	pr_debug("[headset]:suspend start\n");
 	/* check if called in talking standby */
 	if (check_scene_locked(SCENE_TALKING_STANDBY) == 0) {
-		printk("In talking standby, do not suspend!!\n");
+		pr_debug("In talking standby, do not suspend!!\n");
 		return 0;
 	}
 	type = script_get_item("audio0", "headphone_mute_used", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[audiocodec] headphone_mute_used type err!\n");
+        pr_err("[audiocodec] headphone_mute_used type err!\n");
     }
 	headphone_mute_used = val.val;
 	if (headphone_mute_used) {
@@ -747,6 +776,7 @@ static int switch_suspend(struct platform_device *pdev,pm_message_t state)
 	hmic_wr_prcm_control(ADDA_APT2, 0x1, PA_SLOPE_SELECT, 0x1);
 	/*disable pa*/
 	hmic_wr_prcm_control(PAEN_HP_CTRL, 0x1, HPPAEN, 0x0);
+	hmic_wr_prcm_control(MIC1G_MICBIAS_CTRL, 0x1, HMICBIASEN, 0x0);
 	msleep(350);
 
 	return 0;
@@ -755,7 +785,7 @@ static int switch_suspend(struct platform_device *pdev,pm_message_t state)
 static int switch_resume(struct platform_device *pdev)
 {
 	struct gpio_switch_data *switch_data;
-	printk("[headset]:resume start\n");
+	pr_debug("[headset]:resume start\n");
 
 	if (check_scene_locked(SCENE_TALKING_STANDBY) != 0) {
 		hmic_wr_control(SUNXI_HMIC_CTL, 0xf, HMIC_M, 0x0);						/*0xf should be get from hw_debug 28*/
@@ -785,7 +815,7 @@ static void switch_shutdown(struct platform_device *devptr)
 
 	type = script_get_item("audio0", "headphone_mute_used", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[audiocodec] headphone_mute_used type err!\n");
+        pr_err("[audiocodec] headphone_mute_used type err!\n");
     }
 	headphone_mute_used = val.val;
 	if (headphone_mute_used) {

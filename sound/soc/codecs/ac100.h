@@ -1,5 +1,5 @@
 /*
- * sound\soc\sunxi\virtual_audio\sndcodec.h
+ * sound\soc\sunxi\virtual_audio\ac100.h
  * (C) Copyright 2010-2016
  * Reuuimlla Technology Co., Ltd. <www.reuuimllatech.com>
  * huangxin <huangxin@reuuimllatech.com>
@@ -14,6 +14,15 @@
  */
 #ifndef _SNDCODEC_H
 #define _SNDCODEC_H
+#include <linux/mfd/ac100-mfd.h>
+/*pll source*/
+#define AC100_MCLK1 1
+#define AC100_MCLK2 2
+#define AC100_BCLK1 3
+#define AC100_BCLK2 4
+
+#define AIF1_CLK 1
+#define AIF2_CLK 2
 
 #define	CHIP_AUDIO_RST		0x0
 #define PLL_CTRL1			0x1
@@ -177,7 +186,11 @@
 #define AIF1_AD0R_AIF2_DACR_MXR		10
 #define AIF1_AD0R_ADCR_MXR			9
 #define AIF1_AD0R_AIF2_DACL_MXR		8
+#define AIF1_AD1L_AIF2_DACL_MXR		7
+#define AIF1_AD1L_ADCL_MXR		6
 #define AIF1_AD1L_MXR_SRC	6
+#define AIF1_AD1R_AIF2_DACR_MXR		3
+#define AIF1_AD1R_ADCR_MXR		2
 #define AIF1_AD1R_MXR_SRC	2
 
 /*AIF1_VOL_CTRL1*/
@@ -233,7 +246,15 @@
 #define AIF2_DAUL_ENA		2
 
 /*AIF2_MXR_SRC*/
+#define AIF2_ADCL_AIF1DA0L_MXR	15
+#define AIF2_ADCL_AIF1DA1L_MXR	14
+#define AIF2_ADCL_AIF2DACR_MXR	13
+#define AIF2_ADCL_ADCL_MXR	12
 #define AIF2_ADCL_MXR_SRC	12
+#define AIF2_ADCR_AIF1DA0R_MXR	11
+#define AIF2_ADCR_AIF1DA1R_MXR	10
+#define AIF2_ADCR_AIF2DACL_MXR	9
+#define AIF2_ADCR_ADCR_MXR	8
 #define AIF2_ADCR_MXR_SRC	8
 
 /*AIF2_VOL_CTRL1*/
@@ -416,6 +437,7 @@
 #define LMIXMUTEDACR			  (0)
 
 /*OMIXER_BST1_CTRL*/
+#define BIASVOLTAGE			12
 #define AXG					9
 #define OMIXER_MIC1G		6
 #define OMIXER_MIC2G		3
@@ -440,6 +462,7 @@
 #define ESP_VOL				0
 
 /*SPKOUT_CTRL*/
+#define HPCALICKS			13
 #define RSPKS				12
 #define RSPKINVEN			11
 #define RSPK_EN				9
@@ -493,6 +516,11 @@
 #define HPPA_MXRD_ENA		6
 #define HPVL_CTRL_OUT		0
 
-
+//#define AC100_DEBG
+#ifdef AC100_DEBG
+    #define AC100_DBG(format,args...)  printk("[AC100] "format,##args)
+#else
+    #define AC100_DBG(...)
+#endif
 
 #endif

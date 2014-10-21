@@ -214,32 +214,32 @@ a sample config, send this config should cause the chip cannot work normally*/
 #define TRIGGER_LOC           57
 
 //Log define
-#define GTP_INFO(fmt,arg...)           printk("<<-GTP-INFO->>[%d]"fmt"\n", __LINE__, ##arg)
-#define GTP_ERROR(fmt,arg...)          printk("<<-GTP-ERROR->>[%d]"fmt"\n",__LINE__, ##arg)
+#define GTP_INFO(fmt,arg...)           pr_debug("<<-GTP-INFO->>[%d]"fmt"\n", __LINE__, ##arg)
+#define GTP_ERROR(fmt,arg...)          pr_err("<<-GTP-ERROR->>[%d]"fmt"\n",__LINE__, ##arg)
 #define GTP_DEBUG(fmt,arg...)          do{\
                                          if(GTP_DEBUG_ON)\
-                                         printk("<<-GTP-DEBUG->>[%d]"fmt"\n",__LINE__, ##arg);\
+                                         pr_debug("<<-GTP-DEBUG->>[%d]"fmt"\n",__LINE__, ##arg);\
                                        }while(0)
 #define GTP_DEBUG_ARRAY(array, num)    do{\
                                          s32 i;\
                                          u8* a = array;\
                                          if(GTP_DEBUG_ARRAY_ON)\
                                          {\
-                                            printk("<<-GTP-DEBUG-ARRAY->>\n");\
+                                            pr_debug("<<-GTP-DEBUG-ARRAY->>\n");\
                                             for (i = 0; i < (num); i++)\
                                             {\
-                                                printk("%02x   ", (a)[i]);\
+                                                pr_debug("%02x   ", (a)[i]);\
                                                 if ((i + 1 ) %10 == 0)\
                                                 {\
-                                                    printk("\n");\
+                                                    pr_debug("\n");\
                                                 }\
                                             }\
-                                            printk("\n");\
+                                            pr_debug("\n");\
                                         }\
                                        }while(0)
 #define GTP_DEBUG_FUNC()               do{\
                                          if(GTP_DEBUG_FUNC_ON)\
-                                         printk("<<-GTP-FUNC->>[%d]Func:%s\n", __LINE__, __func__);\
+                                         pr_debug("<<-GTP-FUNC->>[%d]Func:%s\n", __LINE__, __func__);\
                                        }while(0)
 #define GTP_SWAP(x, y)                 do{\
                                          typeof(x) z = x;\
@@ -263,5 +263,22 @@ a sample config, send this config should cause the chip cannot work normally*/
 #define ERROR_TIMEOUT           110 //ETIMEDOUT
 
 //*****************************End of Part III********************************
+
+s32 init_wr_node(struct i2c_client *client);
+void uninit_wr_node(void);
+s32 gup_enter_update_mode(struct i2c_client *client);
+void gup_leave_update_mode(void);
+s32 gup_update_proc(void *dir);
+u8 gup_init_update_proc(struct goodix_ts_data *ts);
+s32 gtp_i2c_read(struct i2c_client *client, u8 *buf, s32 len);
+s32 gtp_i2c_write(struct i2c_client *client,u8 *buf,s32 len);
+s32  gtp_i2c_end_cmd(struct i2c_client *client);
+void gtp_reset_guitar(s32 ms);
+s32  gtp_send_cfg(struct i2c_client *client);
+s32  gtp_read_version(struct i2c_client *client, u16 *version);
+void gtp_set_int_value(int status);
+void gtp_irq_disable(struct goodix_ts_data *);
+void gtp_irq_enable(struct goodix_ts_data *);
+
 
 #endif /* _LINUX_GOODIX_TOUCH_H */

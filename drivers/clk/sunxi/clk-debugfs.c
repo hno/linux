@@ -46,7 +46,7 @@ static void clktest_reg_dump(void)
 	for(i=0;i<=sunxi_clk_maxreg;)
 	{
 			if(i+12 <= sunxi_clk_maxreg) 
-			sprintf(dumpline,"[Reg %08x] %08x %08x %08x %08x ",i
+                sprintf(dumpline,"[Reg %08x] %08x %08x %08x %08x ",i
 						,*((unsigned int*)((unsigned int __force)(sunxi_clk_base +i)))
 						,*((unsigned int*)((unsigned int __force)(sunxi_clk_base +i+4)))
 						,*((unsigned int*)((unsigned int __force)(sunxi_clk_base +i+8)))
@@ -74,7 +74,7 @@ static void clktest_reg_dump(void)
         for(i=0;i<=cpus_clk_maxreg;)
         {
                 if(i+12 <= cpus_clk_maxreg) 
-                sprintf(dumpline,"[Reg %08x] %08x %08x %08x %08x ",i
+                    sprintf(dumpline,"[Reg %08x] %08x %08x %08x %08x ",i
                             ,*((unsigned int*)((unsigned int __force)(sunxi_clk_cpus_base +i)))
                             ,*((unsigned int*)((unsigned int __force)(sunxi_clk_cpus_base +i+4)))
                             ,*((unsigned int*)((unsigned int __force)(sunxi_clk_cpus_base +i+8)))
@@ -124,6 +124,10 @@ static void clktest_process(void)
 				command = 8;	
 			else if(!strcmp(testclk_priv.command,"dumpreg"))
 				command = 9;								
+			else if(!strcmp(testclk_priv.command,"assert"))
+				command = 10;
+			else if(!strcmp(testclk_priv.command,"deassert"))
+				command = 11;
 			else
 			{
 				printk("Error Not support command %s\n",testclk_priv.command);
@@ -240,6 +244,22 @@ static void clktest_process(void)
 							strcpy(testclk_priv.info,"enabled");																											
 							break;					
 					}																																																	
+					case 10://assert
+					{
+							if(!sunxi_periph_reset_assert(cur_clk))
+                                strcpy(testclk_priv.info,"asserted");
+                            else
+                                strcpy(testclk_priv.info,"failed");
+							break;
+					}
+					case 11://deassert
+					{
+							if(!sunxi_periph_reset_deassert(cur_clk))
+                                strcpy(testclk_priv.info,"deasserted");
+                            else
+                                strcpy(testclk_priv.info,"failed");
+							break;
+					}
 					default:
 						break;
 				}
@@ -287,7 +307,7 @@ len	= strlen(testclk_priv.tmpbuf);
 
 static ssize_t ccudbg_command_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
 {       
-    if( count > sizeof(testclk_priv.command) )
+    if( count >= sizeof(testclk_priv.command) )
         return 0;
         copy_from_user(testclk_priv.command, buf, count);
 				if(testclk_priv.command[count-1]==0x0A)
@@ -330,7 +350,7 @@ len	= strlen(testclk_priv.tmpbuf);
 
 static ssize_t ccudbg_name_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
 {       
-    if( count > sizeof(testclk_priv.name) )
+    if( count >= sizeof(testclk_priv.name) )
         return 0;
         copy_from_user(testclk_priv.name, buf, count);
 				if(testclk_priv.name[count-1]==0x0A)
@@ -372,7 +392,7 @@ len	= strlen(testclk_priv.tmpbuf);
 }
 static ssize_t ccudbg_start_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
 {     
-    if( count > sizeof(testclk_priv.start) )
+    if( count >= sizeof(testclk_priv.start) )
         return 0;         
         copy_from_user(testclk_priv.start, buf, count);
 				if(testclk_priv.start[count-1]==0x0A)
@@ -415,7 +435,7 @@ len	= strlen(testclk_priv.tmpbuf);
 }
 static ssize_t ccudbg_param_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
 {       
-    if( count > sizeof(testclk_priv.param) )
+    if( count >= sizeof(testclk_priv.param) )
         return 0;
         copy_from_user(testclk_priv.param, buf, count);
 				if(testclk_priv.param[count-1]==0x0A)
@@ -457,7 +477,7 @@ static ssize_t ccudbg_info_read(struct file *file, char __user *buf, size_t coun
 }
 static ssize_t ccudbg_info_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
 {       
-    if( count > sizeof(testclk_priv.info) )
+    if( count >= sizeof(testclk_priv.info) )
         return 0;
         copy_from_user(testclk_priv.info, buf, count);
 				if(testclk_priv.info[count-1]==0x0A)

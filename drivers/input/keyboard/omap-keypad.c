@@ -241,7 +241,7 @@ static ssize_t omap_kp_enable_show(struct device *dev,
 static ssize_t omap_kp_enable_store(struct device *dev, struct device_attribute *attr,
 				    const char *buf, size_t count)
 {
-	int state;
+	unsigned int state;
 
 	if (sscanf(buf, "%u", &state) != 1)
 		return -EINVAL;

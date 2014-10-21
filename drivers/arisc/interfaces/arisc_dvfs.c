@@ -38,7 +38,7 @@ static int arisc_dvfs_get_cfg(char *main, char *sub, u32 *val)
 	script_item_value_type_e type;
 	type = script_get_item(main, sub, &script_val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-		ARISC_ERR("arisc dvfs config type err!");
+		ARISC_ERR("arisc dvfs config:%s type:%d err!\n", sub, type);
 		return -EINVAL;
 	}
 	*val = script_val.val;
@@ -69,7 +69,7 @@ static struct arisc_freq_voltage arisc_vf_table[ARISC_DVFS_VF_TABLE_MAX] =
 	{0,             1200,       3}, //end of cpu dvfs table
 	{0,             1200,       3}, //end of cpu dvfs table
 };
-#elif defined (CONFIG_ARCH_SUN9IW1P1) || (defined CONFIG_ARCH_SUN8IW6P1)
+#elif defined (CONFIG_ARCH_SUN9IW1P1) || (defined CONFIG_ARCH_SUN8IW6P1) || (defined CONFIG_ARCH_SUN8IW9P1)
 static struct arisc_freq_voltage arisc_vf_table[2][ARISC_DVFS_VF_TABLE_MAX] =
 {
 	{
@@ -94,22 +94,22 @@ static struct arisc_freq_voltage arisc_vf_table[2][ARISC_DVFS_VF_TABLE_MAX] =
 
 	{
 	//freq          //voltage   //axi_div
-	{900000000,     1200,       4}, //cpu0 vdd is 1.20v if cpu freq is (600Mhz, 1008Mhz]
-	{600000000,     1200,       4}, //cpu0 vdd is 1.20v if cpu freq is (420Mhz, 600Mhz]
-	{420000000,     1200,       4}, //cpu0 vdd is 1.20v if cpu freq is (360Mhz, 420Mhz]
-	{360000000,     1200,       4}, //cpu0 vdd is 1.20v if cpu freq is (300Mhz, 360Mhz]
-	{300000000,     1200,       4}, //cpu0 vdd is 1.20v if cpu freq is (240Mhz, 300Mhz]
-	{240000000,     1200,       4}, //cpu0 vdd is 1.20v if cpu freq is (120Mhz, 240Mhz]
-	{120000000,     1200,       4}, //cpu0 vdd is 1.20v if cpu freq is (60Mhz,  120Mhz]
-	{60000000,      1200,       4}, //cpu0 vdd is 1.20v if cpu freq is (0Mhz,   60Mhz]
-	{0,             1200,       4}, //end of cpu dvfs table
-	{0,             1200,       4}, //end of cpu dvfs table
-	{0,             1200,       4}, //end of cpu dvfs table
-	{0,             1200,       4}, //end of cpu dvfs table
-	{0,             1200,       4}, //end of cpu dvfs table
-	{0,             1200,       4}, //end of cpu dvfs table
-	{0,             1200,       4}, //end of cpu dvfs table
-	{0,             1200,       4}, //end of cpu dvfs table
+	{900000000,     1200,       3}, //cpu0 vdd is 1.20v if cpu freq is (600Mhz, 1008Mhz]
+	{600000000,     1200,       3}, //cpu0 vdd is 1.20v if cpu freq is (420Mhz, 600Mhz]
+	{420000000,     1200,       3}, //cpu0 vdd is 1.20v if cpu freq is (360Mhz, 420Mhz]
+	{360000000,     1200,       3}, //cpu0 vdd is 1.20v if cpu freq is (300Mhz, 360Mhz]
+	{300000000,     1200,       3}, //cpu0 vdd is 1.20v if cpu freq is (240Mhz, 300Mhz]
+	{240000000,     1200,       3}, //cpu0 vdd is 1.20v if cpu freq is (120Mhz, 240Mhz]
+	{120000000,     1200,       3}, //cpu0 vdd is 1.20v if cpu freq is (60Mhz,  120Mhz]
+	{60000000,      1200,       3}, //cpu0 vdd is 1.20v if cpu freq is (0Mhz,   60Mhz]
+	{0,             1200,       3}, //end of cpu dvfs table
+	{0,             1200,       3}, //end of cpu dvfs table
+	{0,             1200,       3}, //end of cpu dvfs table
+	{0,             1200,       3}, //end of cpu dvfs table
+	{0,             1200,       3}, //end of cpu dvfs table
+	{0,             1200,       3}, //end of cpu dvfs table
+	{0,             1200,       3}, //end of cpu dvfs table
+	{0,             1200,       3}, //end of cpu dvfs table
 	},
 };
 #endif
@@ -222,7 +222,7 @@ int arisc_dvfs_cfg_vf_table(void)
 	int    vf_table_size = 0;
 	char   vf_table_main_key[64];
 	char   vf_table_sub_key[64];
-	int    vf_table_count;
+	int    vf_table_count = 0;
 	int    vf_table_type = 0;
 	struct arisc_message *pmessage;
 
@@ -295,7 +295,7 @@ int arisc_dvfs_cfg_vf_table(void)
 
 }
 
-#elif (defined CONFIG_ARCH_SUN9IW1P1) || (defined CONFIG_ARCH_SUN8IW6P1)
+#elif (defined CONFIG_ARCH_SUN9IW1P1)
 int arisc_dvfs_cfg_vf_table(void)
 {
 	u32    value = 0;
@@ -306,8 +306,8 @@ int arisc_dvfs_cfg_vf_table(void)
 	char   vf_table_main_key[64];
 	char   vf_table_sub_key[64];
 	char   cluster_name[2] = {'L', 'B'};
-	int    vf_table_count;
-	int    vf_table_type;
+	int    vf_table_count = 0;
+	int    vf_table_type = 0;
 	struct arisc_message *pmessage;
 
 	if (arisc_dvfs_get_cfg("dvfs_table", "vf_table_count", &vf_table_count)) {
@@ -317,7 +317,7 @@ int arisc_dvfs_cfg_vf_table(void)
 		vf_table_type = sunxi_get_soc_bin();
 		sprintf(vf_table_main_key, "%s%d", "vf_table", vf_table_type);
 	}
-	pr_info("%s: vf table type [%d=%s]\n", __func__, vf_table_type, vf_table_main_key);
+	ARISC_INF("%s: vf table type [%d=%s]\n", __func__, vf_table_type, vf_table_main_key);
 
 	/* parse system config v-f table information */
 	for (cluster = 0; cluster < 2; cluster++) {
@@ -331,14 +331,13 @@ int arisc_dvfs_cfg_vf_table(void)
 			if (arisc_dvfs_get_cfg(vf_table_main_key, vf_table_sub_key, &value) == 0) {
 				arisc_vf_table[cluster][index].freq = value;
 			}
-			pr_info("%s: freq [%s-%d=%d]\n", __func__, vf_table_sub_key, index, value);
+			ARISC_INF("%s: freq [%s-%d=%d]\n", __func__, vf_table_sub_key, index, value);
 			sprintf(vf_table_sub_key, "%c_LV%d_volt", cluster_name[cluster], index + 1);
 			if (arisc_dvfs_get_cfg(vf_table_main_key, vf_table_sub_key, &value) == 0) {
 				arisc_vf_table[cluster][index].voltage = value;
 			}
-			pr_info("%s: volt [%s-%d=%d]\n", __func__, vf_table_sub_key, index, value);
+			ARISC_INF("%s: volt [%s-%d=%d]\n", __func__, vf_table_sub_key, index, value);
 		}
-
 	}
 
 	/* allocate a message frame */
@@ -376,7 +375,94 @@ int arisc_dvfs_cfg_vf_table(void)
 				result = -EINVAL;
 				break;
 			}
+		}
+	}
 
+	/* free allocated message */
+	arisc_message_free(pmessage);
+
+	return result;
+}
+#elif (defined CONFIG_ARCH_SUN8IW6P1) || (defined CONFIG_ARCH_SUN8IW9P1)
+int arisc_dvfs_cfg_vf_table(void)
+{
+	u32    value = 0;
+	int    index = 0;
+	int    cluster = 0;
+	int    result = 0;
+	int    vf_table_size[2] = {0, 0};
+	char   vf_table_main_key[64];
+	char   vf_table_sub_key[64];
+	char   cluster_name[2] = {'L', 'B'};
+	int    vf_table_count = 0;
+	int    vf_table_type = 0;
+	struct arisc_message *pmessage;
+
+	if (arisc_dvfs_get_cfg("dvfs_table", "vf_table_count", &vf_table_count)) {
+		ARISC_LOG("%s: support only one vf_table\n", __func__);
+		sprintf(vf_table_main_key, "%s", "dvfs_table");
+	} else {
+		vf_table_type = sunxi_get_soc_bin();
+		sprintf(vf_table_main_key, "%s%d", "vf_table", vf_table_type);
+	}
+	ARISC_INF("%s: vf table type [%d=%s]\n", __func__, vf_table_type, vf_table_main_key);
+
+	/* parse system config v-f table information */
+	for (cluster = 0; cluster < 1; cluster++) {
+		sprintf(vf_table_sub_key, "%c_LV_count", cluster_name[cluster]);
+		if (arisc_dvfs_get_cfg(vf_table_main_key, vf_table_sub_key, &vf_table_size[cluster])) {
+			ARISC_WRN("parse system config dvfs_table size fail\n");
+		}
+
+		for (index = 0; index < vf_table_size[cluster]; index++) {
+			sprintf(vf_table_sub_key, "%c_LV%d_freq", cluster_name[cluster], index + 1);
+			if (arisc_dvfs_get_cfg(vf_table_main_key, vf_table_sub_key, &value) == 0) {
+				arisc_vf_table[cluster][index].freq = value;
+			}
+			ARISC_INF("%s: freq [%s-%d=%d]\n", __func__, vf_table_sub_key, index, value);
+			sprintf(vf_table_sub_key, "%c_LV%d_volt", cluster_name[cluster], index + 1);
+			if (arisc_dvfs_get_cfg(vf_table_main_key, vf_table_sub_key, &value) == 0) {
+				arisc_vf_table[cluster][index].voltage = value;
+			}
+			ARISC_INF("%s: volt [%s-%d=%d]\n", __func__, vf_table_sub_key, index, value);
+		}
+	}
+
+	/* allocate a message frame */
+	pmessage = arisc_message_allocate(ARISC_MESSAGE_ATTR_HARDSYN);
+	if (pmessage == NULL) {
+		ARISC_WRN("allocate message failed\n");
+		return -ENOMEM;
+	}
+	for (cluster = 0; cluster < 1; cluster++) {
+		for (index = 0; index < ARISC_DVFS_VF_TABLE_MAX; index++) {
+			/* initialize message
+			 *
+			 * |paras[0]|paras[1]|paras[2]|paras[3]|paras[4]|
+			 * | index  |  freq  |voltage |axi_div |  pll   |
+			 */
+			pmessage->type       = ARISC_CPUX_DVFS_CFG_VF_REQ;
+			pmessage->paras[0]   = index;
+			pmessage->paras[1]   = arisc_vf_table[cluster][index].freq;
+			pmessage->paras[2]   = arisc_vf_table[cluster][index].voltage;
+			pmessage->paras[3]   = arisc_vf_table[cluster][index].axi_div;
+			pmessage->paras[4]   = cluster;
+			pmessage->state      = ARISC_MESSAGE_INITIALIZED;
+			pmessage->cb.handler = NULL;
+			pmessage->cb.arg     = NULL;
+
+			ARISC_INF("v-f table: cluster %d index %d freq %d vol %d axi_div %d\n",
+			pmessage->paras[4], pmessage->paras[0], pmessage->paras[1], pmessage->paras[2], pmessage->paras[3]);
+
+			/* send request message */
+			arisc_hwmsgbox_send_message(pmessage, ARISC_SEND_MSG_TIMEOUT);
+
+			//check config fail or not
+			if (pmessage->result) {
+				ARISC_WRN("config dvfs v-f table [%d][%d] fail\n", cluster, index);
+				result = -EINVAL;
+				break;
+			}
 		}
 	}
 

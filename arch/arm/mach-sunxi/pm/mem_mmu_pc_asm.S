@@ -31,6 +31,14 @@ get_sp:
     mov r0, r13
     mov pc,lr
     
+    .align	4                                                                 
+    .globl get_cur_cluster_id
+get_cur_cluster_id:
+    mrc p15, 0, r0, c0, c0, 5	;//Read CPU ID register
+    ubfx	r0, r0, #8, #4		;// if r0=1, then mean  cluster1
+    /* return*/                                                      
+    mov     pc, lr                                                                    
+
 /*--------------------------------cache related api: ----------------------------------------------- */
 /*invalidate_dcache*/
 /*invalidate_icache*/

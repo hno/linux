@@ -108,8 +108,8 @@ typedef struct __CCMU_PLLLOCK_REG0200
 
 typedef struct __CCMU_REG_LIST
 {
-    volatile __ccmu_pll1_reg0000_t             Pll1Ctl;                //0x0000, PLL cluster 0 cpux control
-    volatile __u32		             PllC1Ctl;               //0x0004, PLL cluster 1 cpux control
+    volatile __ccmu_pll1_reg0000_t		Pll1Ctl;                //0x0000, PLL cluster 0 cpux control
+    volatile __u32				PllC1Ctl;               //0x0004, PLL cluster 1 cpux control
     volatile __u32		                Pll2Ctl;                //0x0008, PLL2 control, audio
     volatile __u32                              reserved1;              //0x000c, reserved
     volatile __u32	                        Pll3Ctl;                //0x0010, PLL3 control, video
@@ -206,16 +206,41 @@ typedef struct __CCMU_REG_LIST
     volatile __u32                              reserved201;            //0x0208, reserved
     volatile __u32                              PllStableStatus;        //0x020c, pll stable status reg 
     volatile __u32                              reserved202[4];         //0x0210-0x21c, reserved
-    volatile __u32                              PllxBias[12];           //0x220-0x24c, pllx bias reg,0x240, not exist. 
+    
+    volatile __u32                              PllxBias[1];          //0x220, pll c0cpux bias reg; 
+    volatile __u32                              PllAudioBias;           //0x224, pll audio bias reg; 
+    volatile __u32                              PllVideo0Bias;          //0x228, pll video0 bias reg; 
+    volatile __u32                              PllVeBias;		//0x22c, pll Ve bias reg; 
+    volatile __u32                              PllDdrBias;		//0x230, pll ddr bias reg; 
+    volatile __u32                              PllPeriphBias;          //0x234, pll periph bias reg; 
+    volatile __u32                              PllC1CpuxBias;          //0x238, pll c1cpux bias reg; 
+    volatile __u32                              PllGpuBias;		//0x23c, pll gpu bias reg; 
+    volatile __u32                              Reserved2021;		//0x240; 
+    volatile __u32                              PllHsicBias;		//0x244, pll hsic bias reg; 
+    volatile __u32                              PllDeBias;		//0x248, pll de bias reg; 
+    volatile __u32                              PllVideo1Bias;          //0x24c, pll Video1 bias reg; 
+
     volatile __u32                              Pll1Tun;                //0x250, pll cluster0 cpux tun reg
     volatile __u32                              PllC1Tun;               //0x254, pll cluster1 cpux tun reg
+   
     volatile __u32                              reserved203[2];         //0x258-0x25c, reserved
     volatile __u32                              reserved2032;           //0x260, reserved
     volatile __u32                              reserved204[3];         //0x264-0x26c, reserved
     volatile __u32                              reserved2043;           //0x270, reserved
     volatile __u32                              reserved205[3];         //0x274-0x27c, reserved
     volatile __u32                              reserved20616;          //0x0280, reserved
-    volatile __u32                              PllPattern[15];         //0x0284-0x2bc, pll pattern control reg, some reg are reserved.
+    
+    volatile __u32                              PllAudioReg0Pattern;    //0x0284, pll audio reg0 pattern 
+    volatile __u32                              PllVideo0Reg0Pattern;       //0x0288, pll video0 pattern 
+    volatile __u32                              reserved2071;           //0x028c, reserved
+    volatile __u32                              PllDdrPattern;		//0x0290, pll ddr pattern 
+    volatile __u32                              reserved208[4];         //0x0294-0x2a0, reserved
+    volatile __u32                              PllAudioReg1Pattern;    //0x02a4, pll audio reg1 pattern 
+    volatile __u32                              PllVideo0Reg1Pattern;   //0x02a8, pll video0 reg1 pattern 
+    volatile __u32                              reserved2081;		//0x02ac, reserved
+    volatile __u32                              PllDdrReg1Pattern;      //0x02b0, pll ddr reg1 pattern 
+    volatile __u32                              reserved2082[3];	//0x02b4-0x2bc, reserved
+    
     volatile __u32                              AhbReset0;              //0x02c0, AHB1 module reset register 0
     volatile __u32                              AhbReset1;              //0x02c4, AHB1 module reset register 1
     volatile __u32                              AhbReset2;              //0x02c8, AHB1 module reset register 2
@@ -226,3 +251,4 @@ typedef struct __CCMU_REG_LIST
 } __ccmu_reg_list_t;
 
 #endif  // #ifndef __MEM_CCMU_SUN8IW6P1_H__
+

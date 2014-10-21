@@ -18,6 +18,7 @@
 #include <linux/irqdesc.h>
 #include <linux/irqdomain.h>
 #include <mach/gpio.h>
+#include <mach/sunxi-smc.h>
 
 #define SUNXI_PINCTRL_PIN_PA0	PINCTRL_PIN(SUNXI_PA_BASE + 0,  "PA0")
 #define SUNXI_PINCTRL_PIN_PA1	PINCTRL_PIN(SUNXI_PA_BASE + 1,  "PA1")
@@ -481,6 +482,39 @@
 #define SUNXI_PINCTRL_PIN_PN30	PINCTRL_PIN(SUNXI_PN_BASE + 30, "PN30")
 #define SUNXI_PINCTRL_PIN_PN31	PINCTRL_PIN(SUNXI_PN_BASE + 31, "PN31")
 
+#define SUNXI_PINCTRL_PIN_PO0	PINCTRL_PIN(SUNXI_PO_BASE + 0,  "PO0")
+#define SUNXI_PINCTRL_PIN_PO1	PINCTRL_PIN(SUNXI_PO_BASE + 1,  "PO1")
+#define SUNXI_PINCTRL_PIN_PO2	PINCTRL_PIN(SUNXI_PO_BASE + 2,  "PO2")
+#define SUNXI_PINCTRL_PIN_PO3	PINCTRL_PIN(SUNXI_PO_BASE + 3,  "PO3")
+#define SUNXI_PINCTRL_PIN_PO4	PINCTRL_PIN(SUNXI_PO_BASE + 4,  "PO4")
+#define SUNXI_PINCTRL_PIN_PO5	PINCTRL_PIN(SUNXI_PO_BASE + 5,  "PO5")
+#define SUNXI_PINCTRL_PIN_PO6	PINCTRL_PIN(SUNXI_PO_BASE + 6,  "PO6")
+#define SUNXI_PINCTRL_PIN_PO7	PINCTRL_PIN(SUNXI_PO_BASE + 7,  "PO7")
+#define SUNXI_PINCTRL_PIN_PO8	PINCTRL_PIN(SUNXI_PO_BASE + 8,  "PO8")
+#define SUNXI_PINCTRL_PIN_PO9	PINCTRL_PIN(SUNXI_PO_BASE + 9,  "PO9")
+#define SUNXI_PINCTRL_PIN_PO10	PINCTRL_PIN(SUNXI_PO_BASE + 10, "PO10")
+#define SUNXI_PINCTRL_PIN_PO11	PINCTRL_PIN(SUNXI_PO_BASE + 11, "PO11")
+#define SUNXI_PINCTRL_PIN_PO12	PINCTRL_PIN(SUNXI_PO_BASE + 12, "PO12")
+#define SUNXI_PINCTRL_PIN_PO13	PINCTRL_PIN(SUNXI_PO_BASE + 13, "PO13")
+#define SUNXI_PINCTRL_PIN_PO14	PINCTRL_PIN(SUNXI_PO_BASE + 14, "PO14")
+#define SUNXI_PINCTRL_PIN_PO15	PINCTRL_PIN(SUNXI_PO_BASE + 15, "PO15")
+#define SUNXI_PINCTRL_PIN_PO16	PINCTRL_PIN(SUNXI_PO_BASE + 16, "PO16")
+#define SUNXI_PINCTRL_PIN_PO17	PINCTRL_PIN(SUNXI_PO_BASE + 17, "PO17")
+#define SUNXI_PINCTRL_PIN_PO18	PINCTRL_PIN(SUNXI_PO_BASE + 18, "PO18")
+#define SUNXI_PINCTRL_PIN_PO19	PINCTRL_PIN(SUNXI_PO_BASE + 19, "PO19")
+#define SUNXI_PINCTRL_PIN_PO20	PINCTRL_PIN(SUNXI_PO_BASE + 20, "PO20")
+#define SUNXI_PINCTRL_PIN_PO21	PINCTRL_PIN(SUNXI_PO_BASE + 21, "PO21")
+#define SUNXI_PINCTRL_PIN_PO22	PINCTRL_PIN(SUNXI_PO_BASE + 22, "PO22")
+#define SUNXI_PINCTRL_PIN_PO23	PINCTRL_PIN(SUNXI_PO_BASE + 23, "PO23")
+#define SUNXI_PINCTRL_PIN_PO24	PINCTRL_PIN(SUNXI_PO_BASE + 24, "PO24")
+#define SUNXI_PINCTRL_PIN_PO25	PINCTRL_PIN(SUNXI_PO_BASE + 25, "PO25")
+#define SUNXI_PINCTRL_PIN_PO26	PINCTRL_PIN(SUNXI_PO_BASE + 26, "PO26")
+#define SUNXI_PINCTRL_PIN_PO27	PINCTRL_PIN(SUNXI_PO_BASE + 27, "PO27")
+#define SUNXI_PINCTRL_PIN_PO28	PINCTRL_PIN(SUNXI_PO_BASE + 28, "PO28")
+#define SUNXI_PINCTRL_PIN_PO29	PINCTRL_PIN(SUNXI_PO_BASE + 29, "PO29")
+#define SUNXI_PINCTRL_PIN_PO30	PINCTRL_PIN(SUNXI_PO_BASE + 30, "PO30")
+#define SUNXI_PINCTRL_PIN_PO31	PINCTRL_PIN(SUNXI_PO_BASE + 31, "PO31")
+
 #define BANK_MEM_SIZE		0x24
 #define MUX_REGS_OFFSET		0x0
 #define DATA_REGS_OFFSET	0x10
@@ -622,20 +656,22 @@ struct sunxi_pinctrl {
  */
 static inline u32 sunxi_modify_eint_pin_bais(u16 pin)
 {
-	u8		bank;
+	u8		bank = 0xFF;
 #if defined(CONFIG_ARCH_SUN8IW1)
 	bank = pin / PINS_PER_BANK;
 	if (4 == bank)
 		bank = 2;
 	else if( 6 == bank)
 		bank = 3;
-#endif
-#if defined(CONFIG_ARCH_SUN8IW3)||defined(CONFIG_ARCH_SUN8IW5)
+#elif defined(CONFIG_ARCH_SUN8IW3)||defined(CONFIG_ARCH_SUN8IW5)
 	bank = pin / PINS_PER_BANK;
 	if( 6 == bank)
 		bank = 2;
-#endif
-#if defined(CONFIG_ARCH_SUN8IW6)
+#elif defined(CONFIG_ARCH_SUN8IW7)
+	bank = pin / PINS_PER_BANK;
+	if( 6 == bank)
+		bank = 2;
+#elif defined(CONFIG_ARCH_SUN8IW6)
 	bank = pin/PINS_PER_BANK;
 	if(1 == bank )
 		bank = 0;
@@ -643,8 +679,23 @@ static inline u32 sunxi_modify_eint_pin_bais(u16 pin)
 		bank = 1;
 	else if(7 == bank)
 		bank = 2;
-#endif
-#if defined(CONFIG_ARCH_SUN9IW1)
+#elif defined(CONFIG_ARCH_SUN8IW8) || defined(CONFIG_ARCH_SUN8IW7)
+	bank = pin/PINS_PER_BANK;
+	if(1 == bank )
+		bank = 0;
+	else if(7 == bank)
+		bank = 1;
+#elif defined(CONFIG_ARCH_SUN8IW9)
+	bank = pin/PINS_PER_BANK;
+	if(6 == bank)
+		bank = 2;
+	else if(7 == bank)
+		bank = 3;
+	else if(10 == bank)
+		bank = 4;
+	else if(11 == bank)
+		bank = 5;
+#elif defined(CONFIG_ARCH_SUN9IW1)
 	bank = pin / PINS_PER_BANK;
 	if (4 == bank)
 		bank = 2;
@@ -653,6 +704,7 @@ static inline u32 sunxi_modify_eint_pin_bais(u16 pin)
 	else if(7 == bank)
 		bank = 4;
 #endif
+
 	return bank;
 }
 static inline u32 sunxi_mux_reg(u16 pin)
@@ -774,23 +826,49 @@ static inline u32 sunxi_eint_debounce_reg(u16 pin)
 	return round_down(offset, 4);
 
 }
-static inline void sunxi_write_reg(u32 value,void __iomem *reg)
+
+static inline u32 is_arisc_pin(void __iomem *reg)
 {
-	writel(value,reg);
+	int ret = false;
+#ifdef SUNXI_R_PIO_VBASE
+	if(reg >= (void __iomem *)(SUNXI_R_PIO_VBASE)){
+		return true;
+	}
+#endif
+	return ret;
+}
+static inline u32 pinctrl_readl_reg(void __iomem *reg)
+{
+	if(is_arisc_pin(reg)){
+		return sunxi_smc_readl(reg);
+	}else{
+		return readl(reg);
+	}
+}
+
+static inline void pinctrl_write_reg(u32 value,void __iomem *reg)
+{
+	if(is_arisc_pin(reg)) {
+		sunxi_smc_writel(value, reg);
+	} else {
+		writel(value, reg);
+	}
+#if defined CONFIG_ARCH_SUN8IW1P1
+	/* Note: this code main to fix sun8iw1p1 bus decode error problem.
+	 * write pinctrl register will simultaneously write watch-dog register.
+	 * so we will clean it after write
+	 */
 	if(unlikely(((void __iomem *)(0xF1C208D8)) == reg))
 		writel(0, (volatile void __iomem *)(0xF1C20CD8));
 	else if(unlikely(((void __iomem *)(0xF1C208F8)) == reg))
 		writel(0,(volatile void __iomem *)(0xF1C20CF8));
 	else if(unlikely(((void __iomem *)(0xF1C20918)) == reg))
 		writel(0, (volatile void __iomem *)(0xF1C20D18));
+#endif
 }
 
 
 /* list of all exported SoC specific data */
-extern struct sunxi_pinctrl_desc sun8i_w1_pinctrl_data;
-extern struct sunxi_pinctrl_desc sun8i_w3_pinctrl_data;
-extern struct sunxi_pinctrl_desc sun8i_w5_pinctrl_data;
-extern struct sunxi_pinctrl_desc sun8i_w6_pinctrl_data;
-extern struct sunxi_pinctrl_desc sun9i_w1_pinctrl_data;
+extern struct sunxi_pinctrl_desc sunxi_pinctrl_data;
 
 #endif /* __PINCTRL_SUNXI_H */

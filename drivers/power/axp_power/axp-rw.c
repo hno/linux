@@ -17,12 +17,15 @@ int axp_register_notifier(struct device *dev, struct notifier_block *nb,
 {
 	struct axp_dev *chip = dev_get_drvdata(dev);
 
-	chip->ops->enable_irqs(chip, irqs);
 	if(NULL != nb) {
-	    return blocking_notifier_chain_register(&chip->notifier_list, nb);
+		blocking_notifier_chain_register(&chip->notifier_list, nb);
 	}
-
-    return 0;
+	chip->ops->enable_irqs(chip, irqs);
+#ifdef CONFIG_SUNXI_ARISC
+	arisc_enable_nmi_irq();
+#else
+#endif
+	return 0;
 }
 EXPORT_SYMBOL_GPL(axp_register_notifier);
 
@@ -30,7 +33,10 @@ int axp_unregister_notifier(struct device *dev, struct notifier_block *nb,
 				uint64_t irqs)
 {
 	struct axp_dev *chip = dev_get_drvdata(dev);
-
+#ifdef CONFIG_SUNXI_ARISC
+	arisc_disable_nmi_irq();
+#else
+#endif
 	chip->ops->disable_irqs(chip, irqs);
 	if(NULL != nb) {
 	    return blocking_notifier_chain_unregister(&chip->notifier_list, nb);

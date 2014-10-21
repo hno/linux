@@ -25,6 +25,7 @@
 typedef enum mbus_port{
 	MBUS_PORT_CPU   = 0,
 	MBUS_PORT_GPU   = 1,
+#if defined CONFIG_ARCH_SUN8IW5P1
 	MBUS_PORT_DMA   = 2,
 	MBUS_PORT_VE    = 3,
 	MBUS_PORT_BE    = 4,
@@ -39,6 +40,33 @@ typedef enum mbus_port{
 	MBUS_PORT_NAND  = 13,
 	MBUS_PORT_TAHB  = 14,
 	MBUS_PORT_MSTG1 = 15,
+	MBUS_PORTS_MAX  = 16,
+#elif defined CONFIG_ARCH_SUN8IW6P1
+	/* reversed bit2     */
+	MBUS_PORT_DMA   = 3,
+	MBUS_PORT_VE    = 4,
+	MBUS_PORT_CSI   = 5,
+	MBUS_PORT_NAND  = 6,
+	MBUS_PORT_IEP   = 7,
+	MBUS_PORT_BE    = 8,
+	MBUS_PORT_FE    = 9,
+	MBUS_PORT_SS    = 10,
+	MBUS_PORT_IEP1  = 11,
+	MBUS_PORT_BE1   = 12,
+	MBUS_PORT_FE1   = 13,
+	MBUS_PORTS_MAX  = 14,
+	/* reversed bit14/15 */
+	MBUS_PORT_CPUS  = 16,
+	MBUS_PORT_TEST  = 17,
+	MBUS_PORT_USB0  = 18,
+	MBUS_PORT_SD0   = 19,
+	MBUS_PORT_SD1   = 20,
+	MBUS_PORT_SD2   = 21,
+	MBUS_PORT_USB1  = 22,
+	MBUS_PORT_USB2  = 23,
+	MBUS_PORT_GMAC  = 24,
+	MBUS_PORTSAE_MAX= 25,
+#endif
 }mbus_port_e;
 
 struct device_node;

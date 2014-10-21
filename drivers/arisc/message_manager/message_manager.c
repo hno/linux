@@ -39,21 +39,27 @@ static struct arisc_semaphore_cache sem_cache;
 
 static atomic_t sem_used_num;
 
+static u32 arisc_message_pool_base;
+static u32 arisc_message_pool_size;
+
 /**
  * initialize message manager.
  * @para:  none.
  *
  * returns:  0 if initialize succeeded, others if failed.
  */
-int arisc_message_manager_init(void)
+int arisc_message_manager_init(void *addr, u32 size)
 {
 	int i;
-
+	
+	arisc_message_pool_base = (u32)addr;
+	arisc_message_pool_size = size;
+	
 	/* initialize message pool start and end */
-	message_start = (struct arisc_message *)(arisc_sram_a2_vbase + ARISC_MESSAGE_POOL_START);
-	message_end   = (struct arisc_message *)(arisc_sram_a2_vbase + ARISC_MESSAGE_POOL_END);
+	message_start = (struct arisc_message *)(arisc_message_pool_base);
+	message_end   = (struct arisc_message *)(arisc_message_pool_base + arisc_message_pool_size);
 
-	memset((void *)message_start, 0, message_end - message_start);
+	memset((void *)message_start, 0, arisc_message_pool_size);
 
 	/* initialize message_cache */
 	for (i = 0; i < ARISC_MESSAGE_CACHED_MAX; i++) {
@@ -327,6 +333,12 @@ int arisc_message_coming_notify(struct arisc_message *pmessage)
 			pmessage->result = ret;
 			break;
 		}
+		case ARISC_REPORT_ERR_INFO: {
+			ARISC_INF("arisc report error info\n");
+			ret = arisc_report_error_info(pmessage);
+			pmessage->result = ret;
+			break;
+		}
 
 		default : {
 			ARISC_ERR("invalid message type for ac327 process\n");
@@ -355,3 +367,29 @@ int arisc_message_coming_notify(struct arisc_message *pmessage)
 
 	return ret;
 }
+
+struct arisc_message *arisc_message_map_to_cpux(u32 addr)
+{
+	struct arisc_message *message;
+	message = (struct arisc_message *)(addr + arisc_message_pool_base);
+	
+	return message;
+}
+
+u32 arisc_message_map_to_cpus(struct arisc_message *message)
+{
+	u32 value = (u32)message - arisc_message_pool_base;
+	
+	return value;
+}
+
+int arisc_message_valid(struct arisc_message *pmessage)
+{
+	if ((pmessage >= message_start) && (pmessage <  message_end)) {
+		/* valid message */
+		return 1;
+	}
+
+	return 0;
+}
+

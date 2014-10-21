@@ -152,11 +152,66 @@ int cpu_budget_update_state(struct cpu_budget_cooling_device *cpu_budget_device)
     int i,ret = 0;
 	unsigned int cpuid;
     unsigned int c0_online=0,c1_online=0;
-    unsigned int c0_max,c1_max,c0_min,c1_min, gpu_powernow = 0;
+    unsigned int c0_takedown=0,c1_takedown=0;
+    unsigned int c0_max,c1_max,c0_min,c1_min;
 	struct cpumask *cluster0_cpus = &cpu_budget_device->cluster0_cpus;
 	struct cpumask *cluster1_cpus = &cpu_budget_device->cluster1_cpus;
 	struct cpufreq_policy policy;
 
+    ret = 0;
+// update cpu limit
+    for_each_online_cpu(i) {
+        if (cpumask_test_cpu(i, &cpu_budget_device->cluster0_cpus))
+            c0_online++;
+        else if (cpumask_test_cpu(i, &cpu_budget_device->cluster1_cpus))
+            c1_online++;
+    }
+
+    c1_max = (cpu_budget_device->cluster1_num_roof >=cpu_budget_device->cluster1_num_limit)?
+             cpu_budget_device->cluster1_num_limit:cpu_budget_device->cluster1_num_roof;
+    c0_max = (cpu_budget_device->cluster0_num_roof >=cpu_budget_device->cluster0_num_limit)?
+             cpu_budget_device->cluster0_num_limit:cpu_budget_device->cluster0_num_roof;
+    c1_min = (cpu_budget_device->cluster1_num_floor >=c1_max)?
+             c1_max:cpu_budget_device->cluster1_num_floor;
+    c0_min = (cpu_budget_device->cluster0_num_floor >=c0_max)?
+             c0_max:cpu_budget_device->cluster0_num_floor;
+    c0_takedown = (c0_online > c0_max)?(c0_online - c0_max):0;
+    c1_takedown = (c1_online > c1_max)?(c1_online - c1_max):0;
+    while(c1_takedown)
+    {
+		cpuid = get_any_online_cpu(&cpu_budget_device->cluster1_cpus);
+		if (cpuid < nr_cpu_ids)
+        {
+                    pr_info("CPU Budget:Try to down cpu %d, cluster1 online %d, max %d\n",cpuid,c1_online,c1_max);
+			ret = work_on_cpu(BOOT_CPU,
+					  (long(*)(void *))cpu_down,
+					  (void *)cpuid);
+        }
+        c1_takedown--;
+    }
+    while(c0_takedown)
+    {
+		cpuid = get_any_online_cpu(&cpu_budget_device->cluster0_cpus);
+		if (cpuid < nr_cpu_ids)
+        {
+                    pr_info("CPU Budget:Try to down cpu %d, cluster0 online %d, limit %d\n",cpuid,c0_online,cpu_budget_device->cluster0_num_limit);
+			ret = work_on_cpu(BOOT_CPU,
+					  (long(*)(void *))cpu_down,
+					  (void *)cpuid);
+        }
+        c0_takedown--;
+    }
+#ifdef CONFIG_CPU_FREQ_GOV_AUTO_HOTPLUG_ROOMAGE
+    autohotplug_update_room(c0_min,c1_min,c0_max,c1_max);
+#endif
+
+    // update gpu limit
+    if(cpu_budget_device->gpu_throttle)
+        blocking_notifier_call_chain(&budget_cooling_notifier_list,BUDGET_GPU_THROTTLE, NULL);
+    else
+        blocking_notifier_call_chain(&budget_cooling_notifier_list,BUDGET_GPU_UNTHROTTLE, NULL);
+
+    // update cpufreq limit
 	for_each_cpu(cpuid, cluster0_cpus) {
 		if (is_cpufreq_valid(cpuid))
         {
@@ -177,56 +232,8 @@ int cpu_budget_update_state(struct cpu_budget_cooling_device *cpu_budget_device)
             }
         }
 	}
-    ret = 0;
-// update cpu limit
-    for_each_online_cpu(i) {
-        if (cpumask_test_cpu(i, &cpu_budget_device->cluster0_cpus))
-            c0_online++;
-        else if (cpumask_test_cpu(i, &cpu_budget_device->cluster1_cpus))
-            c1_online++;
-    }
 
-    c1_max = (cpu_budget_device->cluster1_num_roof >=cpu_budget_device->cluster1_num_limit)?
-             cpu_budget_device->cluster1_num_limit:cpu_budget_device->cluster1_num_roof;
-    c0_max = (cpu_budget_device->cluster0_num_roof >=cpu_budget_device->cluster0_num_limit)?
-             cpu_budget_device->cluster0_num_limit:cpu_budget_device->cluster0_num_roof;
-    c1_min = (cpu_budget_device->cluster1_num_floor >=c1_max)?
-             c1_max:cpu_budget_device->cluster1_num_floor;
-    c0_min = (cpu_budget_device->cluster0_num_floor >=c0_max)?
-             c0_max:cpu_budget_device->cluster0_num_floor;
-    gpu_powernow = cpu_budget_device->gpu_powernow;
-    if(c1_online > c1_max)
-    {
-		cpuid = get_any_online_cpu(&cpu_budget_device->cluster1_cpus);
-		if (cpuid < nr_cpu_ids)
-        {
-                    pr_info("CPU Budget:Try to down cpu %d, cluster1 online %d, max %d\n",cpuid,c1_online,c1_max);
-			ret = work_on_cpu(BOOT_CPU,
-					  (long(*)(void *))cpu_down,
-					  (void *)cpuid);
-        }
-    }
-    if(c0_online > c0_max)
-    {
-		cpuid = get_any_online_cpu(&cpu_budget_device->cluster0_cpus);
-		if (cpuid < nr_cpu_ids)
-        {
-                    pr_info("CPU Budget:Try to down cpu %d, cluster0 online %d, limit %d\n",cpuid,c0_online,cpu_budget_device->cluster0_num_limit);
-			ret = work_on_cpu(BOOT_CPU,
-					  (long(*)(void *))cpu_down,
-					  (void *)cpuid);
-        }
-    }
-#ifdef CONFIG_CPU_FREQ_GOV_AUTO_HOTPLUG_ROOMAGE
-    autohotplug_update_room(c0_min,c1_min,c0_max,c1_max);
-#endif
-// update gpu limit
-    if(cpu_budget_device->gpu_throttle){
-        blocking_notifier_call_chain(&budget_cooling_notifier_list,BUDGET_GPU_THROTTLE, &gpu_powernow);
-    }else{
-        blocking_notifier_call_chain(&budget_cooling_notifier_list,BUDGET_GPU_UNTHROTTLE, &gpu_powernow);
-    }
-    return ret;
+	return ret;
 }
 EXPORT_SYMBOL(cpu_budget_update_state);
 
@@ -264,7 +271,7 @@ static int cpu_budget_apply_cooling(struct cpu_budget_cooling_device *cpu_budget
                               cpu_budget_device->cluster1_freq_limit,
                               cpu_budget_device->cluster1_num_limit,
                               cpu_budget_device->gpu_throttle);
-    pr_info("CPU Budget: Limit state:%lu item[%d,%d,%d,%d %d]\n",cooling_state,
+    pr_debug("CPU Budget: Limit state:%lu item[%d,%d,%d,%d %d]\n",cooling_state,
     cpu_budget_device->cluster0_freq_limit,
     cpu_budget_device->cluster0_num_limit ,
     cpu_budget_device->cluster1_freq_limit ,
@@ -366,7 +373,7 @@ static int cpufreq_thermal_notifier(struct notifier_block *nb,
         {
             cpufreq_verify_within_limits(policy, min_freq, max_freq);
 			policy->user_policy.max = policy->max;
-            pr_info("CPU Budget:update CPU %d cpufreq max to %lu min to %lu\n",policy->cpu,max_freq, min_freq);
+            pr_debug("CPU Budget:update CPU %d cpufreq max to %lu min to %lu\n",policy->cpu,max_freq, min_freq);
         }
     }
 	return 0;
@@ -480,7 +487,6 @@ struct thermal_cooling_device *cpu_budget_cooling_register(
 	cpu_budget_dev->cluster1_freq_limit = cpu_budget_dev->tbl[0].cluster1_freq;
 	cpu_budget_dev->cluster1_num_limit = cpu_budget_dev->tbl[0].cluster1_cpunr;
 	cpu_budget_dev->gpu_throttle = cpu_budget_dev->tbl[0].gpu_throttle;
-	cpu_budget_dev->gpu_powernow = 0;
 
 	cpu_budget_dev->cluster0_freq_roof = cpu_budget_dev->cluster0_freq_limit;
 	cpu_budget_dev->cluster0_num_roof = cpu_budget_dev->cluster0_num_limit;

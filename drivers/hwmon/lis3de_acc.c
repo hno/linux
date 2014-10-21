@@ -1613,9 +1613,10 @@ exit_kfree_pdata:
 	kfree(stat->pdata);
 err_mutexunlock:
 	mutex_unlock(&stat->lock);
-/* err_freedata: */
-	kfree(stat);
+
 exit_check_functionality_failed:
+	/* err_freedata: */
+	kfree(stat);
 	pr_err("%s: Driver Init failed\n", LIS3DE_ACC_DEV_NAME);
 	return err;
 }

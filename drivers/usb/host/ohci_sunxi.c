@@ -36,10 +36,10 @@
 #define   SUNXI_OHCI_NAME	"sunxi-ohci"
 static const char ohci_name[] = SUNXI_OHCI_NAME;
 
-static struct sunxi_hci_hcd *g_sunxi_ohci[3];
-static u32 ohci_first_probe[3] = {1, 1, 1};
+static struct sunxi_hci_hcd *g_sunxi_ohci[4];
+static u32 ohci_first_probe[4] = {1, 1, 1, 1};
 
-static struct scene_lock  ohci_standby_lock[3];
+static struct scene_lock  ohci_standby_lock[4];
 
 extern int usb_disabled(void);
 int sunxi_usb_disable_ohci(__u32 usbc_no);
@@ -65,27 +65,13 @@ static int sunxi_release_io_resource(struct platform_device *pdev, struct sunxi_
 	return 0;
 }
 
-static void sunxi_setup_gpio(void)
-{
-#ifdef  SUNXI_USB_FPGA
-	int reg_val = 0;
-
-	reg_val = USBC_Readl(0xf1c20800 + 0x6c + 0xc); //gpiod[30]:dm;gpiod[31]:dp;
-	reg_val &= (~(0xff<<24));
-	reg_val |= (0x22<<24);
-	USBC_Writel(reg_val, (0xf1c20800 + 0x6c + 0xc));
-#else
-	//gpio_set_cfg(GPIO_G(10), 2, 3);
-	//gpio_set_pull(GPIO_G(10), 2, PIO_PULLDOWN);
-#endif
-}
-
 static void sunxi_start_ohci(struct sunxi_hci_hcd *sunxi_ohci)
 {
+#if defined (CONFIG_ARCH_SUN8IW6) || defined (CONFIG_ARCH_SUN9IW1)
+	sunxi_ohci->hci_phy_ctrl(sunxi_ohci, 1);
+#endif
 	open_ohci_clock(sunxi_ohci);
-	if(sunxi_ohci->usbc_no == 3){
-		sunxi_setup_gpio();
-	}
+
 	sunxi_ohci->port_configure(sunxi_ohci, 1);
 	sunxi_ohci->usb_passby(sunxi_ohci, 1);
 	sunxi_ohci->set_power(sunxi_ohci, 1);
@@ -93,13 +79,17 @@ static void sunxi_start_ohci(struct sunxi_hci_hcd *sunxi_ohci)
 	return;
 }
 
-static void sunxi_stop_ohc(struct sunxi_hci_hcd *sunxi_ohci)
+static void sunxi_stop_ohci(struct sunxi_hci_hcd *sunxi_ohci)
 {
 	sunxi_ohci->set_power(sunxi_ohci, 0);
 	sunxi_ohci->usb_passby(sunxi_ohci, 0);
 	sunxi_ohci->port_configure(sunxi_ohci, 0);
 
 	close_ohci_clock(sunxi_ohci);
+	
+#if defined (CONFIG_ARCH_SUN8IW6) || defined (CONFIG_ARCH_SUN9IW1)
+	sunxi_ohci->hci_phy_ctrl(sunxi_ohci, 0);
+#endif
 
 	return;
 }
@@ -232,16 +222,17 @@ static int sunxi_ohci_hcd_probe(struct platform_device *pdev)
 
 	sunxi_ohci->probe = 1;
 
+
+	if(sunxi_ohci->not_suspend){
+		scene_lock_init(&ohci_standby_lock[sunxi_ohci->usbc_no], SCENE_USB_STANDBY,  "ohci_standby");
+	}
+
 	/* Disable ohci, when driver probe */
 	if(sunxi_ohci->host_init_state == 0){
 		if(ohci_first_probe[sunxi_ohci->usbc_no]){
 			sunxi_usb_disable_ohci(sunxi_ohci->usbc_no);
 			ohci_first_probe[sunxi_ohci->usbc_no]--;
 		}
-	}
-
-	if(sunxi_ohci->not_suspend){
-		scene_lock_init(&ohci_standby_lock[sunxi_ohci->usbc_no], SCENE_USB_STANDBY,  "ohci_standby");
 	}
 
 	return 0;
@@ -287,7 +278,7 @@ static int sunxi_ohci_hcd_remove(struct platform_device *pdev)
 	}
 	usb_remove_hcd(hcd);
 
-	sunxi_stop_ohc(sunxi_ohci);
+	sunxi_stop_ohci(sunxi_ohci);
 	sunxi_ohci->probe = 0;
 
 	usb_put_hcd(hcd);
@@ -326,7 +317,7 @@ static void sunxi_ohci_hcd_shutdown(struct platform_device* pdev)
 		scene_lock_destroy(&ohci_standby_lock[sunxi_ohci->usbc_no]);
 	}
 	usb_hcd_platform_shutdown(pdev);
-	sunxi_stop_ohc(sunxi_ohci);
+	sunxi_stop_ohci(sunxi_ohci);
 
 	DMSG_INFO("[%s]: ohci shutdown end\n", sunxi_ohci->hci_name);
 
@@ -384,6 +375,9 @@ static int sunxi_ohci_hcd_suspend(struct device *dev)
 		val |= OHCI_INTR_RD;
 		val |= OHCI_INTR_MIE;
 		ohci_writel(ohci, val, &ohci->regs->intrenable);
+#if defined (CONFIG_ARCH_SUN8IW6) || defined (CONFIG_ARCH_SUN9IW1)
+		sunxi_ohci->hci_phy_ctrl(sunxi_ohci, 0);
+#endif
 
 	}else{
 		DMSG_INFO("[%s]: sunxi_ohci_hcd_suspend\n", sunxi_ohci->hci_name);
@@ -405,7 +399,7 @@ static int sunxi_ohci_hcd_suspend(struct device *dev)
 
 		spin_unlock_irqrestore(&ohci->lock, flags);
 
-		sunxi_stop_ohc(sunxi_ohci);
+		sunxi_stop_ohci(sunxi_ohci);
 	}
 
 	return 0;
@@ -440,6 +434,9 @@ static int sunxi_ohci_hcd_resume(struct device *dev)
 
 	if(sunxi_ohci->not_suspend){
 		DMSG_INFO("[%s]: controller not suspend, need not resume\n", sunxi_ohci->hci_name);
+#if defined (CONFIG_ARCH_SUN8IW6) || defined (CONFIG_ARCH_SUN9IW1)
+		sunxi_ohci->hci_phy_ctrl(sunxi_ohci, 1);
+#endif
 		scene_unlock(&ohci_standby_lock[sunxi_ohci->usbc_no]);
 		disable_wakeup_src(CPUS_USBMOUSE_SRC, 0);
 	}else{

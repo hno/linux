@@ -119,6 +119,8 @@ static void axp_power_off(void)
 	axp81x_power_off(power_start);
 #elif defined (CONFIG_AW_AXP19)
 	axp19_power_off(power_start);
+#elif defined (CONFIG_AW_AXP20)
+	axp20_power_off(power_start);
 #endif
 
 }
@@ -171,13 +173,13 @@ static int axp_mfd_add_subdevs(struct axp_dev *dev)
 
 	/* register for power supply */
 	for (i = 0; i < dev->pdata->num_sply_devs; i++) {
-	sply_dev = &dev->pdata->sply_devs[i];
-	pdev = platform_device_alloc(sply_dev->name, sply_dev->id);
-	pdev->dev.parent = dev->dev;
-	pdev->dev.platform_data = sply_dev->platform_data;
-	ret = platform_device_add(pdev);
-	if (ret)
-		goto failed;
+		sply_dev = &dev->pdata->sply_devs[i];
+		pdev = platform_device_alloc(sply_dev->name, sply_dev->id);
+		pdev->dev.parent = dev->dev;
+		pdev->dev.platform_data = sply_dev->platform_data;
+		ret = platform_device_add(pdev);
+		if (ret)
+			goto failed;
 	}
 
 	return 0;
@@ -214,10 +216,7 @@ int axp_register_mfd(struct axp_dev *dev)
 
 	if (AXP22 == dev->type)
 		power_start = axp22_config.power_start;
-#ifdef CONFIG_SUNXI_ARISC
-	arisc_enable_nmi_irq();
-#else
-#endif
+
 	return 0;
 out_free_dev:
 	return ret;

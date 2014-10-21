@@ -70,15 +70,15 @@ enum
 u16 show_len;
 u16 total_len;
 
-struct i2c_client *guitar_client = NULL;
+static struct i2c_client *guitar_client = NULL;
 
-extern s32  gtp_i2c_read(struct i2c_client *client, u8 *buf, s32 len);
-extern s32  gtp_i2c_write(struct i2c_client *client,u8 *data,s32 len);
-extern s32  gtp_i2c_end_cmd(struct i2c_client *client);
-extern void gtp_reset_guitar(s32 ms);
-extern s32  gtp_send_cfg(struct i2c_client *client);
-extern s32  gtp_read_version(struct i2c_client *client, u16 *version);
-extern void gtp_set_int_value(int status);
+//extern s32  gtp_i2c_read(struct i2c_client *client, u8 *buf, s32 len);
+//extern s32  gtp_i2c_write(struct i2c_client *client,u8 *data,s32 len);
+//extern s32  gtp_i2c_end_cmd(struct i2c_client *client);
+//extern void gtp_reset_guitar(s32 ms);
+//extern s32  gtp_send_cfg(struct i2c_client *client);
+//extern s32  gtp_read_version(struct i2c_client *client, u16 *version);
+//extern void gtp_set_int_value(int status);
 
 
 #pragma pack(1)
@@ -108,7 +108,7 @@ typedef struct
     mm_segment_t old_fs;
 }st_update_msg;
 
-st_update_msg update_msg;
+static st_update_msg update_msg;
 //******************************************************************************
 
 static u8 gup_get_ic_msg(struct i2c_client *client, u16 addr, u8* msg, s32 len)
@@ -327,7 +327,7 @@ static s16 gup_check_version(u16 sw_ver)
     }
 }
 
-s32 gup_comfirm_version(struct i2c_client *client)
+static s32 gup_comfirm_version(struct i2c_client *client)
 {
     s32 i = 0;
     s32 count = 0;
@@ -360,7 +360,7 @@ s32 gup_comfirm_version(struct i2c_client *client)
     return fail;
 }
 
-u8 gup_load_update_file(struct i2c_client *client, st_fw_head* fw_head, u8* data, u8* path)
+static u8 gup_load_update_file(struct i2c_client *client, st_fw_head* fw_head, u8* data, u8* path)
 {
     //u8 mask_num = 0;
     u16 checksum = 0;
@@ -416,7 +416,7 @@ u8 gup_load_update_file(struct i2c_client *client, st_fw_head* fw_head, u8* data
     set_fs(KERNEL_DS);
 
     //Read firmware head message in file
-    ret = update_msg.file->f_op->read(update_msg.file, (u8*)&update_msg.fw_msg,
+    ret = update_msg.file->f_op->read(update_msg.file, (char*)&update_msg.fw_msg,
                                       sizeof(st_check_msg), &update_msg.file->f_pos);
     if (ret < 0)
     {
@@ -448,7 +448,7 @@ u8 gup_load_update_file(struct i2c_client *client, st_fw_head* fw_head, u8* data
     }
 
     //Read firmware body message in file
-    ret = update_msg.file->f_op->read(update_msg.file, data, update_msg.fw_msg.length,
+    ret = update_msg.file->f_op->read(update_msg.file, (char*)data, update_msg.fw_msg.length,
                                       &update_msg.file->f_pos);
     if (ret < 0)
     {
@@ -483,7 +483,7 @@ load_failed:
     return fail;
 }
 
-u8 gup_load_update_header(struct i2c_client *client, st_fw_head* fw_head, u8** data)
+static u8 gup_load_update_header(struct i2c_client *client, st_fw_head* fw_head, u8** data)
 {
     u16 checksum = 0;
 //    s32 ret = -1;
@@ -983,6 +983,7 @@ s32 gup_update_proc(void *dir)
     if (i >= 5)
     {
         GTP_ERROR("Set update mode failed.");
+	kfree(ic_nvram);
         return fail;
     }
 
@@ -1071,7 +1072,7 @@ s32 gup_update_proc(void *dir)
             {
                 GTP_DEBUG("Location:%d, Ret:%d.", (s32)update_msg.gt_loc, (s32)ret);
                 memset(buf, 0, sizeof(buf));
-                ret = update_msg.file->f_op->write(update_msg.file, buf, 6, &update_msg.gt_loc);
+                ret = update_msg.file->f_op->write(update_msg.file, (char*)buf, 6, &update_msg.gt_loc);
                 if (ret < 0)
                 {
                     GTP_ERROR("Didn't clear the focre update flag in file.");
@@ -1123,13 +1124,15 @@ app_mem_failed:
 
     show_len = 200;
     GTP_DEBUG("Update failed!");
+    if(NULL!=data)
+    	kfree(data);
     return fail;
 }
 
 u8 gup_init_update_proc(struct goodix_ts_data *ts)
 {
     struct task_struct *thread = NULL;
-    printk("gup_init_update_proc start ...............................\n\n ");
+    pr_debug("gup_init_update_proc start ...............................\n\n ");
     if (fail == gup_comfirm_version(ts->client))
     {
         GTP_ERROR("Comfirm version fail.");

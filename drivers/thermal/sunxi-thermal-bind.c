@@ -60,7 +60,7 @@ static ssize_t thermaltrend_store(struct device *dev, struct device_attribute *a
     struct miscdevice* mdev = dev_get_drvdata(dev);
     struct thermalbind_device* binddev = container_of(mdev, struct thermalbind_device, miscdev);
 
-    sscanf(buf,"%d\n",&binddev->binddata.trip_trend);
+    sscanf(buf,"%u\n",&binddev->binddata.trip_trend);
     sunxi_ths_unregister_thermal(binddev->zone);
     binddev->zone->sunxi_ths_sensor_conf->trend = binddev->binddata.trip_trend;
     sunxi_ths_register_thermal(binddev->zone);
@@ -100,7 +100,7 @@ static ssize_t thermalbind_store(struct device *dev, struct device_attribute *at
     struct thermalbind_device* binddev = container_of(mdev, struct thermalbind_device, miscdev);   
     
     binddev->binddata.trip_count = 0;
-    sscanf(buf,"%d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d\n",
+    sscanf(buf,"%u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u\n",
             &binddev->binddata.trip_count,
             &binddev->binddata.nodes[0].temp,
             &binddev->binddata.nodes[0].min,

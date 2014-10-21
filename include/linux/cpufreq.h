@@ -78,7 +78,6 @@ struct cpufreq_cpuinfo {
 	unsigned int		min_freq;
 #ifdef CONFIG_ARCH_SUNXI
 	unsigned int		boot_freq;
-	unsigned int		burst_freq;
 #endif
 
 	/* in 10^(-9) s = nanoseconds */

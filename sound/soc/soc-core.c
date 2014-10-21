@@ -2835,6 +2835,7 @@ int snd_soc_bytes_put(struct snd_kcontrol *kcontrol,
 			((u32 *)data)[0] |= cpu_to_be32(val);
 			break;
 		default:
+			kfree(data);
 			return -EINVAL;
 		}
 	}

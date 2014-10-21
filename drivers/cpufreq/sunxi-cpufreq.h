@@ -30,7 +30,9 @@
 #define SUNXI_CPUFREQ_MAX           (1536000000)    /* config the maximum frequency of sunxi core */
 #define SUNXI_CPUFREQ_MIN           (60000000)      /* config the minimum frequency of sunxi core */
 #define SUNXI_FREQTRANS_LATENCY     (2000000)       /* config the transition latency, based on ns */
+#if !defined(CONFIG_ARCH_SUN8IW7P1) && !defined(CONFIG_ARCH_SUN8IW8P1)
 #define SUNXI_CPUFREQ_CPUVDD        "axp22_dcdc3"
+#endif
 
 #ifdef CONFIG_ARCH_SUN8IW3P1
 #define SUNXI_CPUFREQ_VOLT_LIMIT    (1100)

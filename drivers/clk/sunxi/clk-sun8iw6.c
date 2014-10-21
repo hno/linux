@@ -69,10 +69,10 @@ void dummy_reg_init(void)
 
 /*                          ns  nw  ks  kw  ms  mw  ps  pw  d1s  d1w  d2s  d2w  {frac  out  mode}  en-s   sdmss  sdmsw  sdmpat      sdmval*/
 SUNXI_CLK_FACTORS(pll_cpu,   8,  8,  0,  0,  0,  0, 16,  1,  0,   0,    0,  0,    0,    0,   0,     31,    0,     0,       0,        0);
-SUNXI_CLK_FACTORS(pll_audio, 8,  8,  0,  0,  0,  0,  0,  6,  16,  1,   18,  1,    0,    0,   0,     31,    0,     0,       0,        0);
-SUNXI_CLK_FACTORS(pll_video0,8,  8,  0,  0,  0,  0,  0,  2,  16,  1,    0,  0,    0,    0,   0,     31,   24,     0,       PLL_VIDEO0PAT,0xf1303333);
+SUNXI_CLK_FACTORS(pll_audio, 8,  8,  0,  0,  0,  0,  0,  6,  16,  1,   18,  1,    0,    0,   0,     31,   24,     1,       PLL_AUDIOPAT, 0xc000e147);
+SUNXI_CLK_FACTORS(pll_video0,8,  8,  0,  0,  0,  0,  0,  2,  16,  1,    0,  0,    0,    0,   0,     31,   24,     0,       PLL_VIDEO0PAT,0xd1303333);
 SUNXI_CLK_FACTORS(pll_media, 8,  8,  0,  0,  0,  0,  0,  0,  16,  1,   18,  1,    0,    0,   0,     31,    0,     0,       0,        0);
-SUNXI_CLK_FACTORS(pll_ddr,   8,  6,  0,  0,  0,  0,  0,  0,  16,  1,   18,  1,    0,    0,   0,     31,    0,     0,       0,        0);
+SUNXI_CLK_FACTORS_UPDATE(pll_ddr,   8,  6,  0,  0,  0,  0,  0,  0,  16,  1,   18,  1,    0,    0,   0,     31,    0,     0,       0,        0 , 30);
 SUNXI_CLK_FACTORS(pll_video1,8,  8,  0,  0,  0,  0,  0,  2,  16,  1,    0,  0,    0,    0,   0,     31,    0,     0,       0,        0);
 
 static int get_factors_pll_cpu0(u32 rate, u32 parent_rate, struct clk_factors_value *factor)
@@ -104,15 +104,17 @@ static int get_factors_pll_cpu1(u32 rate, u32 parent_rate, struct clk_factors_va
 static int get_factors_pll_audio(u32 rate, u32 parent_rate, struct clk_factors_value *factor)
 {
     if(rate == 22579200) {
-        factor->factorn = 39;
-        factor->factorp = 20;
+        factor->factorn = 54;
+        factor->factorp = 28;
         factor->factord1 = 0;
         factor->factord2 = 1;
+        sunxi_clk_factor_pll_audio.sdmval = 0xc00121ff;
     } else if(rate == 24576000) {
-        factor->factorn = 43;
-        factor->factorp = 20;
+        factor->factorn = 61;
+        factor->factorp = 29;
         factor->factord1 = 0;
         factor->factord2 = 1;
+        sunxi_clk_factor_pll_audio.sdmval = 0xc000e147;
     } else
         return -1;
     return 0;
@@ -243,9 +245,9 @@ static unsigned long calc_rate_pll_cpu(u32 parent_rate, struct clk_factors_value
 static unsigned long calc_rate_pll_audio(u32 parent_rate, struct clk_factors_value *factor)
 {
     u64 tmp_rate = (parent_rate?parent_rate:24000000);
-    if((factor->factorn == 39) && (factor->factord1 == 0) && (factor->factord2 == 1) && (factor->factorp == 20))
+    if((factor->factorn == 54)  && (factor->factord1 == 0) && (factor->factord2 == 1) && (factor->factorp == 28))
         return 22579200;
-    else if((factor->factorn == 43) && (factor->factord1 == 0) && (factor->factord2 == 1) && (factor->factorp == 20))
+    else if((factor->factorn == 61) && (factor->factord1 == 0) && (factor->factord2 == 1) && (factor->factorp == 29))
         return 24576000;
     else
     {
@@ -264,7 +266,7 @@ static unsigned long calc_rate_video(u32 parent_rate, struct clk_factors_value *
 static unsigned long calc_rate_ddr(u32 parent_rate, struct clk_factors_value *factor)
 {
     u64 tmp_rate = (parent_rate?parent_rate:24000000);
-    tmp_rate = tmp_rate * (factor->factorn);
+    tmp_rate = tmp_rate * (factor->factorn+1);
     do_div(tmp_rate, (factor->factord1+1) *(factor->factord2+1));
     return (unsigned long)tmp_rate;
 }
@@ -347,7 +349,7 @@ static const char *audio_parents[] = {"pll_audio"};
 static const char *lcd0_parents[] = {"pll_video0","","","", "","","",""};
 static const char *lcd1_parents[] = {"pll_video1","","","", "","","",""};
 static const char *csi_s_parents[] = {"pll_periph", "", "", "", "", "pll_ve","",""};
-static const char *csi_m_parents[] = {"", "", "", "pll_de", "", "hosc","",""};
+static const char *csi_m_parents[] = {"pll_video0", "", "", "pll_de", "", "hosc","",""};
 static const char *mbus_parents[] = {"hosc", "pll_periph", "pll_ddr",""};
 static const char *ve_parents[] = {"pll_ve"};
 static const char *gpu_parents[] = {"pll_gpu"};
@@ -357,7 +359,7 @@ static const char *apb1mod_parents[] = {"apb1"};
 static const char *apb2mod_parents[] = {"apb2"};
 static const char *sdmmc2_parents[] = {"sdmmc2mod"};
 static const char *hdmi_parents[]= {"pll_video1","","",""};
-static const char *mipidsi0_parents[]= {"","","","",  "","","","",  "pll_video0","","","",  "","","",""}; //mipi_dsi10
+static const char *mipidsi0_parents[]= {"pll_video0","","","",  "","","","",  "pll_video0","","","",  "","","",""}; //mipi_dsi10
 static const char *mipidsi1_parents[]= {"hosc","","","",  "","","","",  "","pll_video0","","",  "","","",""}; //mipi_dsi1
 static const char *cpurdev_parents[]  = {"losc", "hosc","",""};
 static const char *lvds_parents[] = {"lcd0"};
@@ -509,7 +511,7 @@ extern int clk_syncboot(void);
 void __init sunxi_init_clocks(void)
 {
     int     i;
-	struct clk *clk;
+    struct clk *clk;
     struct factor_init_data *factor;
     struct periph_init_data *periph;
 

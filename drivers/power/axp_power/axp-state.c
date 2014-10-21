@@ -1,7 +1,7 @@
 /*
- * Battery charger driver for X-POWERS AXP28X
+ * Battery charger driver for AW-POWERS
  *
- * Copyright (C) 2014 X-POWERS Ltd.
+ * Copyright (C) 2014 ALLWINNERTECH.
  *  Ming Li <liming@allwinnertech.com>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -18,6 +18,17 @@
 #endif
 
 struct axp_adc_res adc;
+
+int axp_read_bat_cap(void)
+{
+	int bat_cap;
+	uint8_t tmp;
+
+	axp_read(axp_charger->master, AXP_CAP,&tmp);
+	bat_cap	= (int)	(tmp & 0x7F);
+	return bat_cap;
+}
+EXPORT_SYMBOL_GPL(axp_read_bat_cap);
 
 static inline int axp_vts_to_temp(int data, const struct axp_config_info *axp_config)
 {
@@ -137,29 +148,31 @@ static inline void axp_read_adc(struct axp_charger *charger,
 
 void axp_charger_update_state(struct axp_charger *charger)
 {
-	 uint8_t val[2];
-	 uint16_t tmp;
-	 
-	 axp_reads(charger->master,AXP_CHARGE_STATUS,2,val);
-	 tmp = (val[1] << 8 )+ val[0];
-	 spin_lock(&charger->charger_lock);
-	 charger->is_on = (val[1] & AXP_IN_CHARGE) ? 1 : 0;
-	 charger->fault = val[1];
-	 charger->bat_det = (tmp & AXP_STATUS_BATEN)?1:0;
-	 charger->ac_det = (tmp & AXP_STATUS_ACEN)?1:0;
-	 charger->usb_det = (tmp & AXP_STATUS_USBEN)?1:0;
-	 charger->usb_valid = (tmp & AXP_STATUS_USBVA)?1:0;
-	 charger->ac_valid = (tmp & AXP_STATUS_ACVA)?1:0;
-	 charger->ext_valid = charger->ac_valid | charger->usb_valid;
-	 charger->bat_current_direction = (tmp & AXP_STATUS_BATCURDIR)?1:0;
-	 charger->in_short = (tmp& AXP_STATUS_ACUSBSH)?1:0;
-	 charger->batery_active = (tmp & AXP_STATUS_BATINACT)?1:0;
-	 charger->int_over_temp = (tmp & AXP_STATUS_ICTEMOV)?1:0;
-	 spin_unlock(&charger->charger_lock);
-	 axp_read(charger->master,AXP_CHARGE_CONTROL1,val);
-	 spin_lock(&charger->charger_lock);
-	 charger->charge_on = ((val[0] >> 7) & 0x01);
-	 spin_unlock(&charger->charger_lock);
+	uint8_t val[2];
+	uint16_t tmp;
+
+	axp_reads(charger->master,AXP_CHARGE_STATUS,2,val);
+	tmp = (val[1] << 8 )+ val[0];
+	spin_lock(&charger->charger_lock);
+	charger->is_on = (val[1] & AXP_IN_CHARGE) ? 1 : 0;
+	charger->fault = val[1];
+	charger->bat_det = (tmp & AXP_STATUS_BATEN)?1:0;
+	charger->ac_det = (tmp & AXP_STATUS_ACEN)?1:0;
+	charger->usb_det = (tmp & AXP_STATUS_USBEN)?1:0;
+	charger->ext_valid = (tmp & (AXP_STATUS_USBVA |AXP_STATUS_ACVA))?1:0;
+	charger->in_short = (tmp& AXP_STATUS_ACUSBSH)?1:0;
+	if(!charger->in_short) {
+		charger->ac_valid = (tmp & AXP_STATUS_ACVA)?1:0;
+	}
+	charger->bat_current_direction = (tmp & AXP_STATUS_BATCURDIR)?1:0;
+	charger->in_short = (tmp& AXP_STATUS_ACUSBSH)?1:0;
+	charger->batery_active = (tmp & AXP_STATUS_BATINACT)?1:0;
+	charger->int_over_temp = (tmp & AXP_STATUS_ICTEMOV)?1:0;
+	spin_unlock(&charger->charger_lock);
+	axp_read(charger->master,AXP_CHARGE_CONTROL1,val);
+	spin_lock(&charger->charger_lock);
+	charger->charge_on = ((val[0] >> 7) & 0x01);
+	spin_unlock(&charger->charger_lock);
 }
 
 void axp_charger_update(struct axp_charger *charger, const struct axp_config_info *axp_config)
@@ -182,7 +195,7 @@ void axp_charger_update(struct axp_charger *charger, const struct axp_config_inf
 	//tmp = charger->adc->ichar_res + charger->adc->idischar_res;
 	spin_lock(&charger->charger_lock);
 	charger->ibat = ABS(axp_icharge_to_mA(charger->adc->ichar_res)-axp_ibat_to_mA(charger->adc->idischar_res));
-	tmp = 00;
+	tmp = 00;///qin
 	charger->vac = axp_vdc_to_mV(tmp);
 	tmp = 00;
 	charger->iac = axp_iac_to_mA(tmp);

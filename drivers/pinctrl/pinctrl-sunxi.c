@@ -41,12 +41,34 @@
 #include "pinctrl-sunxi.h"
 #define SUNXI_MAX_NAME_LEN 20
 static char	sunxi_dbg_pinname[SUNXI_MAX_NAME_LEN];
-static unsigned int		sunxi_dbg_function;
-static unsigned int		sunxi_dbg_data;
-static unsigned int		sunxi_dbg_level;
-static unsigned int		sunxi_dbg_pull;
-static unsigned int		sunxi_dbg_trigger;
+static  unsigned int		sunxi_dbg_function;
+static  unsigned int		sunxi_dbg_data;
+static  unsigned int		sunxi_dbg_level;
+static  unsigned int		sunxi_dbg_pull;
+static  unsigned int		sunxi_dbg_trigger;
 
+/* add for huangshr-20140701*/
+static void pin_reset_bias(unsigned int *pin_bias, unsigned int pin)
+{
+#if defined(CONFIG_ARCH_SUN8IW9)
+	if(pin < SUNXI_PL_BASE){
+		*pin_bias = pin;
+	}else if((pin >= SUNXI_PL_BASE) && (pin < SUNXI_PO_BASE)){
+		*pin_bias = pin - SUNXI_PL_BASE;
+	}else if(pin >= SUNXI_PO_BASE){
+		*pin_bias = pin - 3*32;
+	}
+#else
+	if(pin< SUNXI_PL_BASE){
+		*pin_bias = pin;
+	}else{
+		*pin_bias = pin - SUNXI_PL_BASE;
+	}
+#endif
+	
+}
+
+/*end for huangshr-20140701*/
 static struct sunxi_pinctrl *sunxi_gc_to_pinctrl(struct gpio_chip *gc)
 {
 	return container_of(gc, struct sunxi_pinctrl, chip);
@@ -318,40 +340,36 @@ static int sunxi_pinconf_get(struct pinctrl_dev *pctldev,
 	u16                  func;
 	u16                  pull;
 	unsigned int  		 pin_bias;
-	if(pin < SUNXI_PL_BASE){
-		pin_bias = pin;
-	}else{
-		pin_bias = pin - SUNXI_PL_BASE;
-	}
-	
+
+	pin_reset_bias(&pin_bias, pin);
 	if (IS_ERR_OR_NULL(bank)) {
 		pr_debug("invalid pin number [%d] to get pinconf\n", pin);
 		return -EINVAL;
 	}
 	switch (SUNXI_PINCFG_UNPACK_TYPE(*config)) {
 	case SUNXI_PINCFG_TYPE_DRV:
-		val = readl(bank->membase + sunxi_dlevel_reg(pin_bias));
+		val = pinctrl_readl_reg(bank->membase + sunxi_dlevel_reg(pin_bias));
 		dlevel = (val >> sunxi_dlevel_offset(pin_bias)) & DLEVEL_PINS_MASK;
 		*config = SUNXI_PINCFG_PACK(SUNXI_PINCFG_TYPE_DRV, dlevel);
 	        pr_debug("sunxi pconf get pin [%s] drive strength [LEVEL%d]\n", 
 		         pin_get_name(pctl->pctl_dev, pin), dlevel);
 		break;
 	case SUNXI_PINCFG_TYPE_PUD:
-		val = readl(bank->membase + sunxi_pull_reg(pin_bias));
+		val = pinctrl_readl_reg(bank->membase + sunxi_pull_reg(pin_bias));
 		pull = (val >> sunxi_pull_offset(pin_bias)) & PULL_PINS_MASK;
 		*config = SUNXI_PINCFG_PACK(SUNXI_PINCFG_TYPE_PUD, pull);
 	        pr_debug("sunxi pconf get pin [%s] pull [%d]\n", 
 		         pin_get_name(pctl->pctl_dev, pin), pull);
 		break;
 	case SUNXI_PINCFG_TYPE_DAT:
-		val = readl(bank->membase + sunxi_data_reg(pin_bias));
+		val = pinctrl_readl_reg(bank->membase + sunxi_data_reg(pin_bias));
 		data = (val >> sunxi_data_offset(pin_bias)) & DATA_PINS_MASK;
 		*config = SUNXI_PINCFG_PACK(SUNXI_PINCFG_TYPE_DAT, data);
 	        pr_debug("sunxi pconf get pin [%s] data [%d]\n", 
 		         pin_get_name(pctl->pctl_dev, pin), data);
 		break;
 	case SUNXI_PINCFG_TYPE_FUNC:
-		val = readl(bank->membase + sunxi_mux_reg(pin_bias));
+		val = pinctrl_readl_reg(bank->membase + sunxi_mux_reg(pin_bias));
 		func = (val >> sunxi_mux_offset(pin_bias)) & MUX_PINS_MASK;
 		*config = SUNXI_PINCFG_PACK(SUNXI_PINCFG_TYPE_FUNC, func);
 	        pr_debug("sunxi pconf get pin [%s] func [%d]\n", 
@@ -379,11 +397,7 @@ static int sunxi_pinconf_set(struct pinctrl_dev *pctldev,
 	u16                  func;
 	u16                  pull;
 
-	if(pin < SUNXI_PL_BASE){
-		pin_bias = pin;
-	}else{
-		pin_bias = pin - SUNXI_PL_BASE;
-	}
+	pin_reset_bias(&pin_bias, pin);
 	if (IS_ERR_OR_NULL(bank)) {
 		pr_debug("invalid pin number [%d] to set pinconf\n", pin);
 		return -EINVAL;
@@ -391,41 +405,41 @@ static int sunxi_pinconf_set(struct pinctrl_dev *pctldev,
 	switch (SUNXI_PINCFG_UNPACK_TYPE(config)) {
 	case SUNXI_PINCFG_TYPE_DRV:
 		dlevel = SUNXI_PINCFG_UNPACK_VALUE(config);
-		val = readl(bank->membase + sunxi_dlevel_reg(pin_bias));
+		val = pinctrl_readl_reg(bank->membase + sunxi_dlevel_reg(pin_bias));
 	    mask = DLEVEL_PINS_MASK << sunxi_dlevel_offset(pin_bias);
 		val=(val & ~mask) | (dlevel << sunxi_dlevel_offset(pin_bias));
 		reg=bank->membase + sunxi_dlevel_reg(pin_bias);
-		sunxi_write_reg(val,reg);
+		pinctrl_write_reg(val,reg);
 		pr_debug("sunxi pconf set pin [%s] drive strength to [LEVEL%d]\n", 
 		         pin_get_name(pctl->pctl_dev, pin), dlevel);
 		break;
 	case SUNXI_PINCFG_TYPE_PUD:
 		pull = SUNXI_PINCFG_UNPACK_VALUE(config);
-		val = readl(bank->membase + sunxi_pull_reg(pin_bias));
+		val = pinctrl_readl_reg(bank->membase + sunxi_pull_reg(pin_bias));
 		mask = PULL_PINS_MASK << sunxi_pull_offset(pin_bias);
 		val=(val & ~mask) | (pull << sunxi_pull_offset(pin_bias));
 		reg=bank->membase + sunxi_pull_reg(pin_bias);
-		sunxi_write_reg(val,reg);
+		pinctrl_write_reg(val,reg);
 		pr_debug("sunxi pconf set pin [%s] pull to [%d]\n", 
 		        pin_get_name(pctl->pctl_dev, pin), pull);
 		break;
 	case SUNXI_PINCFG_TYPE_DAT:
 		data = SUNXI_PINCFG_UNPACK_VALUE(config);
-		val = readl(bank->membase + sunxi_data_reg(pin_bias));
+		val = pinctrl_readl_reg(bank->membase + sunxi_data_reg(pin_bias));
 		mask = DATA_PINS_MASK << sunxi_data_offset(pin_bias);
 		val=(val & ~mask) | (data << sunxi_data_offset(pin_bias));
 		reg=bank->membase + sunxi_data_reg(pin_bias);
-		sunxi_write_reg(val,reg);
+		pinctrl_write_reg(val,reg);
 		pr_debug("sunxi pconf set pin [%s] data to [%d]\n", 
 		        pin_get_name(pctl->pctl_dev, pin), data);
 		break;
 	case SUNXI_PINCFG_TYPE_FUNC:
 		func = SUNXI_PINCFG_UNPACK_VALUE(config);
-		val = readl(bank->membase + sunxi_mux_reg(pin_bias));
+		val = pinctrl_readl_reg(bank->membase + sunxi_mux_reg(pin_bias));
 	    mask = MUX_PINS_MASK << sunxi_mux_offset(pin_bias);
 		val=(val & ~mask) | (func << sunxi_mux_offset(pin_bias));
 		reg=bank->membase + sunxi_mux_reg(pin_bias);
-		sunxi_write_reg(val,reg);
+		pinctrl_write_reg(val,reg);
 		pr_debug("sunxi pconf set pin [%s] func to [%d]\n", 
 		         pin_get_name(pctl->pctl_dev, pin), func);
 		break;
@@ -496,23 +510,20 @@ static void sunxi_pmx_set(struct pinctrl_dev *pctldev,unsigned pin,
 	unsigned int           offset;
 	unsigned int           shift;
 	unsigned int  		 pin_bias;
-	if( pin < SUNXI_PL_BASE){
-		pin_bias = pin;
-	}else{
-		pin_bias = pin - SUNXI_PL_BASE;
-	}
+
+	pin_reset_bias(&pin_bias, pin);
 	if (IS_ERR_OR_NULL(bank)) {
 		pr_debug("invalid pin number [%d] to pmx set\n", pin);
 		return;
 	}
 	offset = sunxi_mux_reg(pin_bias);
 	shift  = sunxi_mux_offset(pin_bias);
-	value  = readl(bank->membase + offset);
+	value  = pinctrl_readl_reg(bank->membase + offset);
 	value &= ~(MUX_PINS_MASK << shift);
 	if(enable)
 		value |= (config << shift);
 	reg=bank->membase + offset;
-	sunxi_write_reg(value,reg);
+	pinctrl_write_reg(value,reg);
 	pr_debug("sunxi pmx set pin [%s] to %d\n", 
 	         pin_get_name(pctldev, pin), config);
 }
@@ -632,11 +643,7 @@ static int sunxi_pinctrl_gpio_get(struct gpio_chip *chip, unsigned offset)
 	int                    val;
 	unsigned int  		 pin_bias;
 	
-	if(offset < SUNXI_PL_BASE){
-		pin_bias = offset;
-	}else{
-		pin_bias = offset - SUNXI_PL_BASE;
-	}
+	pin_reset_bias(&pin_bias, offset);
 	
 	if (IS_ERR_OR_NULL(bank)) {
 		pr_debug("invalid pin number [%d] to get gpio data\n", offset);
@@ -644,7 +651,7 @@ static int sunxi_pinctrl_gpio_get(struct gpio_chip *chip, unsigned offset)
 	}
 	reg = sunxi_data_reg(pin_bias);
 	shift = sunxi_data_offset(pin_bias);
-	val = (readl(bank->membase + reg) >> shift) & DATA_PINS_MASK;
+	val = (pinctrl_readl_reg(bank->membase + reg) >> shift) & DATA_PINS_MASK;
 
 	return val;
 }
@@ -659,22 +666,17 @@ static void sunxi_pinctrl_gpio_set(struct gpio_chip *chip,
 	int			reg_val;
 	unsigned int		pin_bias;
 	
-	if(offset < SUNXI_PL_BASE){
-		pin_bias = offset;
-	}else{
-		pin_bias = offset - SUNXI_PL_BASE;
-	}
-	
+	pin_reset_bias(&pin_bias, offset);
 	if (IS_ERR_OR_NULL(bank)) {
 		pr_debug("invalid pin number [%d] to set gpio data\n", offset);
 		return;
 	}
 	reg = sunxi_data_reg(pin_bias);
 	shift = sunxi_data_offset(pin_bias);
-	reg_val = readl(bank->membase + reg);
+	reg_val = pinctrl_readl_reg(bank->membase + reg);
 	reg_val &= ~(DATA_PINS_MASK << shift);
 	reg_val |= ((value & DATA_PINS_MASK) << shift);
-	sunxi_write_reg(reg_val, bank->membase + reg);
+	pinctrl_write_reg(reg_val, bank->membase + reg);
 }
 
 static int sunxi_pinctrl_gpio_direction_output(struct gpio_chip *chip,
@@ -746,18 +748,14 @@ static int sunxi_pinctrl_gpio_set_debounce(struct gpio_chip *chip,
 	unsigned int		pin_bias;
 	unsigned int 		val_clk_per_scale;
 	unsigned int		val_clk_select;
-	if(offset < SUNXI_PL_BASE){
-		pin_bias = offset;
-	}else{
-		pin_bias = offset - SUNXI_PL_BASE;
-	}
-
+	
+	pin_reset_bias(&pin_bias, offset);
 	if (SUNXI_EINT_TYPE_NONE == bank->eint_type){
 		pr_debug("pin bank havn't eint pin type\n");
 		return -EINVAL;
 	}
 	reg = sunxi_eint_debounce_reg(pin_bias);
-	reg_val = readl(bank->membase + reg);
+	reg_val = pinctrl_readl_reg(bank->membase + reg);
 	val_clk_select = value & 1;
 	val_clk_per_scale= (value >> 4) & 0b111;
 
@@ -768,7 +766,7 @@ static int sunxi_pinctrl_gpio_set_debounce(struct gpio_chip *chip,
 	/* set debounce clock pre scale */
 	reg_val &= ~(7 << 4);
 	reg_val |= val_clk_per_scale << 4;
-	sunxi_write_reg(reg_val, bank->membase + reg);
+	pinctrl_write_reg(reg_val, bank->membase + reg);
 	//pr_debug("reg:   0x%8x     value: 0x%8x\n",bank->membase + reg,reg_val);
 	return ret;
 }
@@ -905,7 +903,7 @@ static int sunxi_pinctrl_build_state(struct platform_device *pdev)
 static int sunxi_pin_cfg_to_pin_map(struct platform_device *pdev,
                                     struct gpio_config *cfg, 
                                     struct pinctrl_map *map,
-                                    char  *device_name)
+                                    char  *device_name, char *state_name)
 {
 	int          num_configs;
 	unsigned long *configs;
@@ -949,12 +947,14 @@ static int sunxi_pin_cfg_to_pin_map(struct platform_device *pdev,
 	} else if (cfg->mul_sel == eint_mux) {
 		/* pin mux : eint */
 		function_name = "eint";
-	} else {
+	} else if (cfg->mul_sel == SUNXI_PIN_IO_DISABLE){
+		function_name = "io_disable";
+	} else{
 		/* default use mainkey(device name) as function name */
 		function_name = device_name;
 	}
 	map[0].dev_name      = device_name;
-	map[0].name          = PINCTRL_STATE_DEFAULT;
+	map[0].name          = state_name;
 	map[0].type          = PIN_MAP_TYPE_MUX_GROUP;
 	map[0].ctrl_dev_name = ctrl_name;
 	map[0].data.mux.function = function_name;
@@ -995,7 +995,7 @@ static int sunxi_pin_cfg_to_pin_map(struct platform_device *pdev,
 		 return 1;
 	}
 	map[1].dev_name      = device_name;
-	map[1].name          = PINCTRL_STATE_DEFAULT;
+	map[1].name          = state_name;
 	map[1].type          = PIN_MAP_TYPE_CONFIGS_GROUP;
 	map[1].ctrl_dev_name = ctrl_name;
 	map[1].data.configs.group_or_pin = pin_name;
@@ -1022,11 +1022,14 @@ static int sunxi_pinctrl_parse_pin_cfg(struct platform_device *pdev)
 		int 		map_index;
 		struct pinctrl_map *maps;
 		char           *device_name;
+		char		*mainkey_name_temp;
+		char		*state_name;
 		script_item_value_type_e type;
 		script_item_u   item;
 		
 		/* get main key name by index */
 		mainkey_name = script_get_main_key_name(mainkey_idx);
+		mainkey_name_temp = mainkey_name;
 		if (!mainkey_name) {
 			/* get mainkey name failed */
 			pr_debug("get mainkey [%s] name failed\n", mainkey_name);
@@ -1054,6 +1057,15 @@ static int sunxi_pinctrl_parse_pin_cfg(struct platform_device *pdev)
 			 */
 			device_name = mainkey_name;
 		}
+		/* try to get device state */
+		if(strstr(mainkey_name_temp, "_suspend")){
+			device_name = strsep(&mainkey_name_temp, "_");
+			state_name = PINCTRL_STATE_SUSPEND;
+			pr_debug("[%s]device_name %s state_name %s\n", __func__, device_name, state_name);
+			
+		}else{
+			state_name = PINCTRL_STATE_DEFAULT;
+		}
 		/* allocate pinctrl_map table,
 		 * max map table size = pin count * 2 : 
 		 * mux map and config map.
@@ -1067,9 +1079,9 @@ static int sunxi_pinctrl_parse_pin_cfg(struct platform_device *pdev)
 		for (pin_index = 0; pin_index < pin_count; pin_index++) {
 			/* convert struct sunxi_pin_cfg to struct pinctrl_map */
 			map_index += sunxi_pin_cfg_to_pin_map(pdev,
-			             	&(pin_list[pin_index].gpio), 
-			             	&(maps[map_index]), 
-			             	device_name);
+					&(pin_list[pin_index].gpio),
+					&(maps[map_index]),
+					device_name, state_name);
 		}
 		if (map_index) {
 			/* register maps to pinctrl */
@@ -1102,9 +1114,9 @@ static void sunxi_gpio_irq_mask(struct irq_data *irqd)
 	}
 	
 	/* disable hardware enable ctrl bit */
-	val = readl(bank->membase + sunxi_eint_ctrl_reg(pin_bias));
+	val = pinctrl_readl_reg(bank->membase + sunxi_eint_ctrl_reg(pin_bias));
 	mask = EINT_CTRL_MASK << sunxi_eint_ctrl_offset(pin_bias);
-	sunxi_write_reg((val & ~mask), bank->membase + sunxi_eint_ctrl_reg(pin_bias));
+	pinctrl_write_reg((val & ~mask), bank->membase + sunxi_eint_ctrl_reg(pin_bias));
 	/* disable bank enable bit */
 	clear_bit(pin_idx, &(bank->eint_en));
 	//pr_debug("sunxi mask [%s] irq[%d]\n",
@@ -1118,20 +1130,14 @@ static void sunxi_gpio_irq_unmask(struct irq_data *irqd)
 	unsigned int           pin     = bank->pin_base + pin_idx;
 	unsigned long          mask;
 	unsigned int  		 pin_bias;
-	if(pin < SUNXI_PL_BASE){
-		pin_bias = pin;
-	}else{
-		pin_bias = pin - SUNXI_PL_BASE;
-	}
-	
+
+	pin_reset_bias(&pin_bias, pin);
 	/* set hardware enable ctrl bit */
-	mask = readl(bank->membase + sunxi_eint_ctrl_reg(pin_bias));
+	mask = pinctrl_readl_reg(bank->membase + sunxi_eint_ctrl_reg(pin_bias));
 	mask |= EINT_CTRL_MASK << sunxi_eint_ctrl_offset(pin_bias);
-	sunxi_write_reg(mask, bank->membase + sunxi_eint_ctrl_reg(pin_bias));
+	pinctrl_write_reg(mask, bank->membase + sunxi_eint_ctrl_reg(pin_bias));
 	/* set bank enable bit */
 	set_bit(pin_idx, &(bank->eint_en));
-	//pr_debug("sunxi unmask [%s] irq[%d]\n",
-	//        pin_get_name(bank->pinctrl->pctl_dev, pin), irqd->irq);
 }
 
 static void sunxi_gpio_irq_enable(struct irq_data *irqd)
@@ -1141,22 +1147,16 @@ static void sunxi_gpio_irq_enable(struct irq_data *irqd)
 	unsigned int           pin     = bank->pin_base + pin_idx;
 	unsigned long          mask;
 	unsigned int  		 pin_bias;
-	if(pin < SUNXI_PL_BASE){
-		pin_bias = pin;
-	}else{
-		pin_bias = pin - SUNXI_PL_BASE;
-	}
 
+	pin_reset_bias(&pin_bias, pin);
 	/*clear pending bit */
-	sunxi_write_reg(1 << pin_idx, bank->membase + sunxi_eint_status_reg(pin_bias));
+	pinctrl_write_reg(1 << pin_idx, bank->membase + sunxi_eint_status_reg(pin_bias));
 	/* set hardware enable ctrl bit */
-	mask = readl(bank->membase + sunxi_eint_ctrl_reg(pin_bias));
+	mask = pinctrl_readl_reg(bank->membase + sunxi_eint_ctrl_reg(pin_bias));
 	mask |= EINT_CTRL_MASK << sunxi_eint_ctrl_offset(pin_bias);
-	sunxi_write_reg(mask, bank->membase + sunxi_eint_ctrl_reg(pin_bias));
+	pinctrl_write_reg(mask, bank->membase + sunxi_eint_ctrl_reg(pin_bias));
 	/* set bank enable bit */
 	set_bit(pin_idx, &(bank->eint_en));
-	//pr_debug("sunxi unmask [%s] irq[%d]\n",
-	//        pin_get_name(bank->pinctrl->pctl_dev, pin), irqd->irq);
 }
 
 
@@ -1166,12 +1166,9 @@ static void sunxi_gpio_irq_ack(struct irq_data *irqd)
 	unsigned int           pin_idx = irqd->hwirq;
 	unsigned int           pin     = bank->pin_base + pin_idx;
 	unsigned int  		 pin_bias;
-	if(pin < SUNXI_PL_BASE){
-		pin_bias = pin;
-	}else{
-		pin_bias = pin - SUNXI_PL_BASE;
-	}
-	sunxi_write_reg(1 << pin_idx, bank->membase + sunxi_eint_status_reg(pin_bias));
+
+	pin_reset_bias(&pin_bias, pin);
+	pinctrl_write_reg(1 << pin_idx, bank->membase + sunxi_eint_status_reg(pin_bias));
 }
 
 static int sunxi_gpio_irq_set_type(struct irq_data *irqd, unsigned int type)
@@ -1185,12 +1182,8 @@ static int sunxi_gpio_irq_set_type(struct irq_data *irqd, unsigned int type)
 	const char            *pin_name;
 	struct sunxi_desc_function *func;
 	unsigned int  		 pin_bias;
-	if(pin < SUNXI_PL_BASE){
-		pin_bias = pin;
-	}else{
-		pin_bias = pin - SUNXI_PL_BASE;
-	}
-	//pr_debug("sunxi set irq %d trigger type to %d\n", irqd->irq, type);
+
+	pin_reset_bias(&pin_bias, pin);
 	/* find pin name by number */
 	pin_name = pin_get_name(bank->pinctrl->pctl_dev, pin);
 	if (IS_ERR_OR_NULL(pin_name)) {
@@ -1235,20 +1228,18 @@ static int sunxi_gpio_irq_set_type(struct irq_data *irqd, unsigned int type)
 	/* config eint trigger type */
 	reg_offset = sunxi_eint_cfg_reg(pin_bias);
 	shift = sunxi_eint_cfg_offset(pin_bias);
-	value = readl(bank->membase + reg_offset);
+	value = pinctrl_readl_reg(bank->membase + reg_offset);
 	value &= ~(EINT_CFG_MASK << shift);
 	value |= trig_type << shift;
-	sunxi_write_reg(value, bank->membase + reg_offset);
+	pinctrl_write_reg(value, bank->membase + reg_offset);
 
 	/* config pin as eint functions */
 	reg_offset = sunxi_mux_reg(pin_bias);
 	shift = sunxi_mux_offset(pin_bias);
-	value = readl(bank->membase + reg_offset);
+	value = pinctrl_readl_reg(bank->membase + reg_offset);
 	value &= ~(MUX_PINS_MASK << shift);
 	value |= func->muxval << shift;
-	sunxi_write_reg(value, bank->membase + reg_offset);
-	//pr_debug("sunxi set pin [%s] to eint func\n", 
-	//        pin_get_name(bank->pinctrl->pctl_dev, pin));
+	pinctrl_write_reg(value, bank->membase + reg_offset);
 	
 	return 0;
 }
@@ -1269,19 +1260,19 @@ static irqreturn_t sunxi_gpio_irq_handler(int irq, void *dev_id)
 {
 	struct sunxi_pin_bank *bank  = dev_id;
 	unsigned long         reg_offset;
-	unsigned int          pin;
+	unsigned int          pin = 0;
 	unsigned              offset;
 	unsigned long         events;
 	unsigned int  		 pin_bias;
+	
 	if(bank->pin_base < SUNXI_PL_BASE){
 		pin_bias = bank->pin_base;
 	}else{
 		pin_bias = bank->pin_base - SUNXI_PL_BASE;
 	}
-	
 	/* read out eint status(pending) register value */
 	reg_offset = sunxi_eint_status_reg(pin_bias);
-	events = readl(bank->membase + reg_offset);
+	events = pinctrl_readl_reg(bank->membase + reg_offset);
 	
 	/* mask the non-enable eint */
 	events &= bank->eint_en;
@@ -1384,29 +1375,26 @@ static int sunxi_pin_configure_show(struct seq_file *s, void *d)
 	pctl = pinctrl_dev_get_drvdata(pctldev);
 	bank = sunxi_pin_to_bank(pctl, pin);
 	/*modified pin bias */
-	if(pin < SUNXI_PL_BASE){
-		pin_bias = pin;
-	}else{
-		pin_bias = pin - SUNXI_PL_BASE;
-	}
+
+	pin_reset_bias(&pin_bias, pin);
 	seq_printf(s, "printf register value...\n");
 	/*get pin func*/
-	value = readl(bank->membase + sunxi_mux_reg(pin_bias));
+	value = pinctrl_readl_reg(bank->membase + sunxi_mux_reg(pin_bias));
 	function = (value >> sunxi_mux_offset(pin_bias)) & MUX_PINS_MASK;
 	seq_printf(s, "pin[%s] function:  %x;                 register addr: 0x%p\n"
 		, sunxi_dbg_pinname,function,(bank->membase + sunxi_mux_reg(pin_bias)));
 	/*get pin data*/
-	value = readl(bank->membase + sunxi_data_reg(pin_bias));
+	value = pinctrl_readl_reg(bank->membase + sunxi_data_reg(pin_bias));
 	data = (value >> sunxi_data_offset(pin_bias)) & DATA_PINS_MASK;
 	seq_printf(s, "pin[%s] data:  %x(default value : 0);  register addr: 0x%p\n"
 		, sunxi_dbg_pinname,data,(bank->membase + sunxi_data_reg(pin_bias)));
 	/*get pin dlevel*/
-	value = readl(bank->membase + sunxi_dlevel_reg(pin_bias));
+	value = pinctrl_readl_reg(bank->membase + sunxi_dlevel_reg(pin_bias));
 	dlevel = (value >> sunxi_dlevel_offset(pin_bias)) & DLEVEL_PINS_MASK;
 	seq_printf(s, "pin[%s] dleve: %x(default value : 1);  register addr: 0x%p\n"
 		, sunxi_dbg_pinname,dlevel,(bank->membase + sunxi_dlevel_reg(pin_bias)));
 	/*get pin pull*/
-	value = readl(bank->membase + sunxi_pull_reg(pin_bias));
+	value = pinctrl_readl_reg(bank->membase + sunxi_pull_reg(pin_bias));
 	pull = (value >> sunxi_pull_offset(pin_bias)) & PULL_PINS_MASK;
 	seq_printf(s, "pin[%s] pull:  %x(default value : 0);  register addr: 0x%p\n"
 		, sunxi_dbg_pinname,pull,(bank->membase + sunxi_pull_reg(pin_bias)));
@@ -1415,7 +1403,7 @@ static int sunxi_pin_configure_show(struct seq_file *s, void *d)
 		/* config eint trigger type */
 		reg_offset = sunxi_eint_cfg_reg(pin_bias);
 		shift = sunxi_eint_cfg_offset(pin_bias);
-		value = readl(bank->membase + reg_offset);
+		value = pinctrl_readl_reg(bank->membase + reg_offset);
 		trigger =(value>>shift) &  EINT_CFG_MASK;
 		seq_printf(s, "\npin[%s] trigger:  %x;                  register addr: 0x%p\n"
 			, sunxi_dbg_pinname,trigger,(bank->membase + reg_offset));
@@ -1427,7 +1415,7 @@ static int sunxi_pin_configure_show(struct seq_file *s, void *d)
 		/*  eint mask  */
 		reg_offset = sunxi_eint_ctrl_reg(pin_bias);
 		shift = sunxi_eint_ctrl_offset(pin_bias);
-		value = readl(bank->membase + reg_offset);
+		value = pinctrl_readl_reg(bank->membase + reg_offset);
 		mask =(value>>shift) &  EINT_CTRL_MASK;
 		seq_printf(s, "pin[%s] mask :     %x(0:disable 1:enable);        register addr: 0x%p\n"
 			, sunxi_dbg_pinname,mask,(bank->membase + reg_offset));
@@ -1435,7 +1423,7 @@ static int sunxi_pin_configure_show(struct seq_file *s, void *d)
 		/*  eint pending  */
 		reg_offset = sunxi_eint_status_reg(pin_bias);
 		shift = sunxi_eint_status_offset(pin_bias);
-		value = readl(bank->membase + reg_offset);
+		value = pinctrl_readl_reg(bank->membase + reg_offset);
 		pending =(value>>shift) &  EINT_STATUS_MASK;
 		seq_printf(s, "pin[%s] pending :  %x(0:No Pending 1:Pending);    register addr: 0x%p\n"
 			, sunxi_dbg_pinname,pending,(bank->membase + reg_offset));
@@ -1467,35 +1455,35 @@ static int sunxi_pin_configure_write(struct file *file,
 	struct sunxi_pin_bank 	*bank;
 	unsigned int  		 	pin_bias;
 	
-	err=sscanf(user_buf, "%s %d %d %d %d %d", sunxi_dbg_pinname,
+	err=sscanf(user_buf, "%s %u %u %u %u %u", sunxi_dbg_pinname,
 		&function,&data,&dlevel,&pull,&trigger);
 	if(err != 6)
 		return -EINVAL;
-	if (0 <= function && 7>= function)
+	if (function <= 7)
 		sunxi_dbg_function = function;
 	else{
 		pr_debug("Input Parameters function error!\n");
 		return -EINVAL;
 	}
-	if (0 <= data && 1>= data)
+	if (data <= 1)
 		sunxi_dbg_data = data;
 	else{
 		pr_debug("Input Parameters data error!\n");
 		return -EINVAL;
 	}
-	if (0 <= pull && 3>= pull)
+	if (pull <= 3)
 		sunxi_dbg_pull = pull;
 	else{
 		pr_debug("Input Parameters pull error!\n");
 		return -EINVAL;
 	}
-	if (0 <= dlevel && 3>= dlevel)
+	if (dlevel <=3 )
 		sunxi_dbg_level = dlevel;
 	else{
 		pr_debug("Input Parameters dlevel error!\n");
 		return -EINVAL;
 	}
-	if (0 <= trigger && 7>= trigger)
+	if (trigger <= 7)
 		sunxi_dbg_trigger = trigger;
 	else{
 		pr_debug("Input Parameters trigger error!\n");
@@ -1511,46 +1499,43 @@ static int sunxi_pin_configure_write(struct file *file,
 	}
 	pctl = pinctrl_dev_get_drvdata(pctldev);
 	bank = sunxi_pin_to_bank(pctl, pin);
-	if(pin < SUNXI_PL_BASE){
-		pin_bias = pin;
-	}else{
-		pin_bias = pin - SUNXI_PL_BASE;
-	}
+
+	pin_reset_bias(&pin_bias, pin);
 	/* set function value*/
-	value = readl(bank->membase + sunxi_mux_reg(pin_bias));
+	value = pinctrl_readl_reg(bank->membase + sunxi_mux_reg(pin_bias));
 	mask = MUX_PINS_MASK << sunxi_mux_offset(pin_bias);
 	value=(value & ~mask) | (function << sunxi_mux_offset(pin_bias));
-	sunxi_write_reg(value,bank->membase + sunxi_mux_reg(pin_bias));
+	pinctrl_write_reg(value,bank->membase + sunxi_mux_reg(pin_bias));
 	pr_debug("pin[%s] set function:     %x;     register addr: 0x%p\n"
 		, sunxi_dbg_pinname,function,(bank->membase + sunxi_mux_reg(pin_bias)));
 	/* set data value*/
-	value = readl(bank->membase + sunxi_data_reg(pin_bias));
+	value = pinctrl_readl_reg(bank->membase + sunxi_data_reg(pin_bias));
 	mask = DATA_PINS_MASK << sunxi_data_offset(pin_bias);
 	value=(value & ~mask) | (data << sunxi_data_offset(pin_bias));
-	sunxi_write_reg(value,bank->membase + sunxi_data_reg(pin_bias));
+	pinctrl_write_reg(value,bank->membase + sunxi_data_reg(pin_bias));
 	pr_debug("pin[%s] set data:         %x;     register addr: 0x%p\n"
 		, sunxi_dbg_pinname,data,(bank->membase + sunxi_data_reg(pin_bias)));
 	/* set dlevel value*/
-	value = readl(bank->membase + sunxi_dlevel_reg(pin_bias));
+	value = pinctrl_readl_reg(bank->membase + sunxi_dlevel_reg(pin_bias));
 	mask = DLEVEL_PINS_MASK << sunxi_dlevel_offset(pin_bias);
 	value=(value & ~mask) | (dlevel << sunxi_dlevel_offset(pin_bias));
-	sunxi_write_reg(value,bank->membase + sunxi_dlevel_reg(pin_bias));
+	pinctrl_write_reg(value,bank->membase + sunxi_dlevel_reg(pin_bias));
 	pr_debug("pin[%s] set dleve:        %x;     register addr: 0x%p\n"
 		, sunxi_dbg_pinname,dlevel,(bank->membase + sunxi_dlevel_reg(pin_bias)));
 	/* set pull value*/
-	value = readl(bank->membase + sunxi_pull_reg(pin_bias));
+	value = pinctrl_readl_reg(bank->membase + sunxi_pull_reg(pin_bias));
 	mask = PULL_PINS_MASK << sunxi_pull_offset(pin_bias);
 	value=(value & ~mask) | (pull << sunxi_pull_offset(pin_bias));
-	sunxi_write_reg(value,bank->membase + sunxi_pull_reg(pin_bias));
+	pinctrl_write_reg(value,bank->membase + sunxi_pull_reg(pin_bias));
 	pr_debug("pin[%s] set pull:         %x;     register addr: 0x%p\n"
 		, sunxi_dbg_pinname,pull,(bank->membase + sunxi_pull_reg(pin_bias)));
 	if (bank->eint_type == SUNXI_EINT_TYPE_GPIO){
 		reg_offset = sunxi_eint_cfg_reg(pin_bias);
 		shift = sunxi_eint_cfg_offset(pin_bias);
-		value = readl(bank->membase + reg_offset);
+		value = pinctrl_readl_reg(bank->membase + reg_offset);
 		value &= ~(EINT_CFG_MASK << shift);
 		value |= trigger << shift;
-		sunxi_write_reg(value, bank->membase + reg_offset);
+		pinctrl_write_reg(value, bank->membase + reg_offset);
 		pr_debug("pin[%s] set trigger :     %x;     register addr: 0x%p\n"
 			, sunxi_dbg_pinname,trigger,(bank->membase + reg_offset));
 		return count;
@@ -1575,7 +1560,7 @@ static int sunxi_pin_write(struct file *file,
 	if (count > SUNXI_MAX_NAME_LEN)
 		return -EINVAL;
 
-	err = sscanf(user_buf, "%20s", sunxi_dbg_pinname);
+	err = sscanf(user_buf, "%19s", sunxi_dbg_pinname);
 	if (err != 1)
 		return -EINVAL;
 
@@ -1598,10 +1583,10 @@ static int sunxi_pin_function_write(struct file *file,
 	int						err;
 	unsigned int			function;
 	long unsigned int 		config;
-	err = sscanf(user_buf, "%s %d", sunxi_dbg_pinname,&function);
+	err = sscanf(user_buf, "%s %u", sunxi_dbg_pinname,&function);
 	if(err != 2 )
 		return err;
-	if (0 <= function && 7>= function)
+	if (function <= 7)
 		sunxi_dbg_function = function;
 	else{
 		pr_debug("Input Parameters function error!\n");
@@ -1628,10 +1613,10 @@ static int sunxi_pin_data_write(struct file *file,
 	int						err;
 	unsigned int			data;
 	long unsigned int 		config;
-	err = sscanf(user_buf, "%s %d", sunxi_dbg_pinname,&data);
+	err = sscanf(user_buf, "%s %u", sunxi_dbg_pinname,&data);
 	if(err != 2 )
 		return err;
-	if (0 <= data && 1>= data)
+	if (data <= 1)
 		sunxi_dbg_data = data;
 	else{
 		pr_debug("Input Parameters data error!\n");
@@ -1660,10 +1645,10 @@ static int sunxi_pin_dlevel_write(struct file *file,
 	int						err;
 	unsigned int			dlevel;
 	long unsigned int 		config;
-	err = sscanf(user_buf, "%s %d", sunxi_dbg_pinname,&dlevel);
+	err = sscanf(user_buf, "%s %u", sunxi_dbg_pinname,&dlevel);
 	if(err != 2 )
 		return err;
-	if (0 <= dlevel && 3>= dlevel)
+	if (dlevel <= 3)
 		sunxi_dbg_level = dlevel;
 	else{
 		pr_debug("Input Parameters dlevel error!\n");
@@ -1686,16 +1671,50 @@ static int sunxi_pin_pull_show(struct seq_file *s, void *d)
 
 }
 
+static int sunxi_platform_write(struct file *file,
+	const char __user *user_buf, size_t count, loff_t *ppos)
+{
+	return count;
+}
+
+static int sunxi_platform_show(struct seq_file *s, void *d)
+{
+
+#if defined(CONFIG_ARCH_SUN8IW1)
+	seq_printf(s, "SUN8IW1\n");
+#elif defined(CONFIG_ARCH_SUN8IW3)
+	seq_printf(s, "SUN8IW3\n");
+#elif defined(CONFIG_ARCH_SUN8IW5)
+	seq_printf(s, "SUN8IW5\n");
+#elif defined(CONFIG_ARCH_SUN8IW6)
+	seq_printf(s, "SUN8IW6\n");
+#elif defined(CONFIG_ARCH_SUN8IW7)
+	seq_printf(s, "SUN8IW7\n");
+#elif defined(CONFIG_ARCH_SUN8IW8)
+	seq_printf(s, "SUN8IW8\n");
+#elif defined(CONFIG_ARCH_SUN8IW9)
+	seq_printf(s, "SUN8IW9\n");
+#elif defined(CONFIG_ARCH_SUN9IW1)
+	seq_printf(s, "SUN9IW1\n");
+#else
+	seq_printf(s, "NOT MATCH\n");
+#endif
+
+	return 0;
+
+}
+
+
 static int sunxi_pin_pull_write(struct file *file,
 	const char __user *user_buf, size_t count, loff_t *ppos)
 {
 	int						err;
 	unsigned int			pull;
 	long unsigned int 		config;
-	err=sscanf(user_buf, "%s %d", sunxi_dbg_pinname,&pull);
+	err=sscanf(user_buf, "%s %u", sunxi_dbg_pinname,&pull);
 	if(err != 2 )
 		return err;
-	if (0 <= pull && 3>= pull)
+	if (pull <= 3)
 		sunxi_dbg_pull= pull;
 	else{
 		pr_debug("Input Parameters pull error!\n");
@@ -1706,8 +1725,8 @@ static int sunxi_pin_pull_write(struct file *file,
 	
 	return count;
 
-
 }
+
 static int sunxi_pin_configure_open(struct inode *inode, struct file *file)
 {
 	return single_open(file, sunxi_pin_configure_show, inode->i_private);
@@ -1732,6 +1751,11 @@ static int sunxi_pin_pull_open(struct inode *inode, struct file *file)
 {
 	return single_open(file, sunxi_pin_pull_show, inode->i_private);
 }
+static int sunxi_platform_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, sunxi_platform_show, inode->i_private);
+}
+
 
 static const struct file_operations sunxi_pin_configure_ops = {
 	.open		= sunxi_pin_configure_open,
@@ -1781,6 +1805,15 @@ static const struct file_operations sunxi_pin_pull_ops = {
 	.release	= single_release,
 	.owner		= THIS_MODULE,
 };
+static const struct file_operations sunxi_platform_ops = {
+	.open		= sunxi_platform_open,
+	.write		= sunxi_platform_write,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+	.owner		= THIS_MODULE,
+};
+
 
 static struct dentry *debugfs_root;
 static void sunxi_pinctrl_debugfs(void)
@@ -1803,6 +1836,8 @@ static void sunxi_pinctrl_debugfs(void)
 			    debugfs_root, NULL, &sunxi_pin_dlevel_ops);
 	debugfs_create_file("pull", (S_IRUGO | S_IWUSR | S_IWGRP),
 			    debugfs_root, NULL, &sunxi_pin_pull_ops);
+	debugfs_create_file("platform", (S_IRUGO | S_IWUSR | S_IWGRP),
+				debugfs_root, NULL, &sunxi_platform_ops);
 
 }
 #endif
@@ -1818,7 +1853,7 @@ static int sunxi_pinctrl_probe(struct platform_device *pdev)
 	int i, ret, last_pin;
 	struct clk *clk;
     	
-    	pr_warn("sunxi pinctrl probe enter\n");
+    	pr_debug("sunxi pinctrl probe enter\n");
     	if (0) {
     		volatile u32 dbg = 0x5a;
     		unsigned long flags;
@@ -1842,22 +1877,7 @@ static int sunxi_pinctrl_probe(struct platform_device *pdev)
 
 	pctl->desc = (struct sunxi_pinctrl_desc *)device->data;
 #else
-#if defined(CONFIG_ARCH_SUN8IW1)
-	pctl->desc = (struct sunxi_pinctrl_desc *)(&sun8i_w1_pinctrl_data);
-#endif
-#if defined(CONFIG_ARCH_SUN8IW3)
-	pctl->desc = (struct sunxi_pinctrl_desc *)(&sun8i_w3_pinctrl_data);
-#endif
-#if defined(CONFIG_ARCH_SUN8IW5)
-	pctl->desc = (struct sunxi_pinctrl_desc*)(&sun8i_w5_pinctrl_data);
-#endif
-#if defined(CONFIG_ARCH_SUN8IW6)
-	pctl->desc = (struct sunxi_pinctrl_desc*)(&sun8i_w6_pinctrl_data);
-#endif
-#if defined(CONFIG_ARCH_SUN9IW1)
-	pctl->desc = (struct sunxi_pinctrl_desc *)(&sun9i_w1_pinctrl_data);
-#endif
-
+	pctl->desc = (struct sunxi_pinctrl_desc *)(&sunxi_pinctrl_data);
 #endif /* CONFIG_OF */
 
 	ret = sunxi_pinctrl_build_state(pdev);

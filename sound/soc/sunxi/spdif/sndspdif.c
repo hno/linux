@@ -112,7 +112,7 @@ static int sndspdif_soc_probe(struct snd_soc_codec *codec)
 	
 	sndspdif = kzalloc(sizeof(struct sndspdif_priv), GFP_KERNEL);
 	if(sndspdif == NULL){
-		printk("%s,%d\n",__func__,__LINE__);
+		pr_err("%s,%d\n",__func__,__LINE__);
 		return -ENOMEM;
 	}	
 	
@@ -170,11 +170,11 @@ static int __init sndspdif_codec_init(void)
 
 	type = script_get_item("spdif0", "spdif_used", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-       printk("[SPDIF] type err!\n");
+       pr_err("[SPDIF]:%s,line:%d type err!\n", __func__, __LINE__);
     }
 
 	spdif_used = val.val;
-	printk("%s, line:%d, spdif_used:%d\n", __func__, __LINE__, spdif_used);
+	pr_debug("%s, line:%d, spdif_used:%d\n", __func__, __LINE__, spdif_used);
 	if (spdif_used) {
 		if((err = platform_device_register(&sndspdif_codec_device)) < 0)
 			return err;
@@ -182,7 +182,7 @@ static int __init sndspdif_codec_init(void)
 		if ((err = platform_driver_register(&sndspdif_codec_driver)) < 0)
 			return err;
 	} else {
-        printk("[SPDIF]sndspdif cannot find any using configuration for controllers, return directly!\n");
+        pr_err("[SPDIF]sndspdif cannot find any using configuration for controllers, return directly!\n");
         return 0;
     }
 	

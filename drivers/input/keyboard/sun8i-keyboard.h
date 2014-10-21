@@ -4,7 +4,11 @@
 #ifdef CONFIG_AW_FPGA_V4_PLATFORM
 #define SW_INT_IRQNO_LRADC      (11 + 32)
 #else
+#ifdef CONFIG_ARCH_SUN8IW6P1
+#define SW_INT_IRQNO_LRADC      (74)
+#else
 #define SW_INT_IRQNO_LRADC      (62)
+#endif
 #endif
 
 #define INPUT_DEV_NAME          ("sunxi-keyboard")
@@ -13,6 +17,8 @@
  
 #ifdef CONFIG_ARCH_SUN9IW1P1
 #define KEY_BASSADDRESS         (0xf6001800)
+#elif defined(CONFIG_ARCH_SUN8IW6P1)
+#define KEY_BASSADDRESS         (0xf1f03c00)
 #else
 #define KEY_BASSADDRESS         (0xf1c22800)
 #endif
@@ -77,7 +83,7 @@ static unsigned int sunxi_scankeycodes[KEY_MAX_CNT] = {
 	[2 ] = KEY_MENU,
 	[3 ] = KEY_ENTER,
 	[4 ] = KEY_HOME,
-	[5 ] = KEY_VOLUMEUP,
+	[5 ] = KEY_RESERVED,
 	[6 ] = KEY_RESERVED,
 	[7 ] = KEY_RESERVED,
 	[8 ] = KEY_RESERVED,
@@ -125,7 +131,7 @@ static unsigned int sunxi_scankeycodes[KEY_MAX_CNT] = {
 	[2 ] = KEY_MENU,
 	[3 ] = KEY_ENTER,
 	[4 ] = KEY_HOME,
-	[5 ] = KEY_VOLUMEUP,
+	[5 ] = KEY_RESERVED,
 	[6 ] = KEY_RESERVED,
 	[7 ] = KEY_RESERVED,
 	[8 ] = KEY_RESERVED,

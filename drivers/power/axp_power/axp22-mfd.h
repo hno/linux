@@ -104,10 +104,10 @@ static int  axp22_init_chip(struct axp_dev *chip)
 	/*read chip id*/	//???which int should enable must check with SD4
 	err =  __axp_read(&devaddr, chip->client, AXP22_IC_TYPE, &chip_id, false);
 	if (err) {
-	    printk("[AXP22-MFD] try to read chip id failed!\n");
+		printk("[AXP22-MFD] try to read chip id failed!\n");
 		return err;
 	}
-	dev_info(chip->dev, "AXP (CHIP ID: 0x%02x) detected\n", chip_id);
+
 	if(((chip_id & 0xc0) == 0x00) && (((chip_id & 0x0f) == 0x06) ||\
 	((chip_id & 0x0f) == 0x07) || ((chip_id & 0xff) == 0x42)))
 		chip->type = AXP22;
@@ -117,7 +117,7 @@ static int  axp22_init_chip(struct axp_dev *chip)
 	/*enable irqs and clear*/
 	err =  __axp_writes(&devaddr, chip->client, AXP22_INTEN1, 19, v, false);
 	if (err) {
-	    printk("[AXP22-MFD] try to clear irq failed!\n");
+		printk("[AXP22-MFD] try to clear irq failed!\n");
 		return err;
 	}
 
@@ -162,10 +162,11 @@ static ssize_t axp22_noedelay_show(struct device *dev,
 	uint8_t val;
 
 	axp_read(dev,AXP22_OFF_CTL,&val);
-	if( (val & 0x03) == 0)
-		return sprintf(buf,"%d\n",128);
+	val &= 0x03;
+	if( val < 0x02 )
+		return sprintf(buf,"%d\n",(val + 1) * 8);
 	else
-		return sprintf(buf,"%d\n",(val & 0x03) * 1000);
+		return sprintf(buf,"%d\n",(val -1) * 32);
 }
 
 static ssize_t axp22_noedelay_store(struct device *dev,
@@ -175,13 +176,16 @@ static ssize_t axp22_noedelay_store(struct device *dev,
 	uint8_t val;
 
 	tmp = simple_strtoul(buf, NULL, 10);
-	if (tmp < 1000)
-		tmp = 128;
-	if (tmp > 3000)
-		tmp = 3000;
+	if (tmp < 8)
+		tmp = 8;
+	if (tmp > 64)
+		tmp = 64;
 	axp_read(dev,AXP22_OFF_CTL,&val);
 	val &= 0xfc;
-	val |= ((tmp) / 1000);
+	if (tmp < 32)
+		val |= ((tmp / 8) - 1);
+	else
+		val |= ((tmp / 32) + 1);
 	axp_write(dev,AXP22_OFF_CTL,val);
 	return count;
 }
@@ -392,10 +396,14 @@ static ssize_t axp22_reg_store(struct device *dev,
 static ssize_t axp22_regs_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	uint8_t val[2];
+	uint8_t val[20];
+	int count = 0, i = 0;
 
-	axp_reads(dev,axp_reg_addr,2,val);
-	return sprintf(buf,"REG[0x%x]=0x%x,REG[0x%x]=0x%x\n",axp_reg_addr,val[0],axp_reg_addr+1,val[1]);
+	axp_reads(dev,axp_reg_addr,20,val);
+	for (i=0;i<20;i++) {
+		count += sprintf(buf+count,"REG[0x%x]=0x%x\n",axp_reg_addr+i,val[i]);
+	}
+	return count;
 }
 
 static ssize_t axp22_regs_store(struct device *dev,

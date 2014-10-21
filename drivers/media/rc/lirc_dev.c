@@ -212,7 +212,7 @@ int lirc_register_driver(struct lirc_driver *d)
 	int err;
 
 	if (!d) {
-		printk(KERN_ERR "lirc_dev: lirc_register_driver: "
+		pr_err("lirc_dev: lirc_register_driver: "
 		       "driver pointer must be not NULL!\n");
 		err = -EBADRQC;
 		goto out;
@@ -381,14 +381,14 @@ int lirc_unregister_driver(int minor)
 	struct cdev *cdev;
 
 	if (minor < 0 || minor >= MAX_IRCTL_DEVICES) {
-		printk(KERN_ERR "lirc_dev: %s: minor (%d) must be between "
+		pr_err("lirc_dev: %s: minor (%d) must be between "
 		       "0 and %d!\n", __func__, minor, MAX_IRCTL_DEVICES - 1);
 		return -EBADRQC;
 	}
 
 	ir = irctls[minor];
 	if (!ir) {
-		printk(KERN_ERR "lirc_dev: %s: failed to get irctl struct "
+		pr_err("lirc_dev: %s: failed to get irctl struct "
 		       "for minor %d!\n", __func__, minor);
 		return -ENOENT;
 	}
@@ -398,7 +398,7 @@ int lirc_unregister_driver(int minor)
 	mutex_lock(&lirc_dev_lock);
 
 	if (ir->d.minor != minor) {
-		printk(KERN_ERR "lirc_dev: %s: minor (%d) device not "
+		pr_err("lirc_dev: %s: minor (%d) device not "
 		       "registered!\n", __func__, minor);
 		mutex_unlock(&lirc_dev_lock);
 		return -ENOENT;
@@ -441,7 +441,7 @@ int lirc_dev_fop_open(struct inode *inode, struct file *file)
 	int retval = 0;
 
 	if (iminor(inode) >= MAX_IRCTL_DEVICES) {
-		printk(KERN_WARNING "lirc_dev [%d]: open result = -ENODEV\n",
+		pr_warn("lirc_dev [%d]: open result = -ENODEV\n",
 		       iminor(inode));
 		return -ENODEV;
 	}
@@ -501,7 +501,7 @@ int lirc_dev_fop_close(struct inode *inode, struct file *file)
 	struct cdev *cdev;
 
 	if (!ir) {
-		printk(KERN_ERR "%s: called with invalid irctl\n", __func__);
+		pr_err("%s: called with invalid irctl\n", __func__);
 		return -EINVAL;
 	}
 
@@ -535,7 +535,7 @@ unsigned int lirc_dev_fop_poll(struct file *file, poll_table *wait)
 	unsigned int ret;
 
 	if (!ir) {
-		printk(KERN_ERR "%s: called with invalid irctl\n", __func__);
+		pr_err("%s: called with invalid irctl\n", __func__);
 		return POLLERR;
 	}
 
@@ -568,7 +568,7 @@ long lirc_dev_fop_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	struct irctl *ir = irctls[iminor(file->f_dentry->d_inode)];
 
 	if (!ir) {
-		printk(KERN_ERR "lirc_dev: %s: no irctl found!\n", __func__);
+		pr_err("lirc_dev: %s: no irctl found!\n", __func__);
 		return -ENODEV;
 	}
 
@@ -656,7 +656,7 @@ ssize_t lirc_dev_fop_read(struct file *file,
 	DECLARE_WAITQUEUE(wait, current);
 
 	if (!ir) {
-		printk(KERN_ERR "%s: called with invalid irctl\n", __func__);
+		pr_err("%s: called with invalid irctl\n", __func__);
 		return -ENODEV;
 	}
 
@@ -772,7 +772,7 @@ ssize_t lirc_dev_fop_write(struct file *file, const char __user *buffer,
 	struct irctl *ir = irctls[iminor(file->f_dentry->d_inode)];
 
 	if (!ir) {
-		printk(KERN_ERR "%s: called with invalid irctl\n", __func__);
+		pr_err("%s: called with invalid irctl\n", __func__);
 		return -ENODEV;
 	}
 
@@ -793,7 +793,7 @@ static int __init lirc_dev_init(void)
 	lirc_class = class_create(THIS_MODULE, "lirc");
 	if (IS_ERR(lirc_class)) {
 		retval = PTR_ERR(lirc_class);
-		printk(KERN_ERR "lirc_dev: class_create failed\n");
+		pr_err("lirc_dev: class_create failed\n");
 		goto error;
 	}
 
@@ -801,12 +801,12 @@ static int __init lirc_dev_init(void)
 				     IRCTL_DEV_NAME);
 	if (retval) {
 		class_destroy(lirc_class);
-		printk(KERN_ERR "lirc_dev: alloc_chrdev_region failed\n");
+		pr_err("lirc_dev: alloc_chrdev_region failed\n");
 		goto error;
 	}
 
 
-	printk(KERN_INFO "lirc_dev: IR Remote Control driver registered, "
+	pr_debug("lirc_dev: IR Remote Control driver registered, "
 	       "major %d \n", MAJOR(lirc_base_dev));
 
 error:
@@ -819,7 +819,7 @@ static void __exit lirc_dev_exit(void)
 {
 	class_destroy(lirc_class);
 	unregister_chrdev_region(lirc_base_dev, MAX_IRCTL_DEVICES);
-	printk(KERN_INFO "lirc_dev: module unloaded\n");
+	pr_debug("lirc_dev: module unloaded\n");
 }
 
 module_init(lirc_dev_init);

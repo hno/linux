@@ -18,10 +18,19 @@
  *
  ******************************************************************************/
 #define _RTL8188E_XMIT_C_
-
+#include <drv_conf.h>
+#include <osdep_service.h>
 #include <drv_types.h>
+#include <rtw_byteorder.h>
+#include <wifi.h>
+#include <osdep_intf.h>
+#include <circ_buf.h>
+#include <usb_ops.h>
 #include <rtl8188e_hal.h>
 
+#if defined (PLATFORM_LINUX) && defined (PLATFORM_WINDOWS)
+#error "Shall be Linux or Windows, but not both!\n"
+#endif
 
 s32	rtl8188eu_init_xmit_priv(_adapter *padapter)
 {
@@ -46,11 +55,33 @@ void	rtl8188eu_free_xmit_priv(_adapter *padapter)
 
 u8 urb_zero_packet_chk(_adapter *padapter, int sz)
 {
+#if 1
 	u8 blnSetTxDescOffset;
 	HAL_DATA_TYPE	*pHalData	= GET_HAL_DATA(padapter);
 	blnSetTxDescOffset = (((sz + TXDESC_SIZE) %  pHalData->UsbBulkOutSize) ==0)?1:0;
+	
+#else
 
+	struct dvobj_priv	*pdvobj = adapter_to_dvobj(padapter);	
+	if ( pdvobj->ishighspeed )
+	{
+		if ( ( (sz + TXDESC_SIZE) % 512 ) == 0 ) {
+			blnSetTxDescOffset = 1;
+		} else {
+			blnSetTxDescOffset = 0;
+		}
+	}
+	else
+	{
+		if ( ( (sz + TXDESC_SIZE) % 64 ) == 0 ) 	{
+			blnSetTxDescOffset = 1;
+		} else {
+			blnSetTxDescOffset = 0;
+		}
+	}
+#endif	
 	return blnSetTxDescOffset;
+	
 }
 
 void rtl8188eu_cal_txdesc_chksum(struct tx_desc	*ptxdesc)
@@ -180,13 +211,12 @@ void fill_txdesc_vcs(struct pkt_attrib *pattrib, u32 *pdw)
 	}
 
 	if(pattrib->vcs_mode) {
-#ifndef CONFIG_DBG_DONT_SET_HW_RTS_EN
 		*pdw |= cpu_to_le32(HW_RTS_EN);
-#endif
+
 		// Set RTS BW
 		if(pattrib->ht_en)
 		{
-			*pdw |= (pattrib->bwmode&CHANNEL_WIDTH_40)?	cpu_to_le32(BIT(27)):0;
+			*pdw |= (pattrib->bwmode&HT_CHANNEL_WIDTH_40)?	cpu_to_le32(BIT(27)):0;
 
 			if(pattrib->ch_offset == HAL_PRIME_CHNL_OFFSET_LOWER)
 				*pdw |= cpu_to_le32((0x01<<28)&0x30000000);
@@ -206,7 +236,7 @@ void fill_txdesc_phy(struct pkt_attrib *pattrib, u32 *pdw)
 
 	if(pattrib->ht_en)
 	{
-		*pdw |= (pattrib->bwmode&CHANNEL_WIDTH_40)?	cpu_to_le32(BIT(25)):0;
+		*pdw |= (pattrib->bwmode&HT_CHANNEL_WIDTH_40)?	cpu_to_le32(BIT(25)):0;
 
 		if(pattrib->ch_offset == HAL_PRIME_CHNL_OFFSET_LOWER)
 			*pdw |= cpu_to_le32((0x01<<DATA_SC_SHT)&0x003f0000);		
@@ -224,7 +254,6 @@ static s32 update_txdesc(struct xmit_frame *pxmitframe, u8 *pmem, s32 sz ,u8 bag
 {	
       int	pull=0;
 	uint	qsel;
-	bool sgi = 0;
 	u8 data_rate,pwr_status,offset;
 	_adapter			*padapter = pxmitframe->padapter;
 	struct mlme_priv	*pmlmepriv = &padapter->mlmepriv;		
@@ -234,16 +263,22 @@ static s32 update_txdesc(struct xmit_frame *pxmitframe, u8 *pmem, s32 sz ,u8 bag
 	struct tx_desc	*ptxdesc = (struct tx_desc *)pmem;
 	struct mlme_ext_priv	*pmlmeext = &padapter->mlmeextpriv;
 	struct mlme_ext_info	*pmlmeinfo = &(pmlmeext->mlmext_info);
-	sint	bmcst = IS_MCAST(pattrib->ra);	
+	sint	bmcst = IS_MCAST(pattrib->ra);
+	
 #ifdef CONFIG_P2P
 	struct wifidirect_info*	pwdinfo = &padapter->wdinfo;
 #endif //CONFIG_P2P
 
+#ifdef CONFIG_CONCURRENT_MODE
+	if(rtw_buddy_adapter_up(padapter) && padapter->adapter_type > PRIMARY_ADAPTER)	
+		pHalData = GET_HAL_DATA(padapter->pbuddy_adapter);				
+#endif //CONFIG_CONCURRENT_MODE
+
 #ifndef CONFIG_USE_USB_BUFFER_ALLOC_TX 
 if (padapter->registrypriv.mp_mode == 0)
 {
-	//if((!bagg_pkt) &&(urb_zero_packet_chk(padapter, sz)==0))//(sz %512) != 0
-	if((PACKET_OFFSET_SZ != 0) && (!bagg_pkt) &&(rtw_usb_bulk_size_boundary(padapter,TXDESC_SIZE+sz)==_FALSE))	
+	if((!bagg_pkt) &&(urb_zero_packet_chk(padapter, sz)==0))//(sz %512) != 0
+	//if((!bagg_pkt) &&(rtw_usb_bulk_size_boundary(padapter,TXDESC_SIZE+sz)==_FALSE))	
 	{
 		ptxdesc = (struct tx_desc *)(pmem+PACKET_OFFSET_SZ);
 		//DBG_8192C("==> non-agg-pkt,shift pointer...\n");
@@ -274,7 +309,7 @@ if (padapter->registrypriv.mp_mode == 0)
 #ifndef CONFIG_USE_USB_BUFFER_ALLOC_TX
 if (padapter->registrypriv.mp_mode == 0)
 {
-	if((PACKET_OFFSET_SZ != 0) && (!bagg_pkt)) {
+	if(!bagg_pkt){
 		if((pull) && (pxmitframe->pkt_offset>0)) {	
 			pxmitframe->pkt_offset = pxmitframe->pkt_offset -1;		
 		}
@@ -351,36 +386,39 @@ if (padapter->registrypriv.mp_mode == 0)
 			ptxdesc->txdw4 |= cpu_to_le32(0x00000008);//RTS Rate=24M
 			ptxdesc->txdw5 |= cpu_to_le32(0x0001ff00);//DATA/RTS  Rate FB LMT			
 
-#if (RATE_ADAPTIVE_SUPPORT == 1)
-			/* driver-based RA*/
-			if (pattrib->ht_en)
-				sgi = ODM_RA_GetShortGI_8188E(&pHalData->odmpriv,pattrib->mac_id);
+	#if (RATE_ADAPTIVE_SUPPORT == 1)		
+			if(pattrib->ht_en){
+				if( ODM_RA_GetShortGI_8188E(&pHalData->odmpriv,pattrib->mac_id))
+					ptxdesc->txdw5 |= cpu_to_le32(SGI);//SGI
+			}
+				
+			data_rate =ODM_RA_GetDecisionRate_8188E(&pHalData->odmpriv,pattrib->mac_id);			
+			ptxdesc->txdw5 |= cpu_to_le32(data_rate & 0x3F);
 
-			data_rate = ODM_RA_GetDecisionRate_8188E(&pHalData->odmpriv,pattrib->mac_id);
+               	//for debug
+               	#if 0
+			if(padapter->fix_rate!= 0xFF){
+				ptxdesc->datarate = padapter->fix_rate;
+			}
+			#endif
 
 			#if (POWER_TRAINING_ACTIVE==1)
 			pwr_status = ODM_RA_GetHwPwrStatus_8188E(&pHalData->odmpriv,pattrib->mac_id);
-			ptxdesc->txdw4 |= cpu_to_le32((pwr_status & 0x7) << PWR_STATUS_SHT);
-			#endif
-#else//if (RATE_ADAPTIVE_SUPPORT == 1)
-			/* FW-based RA, TODO */
+			ptxdesc->txdw4 |=cpu_to_le32( (pwr_status & 0x7)<< PWR_STATUS_SHT);
+			#endif //(POWER_TRAINING_ACTIVE==1)
+	#else//if (RATE_ADAPTIVE_SUPPORT == 1)	
+				
 			if(pattrib->ht_en)
-				sgi = 1;
+				ptxdesc->txdw5 |= cpu_to_le32(SGI);//SGI
 
-			data_rate = 0x13; //default rate: MCS7
-#endif//if (RATE_ADAPTIVE_SUPPORT == 1)
-
-			if (padapter->fix_rate != 0xFF) {
-				data_rate = padapter->fix_rate;
-				ptxdesc->txdw4 |= cpu_to_le32(USERATE);
-				ptxdesc->txdw4 |= cpu_to_le32(DISDATAFB);
-				sgi = (padapter->fix_rate & BIT(7))?1:0;
+			data_rate = 0x13; //default rate: MCS7									
+			 if(padapter->fix_rate!= 0xFF){//rate control by iwpriv
+				data_rate = padapter->fix_rate;				
 			}
+			ptxdesc->txdw5 |= cpu_to_le32(data_rate & 0x3F); 
 
-			if (sgi)
-				ptxdesc->txdw5 |= cpu_to_le32(SGI);
+	#endif//if (RATE_ADAPTIVE_SUPPORT == 1)				
 
-			ptxdesc->txdw5 |= cpu_to_le32(data_rate & 0x3F);
 		}
 		else
 		{
@@ -463,7 +501,7 @@ if (padapter->registrypriv.mp_mode == 0)
 	else if(((pxmitframe->frame_tag&0x0f) == MP_FRAMETAG) &&
 			(padapter->registrypriv.mp_mode == 1))
 	{
-		fill_txdesc_for_mp(padapter, (u8 *)ptxdesc);
+		fill_txdesc_for_mp(padapter, ptxdesc);
 	}
 #endif
 	else
@@ -503,7 +541,7 @@ if (padapter->registrypriv.mp_mode == 0)
 	}
 
 #ifdef CONFIG_HW_ANTENNA_DIVERSITY //CONFIG_ANTENNA_DIVERSITY 
-	ODM_SetTxAntByTxInfo(&pHalData->odmpriv, pmem, pattrib->mac_id);
+	ODM_SetTxAntByTxInfo_88E(&pHalData->odmpriv, pmem, pattrib->mac_id);
 #endif
 
 	rtl8188eu_cal_txdesc_chksum(ptxdesc);
@@ -647,7 +685,6 @@ static s32 rtw_dump_xframe(_adapter *padapter, struct xmit_frame *pxmitframe)
 		pxmitbuf->ff_hwaddr = ff_hwaddr;
 		enqueue_pending_xmitbuf(pxmitpriv, pxmitbuf);
 #else
-	//	DBG_871X("%s:  rtw_write_port size =%d\n", __func__,w_sz);
 		inner_ret = rtw_write_port(padapter, ff_hwaddr, w_sz, (unsigned char*)pxmitbuf);
 #endif
 
@@ -770,15 +807,20 @@ s32 rtl8188eu_xmitframe_complete(_adapter *padapter, struct xmit_priv *pxmitpriv
 
 		pxmitframe->agg_num = 1; // alloc xmitframe should assign to 1.
 		#ifdef CONFIG_TX_EARLY_MODE
-		pxmitframe->pkt_offset = (PACKET_OFFSET_SZ/8)+1; // 2; // first frame of aggregation, reserve one offset for EM info ,another for usb bulk-out block check
+		pxmitframe->pkt_offset = 2; // first frame of aggregation, reserve one offset for EM info ,another for usb bulk-out block check
 		#else
-		pxmitframe->pkt_offset = (PACKET_OFFSET_SZ/8); // 1; // first frame of aggregation, reserve offset
+		pxmitframe->pkt_offset = 1; // first frame of aggregation, reserve offset
 		#endif
 
-		if (rtw_xmitframe_coalesce(padapter, pxmitframe->pkt, pxmitframe) == _FALSE) {
-			DBG_871X("%s coalesce 1st xmitframe failed \n",__FUNCTION__);
+#ifdef IDEA_CONDITION
+		rtw_xmitframe_coalesce(padapter, pxmitframe->pkt, pxmitframe);
+#else
+		res = rtw_xmitframe_coalesce(padapter, pxmitframe->pkt, pxmitframe);
+		if (res == _FALSE) {
+//			rtw_free_xmitframe(pxmitpriv, pxmitframe);
 			continue;
 		}
+#endif
 
 		// always return ndis_packet after rtw_xmitframe_coalesce
 		rtw_os_xmit_complete(padapter, pxmitframe);
@@ -803,18 +845,7 @@ s32 rtl8188eu_xmitframe_complete(_adapter *padapter, struct xmit_priv *pxmitpriv
 	}
 
 	// dequeue same priority packet from station tx queue
-	//psta = pfirstframe->attrib.psta;
-	psta = rtw_get_stainfo(&padapter->stapriv, pfirstframe->attrib.ra);
-	if(pfirstframe->attrib.psta != psta){
-		DBG_871X("%s, pattrib->psta(%p) != psta(%p)\n", __func__, pfirstframe->attrib.psta, psta);		
-	}
-	if (psta == NULL) {		
-		DBG_8192C("rtw_xmit_classifier: psta == NULL\n");		
-	}
-	if(!(psta->state &_FW_LINKED)){
-		DBG_871X("%s, psta->state(0x%x) != _FW_LINKED\n", __func__, psta->state);		
-	}
-	
+	psta = pfirstframe->attrib.psta;
 	switch (pfirstframe->attrib.priority) {
 		case 1:
 		case 2:
@@ -843,6 +874,7 @@ s32 rtl8188eu_xmitframe_complete(_adapter *padapter, struct xmit_priv *pxmitpriv
 	}
 //DBG_8192C("==> pkt_no=%d,pkt_len=%d,len=%d,RND8_LEN=%d,pkt_offset=0x%02x\n",
 	//pxmitframe->agg_num,pxmitframe->attrib.last_txcmdsz,len,pbuf,pxmitframe->pkt_offset );
+
 
 	_enter_critical_bh(&pxmitpriv->lock, &irqL);
 
@@ -899,12 +931,16 @@ s32 rtl8188eu_xmitframe_complete(_adapter *padapter, struct xmit_priv *pxmitpriv
 //		pxmitframe->pxmitbuf = pxmitbuf;
 		pxmitframe->buf_addr = pxmitbuf->pbuf + pbuf;
 	
-		if (rtw_xmitframe_coalesce(padapter, pxmitframe->pkt, pxmitframe) == _FALSE) {
+#ifdef IDEA_CONDITION
+		rtw_xmitframe_coalesce(padapter, pxmitframe->pkt, pxmitframe);
+#else
+		res = rtw_xmitframe_coalesce(padapter, pxmitframe->pkt, pxmitframe);
+		if (res == _FALSE) {
 			DBG_871X("%s coalesce failed \n",__FUNCTION__);
 			rtw_free_xmitframe(pxmitpriv, pxmitframe);
 			continue;
 		}
-
+#endif
 		//DBG_8192C("==> pxmitframe->attrib.priority:%d\n",pxmitframe->attrib.priority);
 		// always return ndis_packet after rtw_xmitframe_coalesce
 		rtw_os_xmit_complete(padapter, pxmitframe);
@@ -954,7 +990,7 @@ s32 rtl8188eu_xmitframe_complete(_adapter *padapter, struct xmit_priv *pxmitpriv
 #endif //CONFIG_80211N_HT
 #ifndef CONFIG_USE_USB_BUFFER_ALLOC_TX
 	//3 3. update first frame txdesc
-	if ((PACKET_OFFSET_SZ != 0) && ((pbuf_tail % bulkSize) == 0)) {
+	if ((pbuf_tail % bulkSize) == 0) {
 		// remove pkt_offset
 		pbuf_tail -= PACKET_OFFSET_SZ;
 		pfirstframe->buf_addr += PACKET_OFFSET_SZ;
@@ -1102,6 +1138,10 @@ static s32 pre_xmitframe(_adapter *padapter, struct xmit_frame *pxmitframe)
 	struct xmit_priv *pxmitpriv = &padapter->xmitpriv;
 	struct pkt_attrib *pattrib = &pxmitframe->attrib;
 	struct mlme_priv *pmlmepriv = &padapter->mlmepriv;
+#ifdef CONFIG_CONCURRENT_MODE	
+	PADAPTER pbuddy_adapter = padapter->pbuddy_adapter;
+	struct mlme_priv *pbuddy_mlmepriv = &(pbuddy_adapter->mlmepriv);	
+#endif
 	
 	_enter_critical_bh(&pxmitpriv->lock, &irqL);
 
@@ -1118,7 +1158,7 @@ static s32 pre_xmitframe(_adapter *padapter, struct xmit_frame *pxmitframe)
 		goto enqueue;
 
 #ifdef CONFIG_CONCURRENT_MODE	
-	if (check_buddy_fwstate(padapter, _FW_UNDER_SURVEY|_FW_UNDER_LINKING) == _TRUE)
+	if (check_fwstate(pbuddy_mlmepriv, _FW_UNDER_SURVEY|_FW_UNDER_LINKING) == _TRUE)
 		goto enqueue;
 #endif
 
@@ -1147,6 +1187,8 @@ enqueue:
 		RT_TRACE(_module_xmit_osdep_c_, _drv_err_, ("pre_xmitframe: enqueue xmitframe fail\n"));
 		rtw_free_xmitframe(pxmitpriv, pxmitframe);
 
+		// Trick, make the statistics correct
+		pxmitpriv->tx_pkts--;
 		pxmitpriv->tx_drop++;
 		return _TRUE;
 	}
@@ -1178,6 +1220,8 @@ s32	rtl8188eu_hal_xmitframe_enqueue(_adapter *padapter, struct xmit_frame *pxmit
 	{
 		rtw_free_xmitframe(pxmitpriv, pxmitframe);
 
+		// Trick, make the statistics correct
+		pxmitpriv->tx_pkts--;
 		pxmitpriv->tx_drop++;					
 	}
 	else
@@ -1201,7 +1245,7 @@ static void rtl8188eu_hostap_mgnt_xmit_cb(struct urb *urb)
 
 	//DBG_8192C("%s\n", __FUNCTION__);
 
-	rtw_skb_free(skb);
+	dev_kfree_skb_any(skb);
 #endif	
 }
 
@@ -1234,7 +1278,11 @@ s32 rtl8188eu_hostap_mgnt_xmit_entry(_adapter *padapter, _pkt *pkt)
 	if ((fc & RTW_IEEE80211_FCTL_FTYPE) != RTW_IEEE80211_FTYPE_MGMT)
 		goto _exit;
 
-	pxmit_skb = rtw_skb_alloc(len + TXDESC_SIZE);
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18)) // http://www.mail-archive.com/netdev@vger.kernel.org/msg17214.html
+	pxmit_skb = dev_alloc_skb(len + TXDESC_SIZE);			
+#else			
+	pxmit_skb = netdev_alloc_skb(pnetdev, len + TXDESC_SIZE);
+#endif		
 
 	if(!pxmit_skb)
 		goto _exit;
@@ -1315,7 +1363,7 @@ s32 rtl8188eu_hostap_mgnt_xmit_entry(_adapter *padapter, _pkt *pkt)
 	
 _exit:	
 	
-	rtw_skb_free(skb);
+	dev_kfree_skb_any(skb);
 
 #endif
 

@@ -17,6 +17,18 @@
 #include "clk-sun8iw6.h"
 #endif
 
+#ifdef CONFIG_ARCH_SUN8IW7
+#include "clk-sun8iw7.h"
+#endif
+
+#ifdef CONFIG_ARCH_SUN8IW8
+#include "clk-sun8iw8.h"
+#endif
+
+#ifdef CONFIG_ARCH_SUN8IW9
+#include "clk-sun8iw9.h"
+#endif
+
 #ifdef CONFIG_ARCH_SUN9IW1
 #include "clk-sun9iw1.h"
 #endif  

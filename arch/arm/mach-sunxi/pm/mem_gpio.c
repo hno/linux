@@ -52,3 +52,27 @@ __s32 mem_gpio_restore(struct gpio_state *pgpio_state)
 
 	return 0;
 }
+
+#if defined(CONFIG_ARCH_SUN9IW1P1) || defined(CONFIG_ARCH_SUN8IW6P1)
+void config_gpio_clk(__u32 mmu_flag)
+{
+    static __u32 gpio_clk_inited = 0;
+    __u32 gpio_apb0_gating_reg = 0;
+    if(0 == gpio_clk_inited){
+	if(mmu_flag){
+	    gpio_apb0_gating_reg = (__u32)(IO_ADDRESS(AW_CCM_MOD_BASE + AW_CCM_PIO_BUS_GATE_REG_OFFSET));
+	}else{
+	    gpio_apb0_gating_reg = (__u32)((AW_CCM_MOD_BASE + AW_CCM_PIO_BUS_GATE_REG_OFFSET));
+	}
+
+	//first: release gpio gating,then u can opererate gpio.
+	writel(readl(gpio_apb0_gating_reg) | (0x1 << 5), gpio_apb0_gating_reg);
+	gpio_clk_inited = 1;
+    }
+
+    return;
+
+}
+#endif
+
+

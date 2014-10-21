@@ -8,6 +8,7 @@ mmu-$(CONFIG_MMU)	:= fremap.o highmem.o madvise.o memory.o mincore.o \
 			   vmalloc.o pagewalk.o pgtable-generic.o \
 			   process_vm_access.o
 
+GCOV_PROFILE_vmstat.o := n
 obj-y			:= filemap.o mempool.o oom_kill.o fadvise.o \
 			   maccess.o page_alloc.o page-writeback.o \
 			   readahead.o swap.o truncate.o vmscan.o shmem.o \

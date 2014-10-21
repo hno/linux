@@ -180,13 +180,23 @@ Foscl is clock SCL;standard mode:100KHz or fast mode:400KHz
 #define SUNXI_TP_CHAN			1 /* Touch panel need high speed. */
 #endif
 #if defined(CONFIG_ARCH_SUN8IW3P1) || defined(CONFIG_ARCH_SUN8IW5P1) \
-								   || defined(CONFIG_ARCH_SUN8IW6P1)
+		|| defined(CONFIG_ARCH_SUN8IW6P1) || defined(CONFIG_ARCH_SUN8IW7P1) \
+		|| defined(CONFIG_ARCH_SUN8IW9P1)
 #define SUNXI_TWI_NUM			3
-#define SUNXI_TP_CHAN			0 /* Touch panel need high speed. */
+#endif
+#if defined(CONFIG_ARCH_SUN8IW8P1)
+#define SUNXI_TWI_NUM			2
 #endif
 #ifdef CONFIG_ARCH_SUN9IW1P1
 #define SUNXI_TWI_NUM			5
 #define SUNXI_TP_CHAN			1 // TODO: to be confirmed
+#endif
+
+#ifndef SUNXI_TWI_NUM
+#define SUNXI_TWI_NUM			1
+#endif
+#ifndef SUNXI_TP_CHAN
+#define SUNXI_TP_CHAN			0 /* Touch panel need high speed. */
 #endif
 
 #define SUNXI_TWI_DEV_NAME		"twi"

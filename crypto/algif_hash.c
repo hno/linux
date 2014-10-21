@@ -74,13 +74,15 @@ static int hash_sendmsg(struct kiocb *unused, struct socket *sock,
 				goto unlock;
 			}
 
-#ifdef CONFIG_ARCH_SUNXI
+#ifdef CONFIG_CRYPTO_HW
 			ahash_request_set_crypt(&ctx->req, ctx->sgl.sg, ctx->result, newlen);
+			if (crypto_ahash_digestsize(crypto_ahash_reqtfm(&ctx->req)) < SHA384_DIGEST_SIZE)
+				len = SHA1_BLOCK_SIZE;
+			else
+				len = SHA512_BLOCK_SIZE;
 
-			if (newlen%SHA1_BLOCK_SIZE) {
-				copy_from_user(ctx->req.result, &from[newlen - newlen%SHA1_BLOCK_SIZE],
-						newlen%SHA1_BLOCK_SIZE);
-			}
+			if (newlen%len)
+				copy_from_user(ctx->req.result, &from[newlen - newlen%len], newlen%len);
 #else
 			ahash_request_set_crypt(&ctx->req, ctx->sgl.sg, NULL, newlen);
 #endif
@@ -264,8 +266,8 @@ static void hash_sock_destruct(struct sock *sk)
 	struct alg_sock *ask = alg_sk(sk);
 	struct hash_ctx *ctx = ask->private;
 
-#ifdef CONFIG_ARCH_SUNXI
-	sock_kfree_s(sk, ctx->result, SHA1_BLOCK_SIZE);
+#ifdef CONFIG_CRYPTO_HW
+	sock_kfree_s(sk, ctx->result, SHA512_BLOCK_SIZE);
 #else
 	sock_kfree_s(sk, ctx->result,
 		     crypto_ahash_digestsize(crypto_ahash_reqtfm(&ctx->req)));
@@ -286,15 +288,14 @@ static int hash_accept_parent(void *private, struct sock *sk)
 	if (!ctx)
 		return -ENOMEM;
 
-#ifdef CONFIG_ARCH_SUNXI
-	ds = SHA1_BLOCK_SIZE;
+#ifdef CONFIG_CRYPTO_HW
+	ds = SHA512_BLOCK_SIZE;
 #endif
 	ctx->result = sock_kmalloc(sk, ds, GFP_KERNEL);
 	if (!ctx->result) {
 		sock_kfree_s(sk, ctx, len);
 		return -ENOMEM;
 	}
-
 	memset(ctx->result, 0, ds);
 
 	ctx->len = len;

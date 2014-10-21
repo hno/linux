@@ -68,6 +68,11 @@ struct axp_config_info{
 	int	pmu_battery_rdc;
 	int	pmu_battery_cap;
 	int	pmu_batdeten;
+	int	pmu_chg_temp_en;
+	int	pmu_runtime_chg_temp;
+	int	pmu_earlysuspend_chg_temp;
+	int	pmu_suspend_chg_temp;
+	int	pmu_shutdown_chg_temp;
 	int	pmu_runtime_chgcur;
 	int	pmu_earlysuspend_chgcur;
 	int	pmu_suspend_chgcur;
@@ -75,6 +80,7 @@ struct axp_config_info{
 	int	pmu_init_chgvol;
 	int	pmu_init_chgend_rate;
 	int	pmu_init_chg_enabled;
+	int	pmu_init_bc_en;
 	int	pmu_init_adc_freq;
 	int	pmu_init_adcts_freq;
 	int	pmu_init_chg_pretime;
@@ -131,6 +137,7 @@ struct axp_config_info{
 	int	pmu_pekon_time;
 	int	pmu_pwrok_time;
 	int     pmu_pwrok_shutdown_en;
+	int     pmu_reset_shutdown_en;
 	int	pmu_battery_warning_level1;
 	int	pmu_battery_warning_level2;
 	int	pmu_restvol_adjust_time;
@@ -167,29 +174,94 @@ struct axp_config_info{
 	int	pmu_temp_para16;
 };
 
-#ifdef CONFIG_AW_AXP81X
-
 enum {
 	DEBUG_SPLY = 1U << 0,
 	DEBUG_REGU = 1U << 1,
 	DEBUG_INT = 1U << 2,
+	DEBUG_CHG = 1U << 3,
 };
+
+#define AXP_LDOIO_ID_START      30
+#define AXP_DCDC_ID_START       40
+
+#ifdef CONFIG_AW_AXP81X
 extern int axp_debug;
 #define DBG_PSY_MSG(level_mask, fmt, arg...)	if (unlikely(axp_debug & level_mask)) \
 	printk(KERN_DEBUG fmt , ## arg)
 extern void axp81x_power_off(int power_start);
-
 #elif defined CONFIG_AW_AXP19
-
-enum {
-	DEBUG_SPLY = 1U << 0,
-	DEBUG_REGU = 1U << 1,
-	DEBUG_INT = 1U << 2,
-};
 extern int axp_debug;
 #define DBG_PSY_MSG(level_mask, fmt, arg...)	if (unlikely(axp_debug & level_mask)) \
 	printk(KERN_DEBUG fmt , ## arg)
 extern void axp19_power_off(int power_start);
+
+#elif defined CONFIG_AW_AXP20
+
+struct axp20_config_info{
+	int pmu_used;
+	int pmu_twi_id;
+	int pmu_irq_id;
+	int pmu_twi_addr;
+	int pmu_battery_rdc;
+	int pmu_battery_cap;
+	int pmu_init_chgcur;
+	int pmu_suspend_chgcur;
+	int pmu_runtime_chgcur;
+	int pmu_shutdown_chgcur;
+	int pmu_init_chgvol;
+	int pmu_init_chgend_rate;
+	int pmu_init_chg_enabled;
+	int pmu_init_adc_freq;
+	int pmu_init_adc_freqc;
+	int pmu_init_chg_pretime;
+	int pmu_init_chg_csttime;
+
+	int pmu_bat_para1;
+	int pmu_bat_para2;
+	int pmu_bat_para3;
+	int pmu_bat_para4;
+	int pmu_bat_para5;
+	int pmu_bat_para6;
+	int pmu_bat_para7;
+	int pmu_bat_para8;
+	int pmu_bat_para9;
+	int pmu_bat_para10;
+	int pmu_bat_para11;
+	int pmu_bat_para12;
+	int pmu_bat_para13;
+	int pmu_bat_para14;
+	int pmu_bat_para15;
+	int pmu_bat_para16;
+
+	int pmu_usbvol_limit;
+	int pmu_usbvol;
+	int pmu_usbcur_limit;
+	int pmu_usbcur;
+
+	int pmu_pwroff_vol;
+	int pmu_pwron_vol;
+
+	int pmu_pekoff_time;
+	int pmu_pekoff_en;
+	int pmu_peklong_time;
+	int pmu_pekon_time;
+	int pmu_pwrok_time;
+	int pmu_pwrnoe_time;
+	int pmu_hot_shutdown;
+};
+
+#define AXP20_VOL_MAX			12 // capability buffer length
+#define AXP20_TIME_MAX		20
+#define AXP20_AVER_MAX		10
+#define AXP20_RDC_COUNT		10
+
+extern int axp_debug;
+#define DBG_PSY_MSG(level_mask, fmt, arg...)	if (unlikely(axp_debug & level_mask)) \
+	printk(KERN_DEBUG fmt , ## arg)
+extern void axp20_power_off(int power_start);
+extern int axp20_fetch_sysconfig_para(char * pmu_type, struct axp20_config_info *axp_config);
+
+
 #endif
 
 extern struct axp_config_info axp22_config;

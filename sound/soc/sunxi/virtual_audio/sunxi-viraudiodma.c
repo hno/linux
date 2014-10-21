@@ -210,13 +210,13 @@ static int sunxi_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 		case SNDRV_PCM_TRIGGER_RESUME:
 		case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
 			sunxi_audio_start(prtd->mode);
-			printk("%s,line :%d\n", __func__, __LINE__);
+			pr_debug("%s,line :%d\n", __func__, __LINE__);
 			return 0;
 		case SNDRV_PCM_TRIGGER_SUSPEND:
 		case SNDRV_PCM_TRIGGER_STOP:
 		case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
 			sunxi_audio_stop(prtd->mode);
-			printk("%s,line :%d\n", __func__, __LINE__);
+			pr_debug("%s,line :%d\n", __func__, __LINE__);
 			return 0;
 		}
 	} else {
@@ -226,13 +226,13 @@ static int sunxi_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 		case SNDRV_PCM_TRIGGER_RESUME:
 		case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
 			sunxi_audio_start(prtd->mode);
-			printk("%s,line :%d\n", __func__, __LINE__);
+			pr_debug("%s,line :%d\n", __func__, __LINE__);
 			return 0;
 		case SNDRV_PCM_TRIGGER_SUSPEND:
 		case SNDRV_PCM_TRIGGER_STOP:
 		case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
 			sunxi_audio_stop(prtd->mode);
-			printk("%s,line :%d\n", __func__, __LINE__);
+			pr_debug("%s,line :%d\n", __func__, __LINE__);
 			return 0;
 		}
 	}

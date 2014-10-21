@@ -48,6 +48,27 @@ static struct cpu_budget_table m_default_budgets_table[]=
     {1,648000 ,4,INVALID_FREQ,0},
 };
 #endif
+#ifdef CONFIG_ARCH_SUN8IW6
+static struct cpu_budget_table m_default_budgets_table[]=
+{
+    {1,1200000,4,1200000,4},
+    {1,1104000,4,1104000,4},
+    {1,1008000,4,1008000,4},
+    {1,816000,4,816000,4},
+    {1,1200000,4,1200000,3},
+    {1,1104000,4,1104000,3},
+    {1,1008000,4,1008000,3},
+    {1,816000,4,816000,3},
+    {1,1200000,4,1200000,2},
+    {1,1104000,4,1104000,2},
+    {1,1008000,4,1008000,2},
+    {1,816000,4,816000,2},
+    {1,1200000,4,1200000,1},
+    {1,1104000,4,1104000,1},
+    {1,1008000,4,1008000,1},
+    {1,816000,4,816000,1},
+};
+#endif
 #ifdef CONFIG_ARCH_SUN9IW1
 static struct cpu_budget_table m_default_budgets_table[]=
 {
@@ -69,7 +90,6 @@ static struct cpu_budget_table m_default_budgets_table[]=
     {1,480000,4,INVALID_FREQ,0},
 };
 
-extern int hmp_cluster0_is_big;
 #endif
 #define SYSCFG_BUDGET_TABLE_MAX 64
 static struct cpu_budget_table m_syscfg_budgets_table[SYSCFG_BUDGET_TABLE_MAX];
@@ -78,7 +98,10 @@ static struct cpu_budget_table* dynamic_tbl=NULL;
 static struct cpu_budget_table* m_current_tbl=m_default_budgets_table;
 static unsigned int dynamic_tbl_num=sizeof(m_default_budgets_table)/sizeof(struct cpu_budget_table);
 static unsigned int max_tbl_num=sizeof(m_default_budgets_table)/sizeof(struct cpu_budget_table);
-
+#ifdef CONFIG_SCHED_HMP
+extern void __init arch_get_fast_and_slow_cpus(struct cpumask *fast,
+									struct cpumask *slow);
+#endif
 static int sunxi_cpu_budget_cooling_register(struct platform_device *pdev)
 {
 	struct thermal_cooling_device *cdev;
@@ -90,15 +113,22 @@ static int sunxi_cpu_budget_cooling_register(struct platform_device *pdev)
 		return -EPROBE_DEFER;
     cpumask_clear(&cluster0_mask);
     cpumask_clear(&cluster1_mask);
-	cpumask_set_cpu(0, &cluster0_mask);
-	cpumask_set_cpu(1, &cluster0_mask);
-	cpumask_set_cpu(2, &cluster0_mask);
-	cpumask_set_cpu(3, &cluster0_mask);
-	cpumask_set_cpu(4, &cluster1_mask);
-	cpumask_set_cpu(5, &cluster1_mask);
-	cpumask_set_cpu(6, &cluster1_mask);
-	cpumask_set_cpu(7, &cluster1_mask);
-
+#if defined(CONFIG_SCHED_HMP)
+    arch_get_fast_and_slow_cpus(&cluster1_mask,&cluster0_mask);
+#elif defined(CONFIG_SCHED_SMP_DCMP)
+	if (strlen(CONFIG_CLUSTER0_CPU_MASK) && strlen(CONFIG_CLUSTER1_CPU_MASK)) {
+		if (cpulist_parse(CONFIG_CLUSTER0_CPU_MASK, &cluster0_mask)) {
+			pr_err("Failed to parse cluster0 cpu mask!\n");
+			return -1;
+		}
+		if (cpulist_parse(CONFIG_CLUSTER1_CPU_MASK, &cluster1_mask)) {
+			pr_err("Failed to parse cluster1 cpu mask!\n");
+			return -1;
+		}
+	}
+#else
+        cpumask_copy(&cluster0_mask, cpu_possible_mask);
+#endif
     dynamic_tbl = kmalloc(sizeof(struct cpu_budget_table)*max_tbl_num,GFP_KERNEL);
     dynamic_tbl_num=0;
     for(i=0;i<max_tbl_num;i++)
@@ -220,7 +250,7 @@ sunxi_cpu_budget_roomage_show(struct device *dev,
     if((!cdev) || (!cdev->devdata))
         return ret;
 	bdevice= (struct cpu_budget_cooling_device *)cdev->devdata;
-    ret += sprintf(buf, "roomage:%d,%d,%d,%d,%d,%d,%d,%d,%d\n",
+    ret += sprintf(buf, "roomage:%d,%d,%d,%d,%d,%d,%d,%d\n",
                       bdevice->cluster0_freq_floor,
                       bdevice->cluster0_num_floor,
                       bdevice->cluster1_freq_floor,
@@ -228,8 +258,7 @@ sunxi_cpu_budget_roomage_show(struct device *dev,
                       bdevice->cluster0_freq_roof,
                       bdevice->cluster0_num_roof,
                       bdevice->cluster1_freq_roof,
-                      bdevice->cluster1_num_roof,
-                      bdevice->gpu_powernow);
+                      bdevice->cluster1_num_roof);
     return ret;
 }
 static ssize_t
@@ -240,7 +269,7 @@ sunxi_cpu_budget_roomage_store(struct device *dev, struct device_attribute *attr
 	struct platform_device *pdev;
 	struct thermal_cooling_device *cdev;
     struct cpu_budget_cooling_device *bdevice;
-    unsigned int roomage_data[9];
+    unsigned int roomage_data[8];
     unsigned long flags;
 
     pdev= to_platform_device(dev);
@@ -250,7 +279,7 @@ sunxi_cpu_budget_roomage_store(struct device *dev, struct device_attribute *attr
 	cdev = platform_get_drvdata(pdev);
     if((!cdev) || (!cdev->devdata))
         return ret;
-    sscanf(buf,"%d %d %d %d %d %d %d %d %d\n",
+    sscanf(buf,"%u %u %u %u %u %u %u %u\n",
                       &roomage_data[0],
                       &roomage_data[1],
                       &roomage_data[2],
@@ -258,8 +287,7 @@ sunxi_cpu_budget_roomage_store(struct device *dev, struct device_attribute *attr
                       &roomage_data[4],
                       &roomage_data[5],
                       &roomage_data[6],
-                      &roomage_data[7],
-                      &roomage_data[8]);
+                      &roomage_data[7]);
 	bdevice= (struct cpu_budget_cooling_device *)cdev->devdata;
     spin_lock_irqsave(&bdevice->lock, flags);
 	bdevice->cluster0_freq_floor = roomage_data[0];
@@ -270,7 +298,6 @@ sunxi_cpu_budget_roomage_store(struct device *dev, struct device_attribute *attr
 	bdevice->cluster0_num_roof = roomage_data[5];
 	bdevice->cluster1_freq_roof = roomage_data[6];
 	bdevice->cluster1_num_roof = roomage_data[7];
-	bdevice->gpu_powernow = roomage_data[8];
     spin_unlock_irqrestore(&bdevice->lock, flags);
     ret = cpu_budget_update_state(bdevice);
     if(ret)
@@ -324,6 +351,13 @@ static struct cpufreq_dvfs_s c0_vftable_syscfg[16];
 static struct cpufreq_dvfs_s c1_vftable_syscfg[16];
 static unsigned int c0_table_length=0;
 static unsigned int c1_table_length=0;
+
+#if defined(CONFIG_ARCH_SUN9IW1)|| defined(CONFIG_ARCH_SUN8IW6)
+static char* multi_cluster_prefix[]={"L_LV","B_LV"};
+#else
+static char* single_cluster_prefix[]={"LV"};
+#endif
+
 static int sunxi_cpu_budget_vftable_init(void)
 {
     script_item_u val;
@@ -331,10 +365,19 @@ static int sunxi_cpu_budget_vftable_init(void)
     struct cpufreq_dvfs_s *ptable;
     unsigned int * plen;
     unsigned int freq,volt;
-    int i,j,k,ret = -1;
+    int i,j,k,cluster_nr=1,ret = -1;
     char tbl_name[]="dvfs_table";
     char name[16] = {0};
     unsigned int vf_table_type = 0;
+    char** prefix;
+
+#if defined(CONFIG_ARCH_SUN9IW1)|| defined(CONFIG_ARCH_SUN8IW6)
+    cluster_nr = 2;
+    prefix = multi_cluster_prefix;
+#else
+    cluster_nr = 1;
+    prefix = single_cluster_prefix;
+#endif
 
     type = script_get_item("dvfs_table", "vf_table_count", &val);
     if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
@@ -345,87 +388,36 @@ static int sunxi_cpu_budget_vftable_init(void)
         sprintf(tbl_name, "%s%d", "vf_table", vf_table_type);
     }
 
-    for(k=0;k<2;k++)
+    for(k=0;k<cluster_nr;k++)
     {
-        ptable = k?&c1_vftable_syscfg[0]:&c0_vftable_syscfg[1];
+        ptable = k?&c1_vftable_syscfg[0]:&c0_vftable_syscfg[0];
         plen =  k?&c1_table_length:&c0_table_length;
-
-#if defined(CONFIG_ARCH_SUN9IW1)
-        if (hmp_cluster0_is_big) {
-            if (k == 0)
-                sprintf(name, "B_LV_count");
-            else
-                sprintf(name, "L_LV_count");
-        } else {
-            if (k == 0)
-                sprintf(name, "L_LV_count");
-            else
-                sprintf(name, "B_LV_count");
-        }
-#elif defined(CONFIG_ARCH_SUN8IW5) || defined(CONFIG_ARCH_SUN8IW6)
-        if (k == 0)
-            sprintf(name, "L_LV_count");
-        else
-            sprintf(name, "B_LV_count");
-#endif
+        sprintf(name, "%s_count",prefix[k]);
         type = script_get_item(tbl_name, name, &val);
         if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
             pr_err("fetch %s from sysconfig failed\n",name);
             goto fail;
         }
         *plen = val.val;
+
         if(*plen >= 16){
             pr_err("%s from sysconfig is out of bounder\n",name);
             goto fail;
         }
         for (i = 1,j=0; i <= *plen ; i++)
         {
-#if defined(CONFIG_ARCH_SUN9IW1)
-            if (hmp_cluster0_is_big) {
-                if (k == 0)
-                    sprintf(name, "B_LV%d_freq", i);
-                else
-                    sprintf(name, "L_LV%d_freq", i);
-            } else {
-                if (k == 0)
-                    sprintf(name, "L_LV%d_freq", i);
-                else
-                    sprintf(name, "B_LV%d_freq", i);
-            }
-#elif defined(CONFIG_ARCH_SUN8IW5) || defined(CONFIG_ARCH_SUN8IW6)
-            if (k == 0)
-                sprintf(name, "L_LV%d_freq", i);
-            else
-                sprintf(name, "B_LV%d_freq", i);
-#endif
+            sprintf(name, "%s%d_freq", prefix[k],i);
             type = script_get_item(tbl_name, name, &val);
             if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-                pr_err("get C%d_LV%d_freq from sysconfig failed\n", k,i);
+                pr_err("get %s from sysconfig failed\n", name);
                 goto fail;
             }
             freq = val.val;
 
-#if defined(CONFIG_ARCH_SUN9IW1)
-            if (hmp_cluster0_is_big) {
-                if (k == 0)
-                    sprintf(name, "B_LV%d_volt", i);
-                else
-                    sprintf(name, "L_LV%d_volt", i);
-            } else {
-                if (k == 0)
-                    sprintf(name, "L_LV%d_volt", i);
-                else
-                    sprintf(name, "B_LV%d_volt", i);
-            }
-#elif defined(CONFIG_ARCH_SUN8IW5) || defined(CONFIG_ARCH_SUN8IW6)
-            if (k == 0)
-                sprintf(name, "L_LV%d_volt", i);
-            else
-                sprintf(name, "B_LV%d_volt", i);
-#endif
+            sprintf(name, "%s%d_volt", prefix[k],i);
             type = script_get_item(tbl_name, name, &val);
             if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-                pr_err("get C%d_LV%d_volt from sysconfig failed\n", k,i);
+                pr_err("get %s from sysconfig failed\n", name);
                 goto fail;
             }
             volt = val.val;
@@ -449,7 +441,7 @@ static int sunxi_cpu_budget_syscfg_init(void)
     script_item_u val;
     script_item_value_type_e type;
     char tbl_name[]="cooler_table";
-    int i,num,ret = -1;
+    int i,num=-1,ret = -1;
     char name[32] = {0};
 
     type = script_get_item(tbl_name, "cooler_count", &val);
@@ -472,14 +464,6 @@ static int sunxi_cpu_budget_syscfg_init(void)
             goto fail;
         }
 #if defined(CONFIG_ARCH_SUN9IW1)
-        if (hmp_cluster0_is_big)
-            num=sscanf(val.str, "%u %u %u %u %u",
-                                        &m_syscfg_budgets_table[i].cluster1_freq,
-                                        &m_syscfg_budgets_table[i].cluster1_cpunr,
-                                        &m_syscfg_budgets_table[i].cluster0_freq,
-                                        &m_syscfg_budgets_table[i].cluster0_cpunr,
-                                        &m_syscfg_budgets_table[i].gpu_throttle);
-        else
             num=sscanf(val.str, "%u %u %u %u %u",
                                         &m_syscfg_budgets_table[i].cluster0_freq,
                                         &m_syscfg_budgets_table[i].cluster0_cpunr,

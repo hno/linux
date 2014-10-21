@@ -23,6 +23,22 @@
 
 #include <stdarg.h>
 
+//------------------------------------------------------------------------------
+//return value defines
+//------------------------------------------------------------------------------
+#define	OK		(0)
+#define	FAIL		(-1)
+#define TRUE		(1)
+#define	FALSE		(0)
+#define NULL		(0)
+
+#define readb(addr)		(*((volatile unsigned char  *)(addr)))
+#define readw(addr)		(*((volatile unsigned short *)(addr)))
+#define readl(addr)		(*((volatile unsigned long  *)(addr)))
+#define writeb(v, addr)		(*((volatile unsigned char  *)(addr)) = (unsigned char)(v))
+#define writew(v, addr)		(*((volatile unsigned short *)(addr)) = (unsigned short)(v))
+#define writel(v, addr)		(*((volatile unsigned long  *)(addr)) = (unsigned long)(v))
+
 /* define register for interrupt controller */
 typedef struct __MEM_INT_REG{
 

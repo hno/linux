@@ -1092,7 +1092,7 @@ err_init:
 	if (cpu_is_mx21() || cpu_is_mx27()) {
 		while (--i >= 0)
 			free_irq(MX2x_INT_DMACH0 + i, NULL);
-	} else if cpu_is_mx1() {
+	} else if (cpu_is_mx1()) {
 		free_irq(MX1_DMA_INT, NULL);
 		free_irq(MX1_DMA_ERR, NULL);
 	}
@@ -1111,7 +1111,7 @@ static int __exit imxdma_remove(struct platform_device *pdev)
 	if (cpu_is_mx21() || cpu_is_mx27()) {
 		for (i = 0; i < IMX_DMA_CHANNELS; i++)
 			free_irq(MX2x_INT_DMACH0 + i, NULL);
-	} else if cpu_is_mx1() {
+	} else if (cpu_is_mx1()) {
 		free_irq(MX1_DMA_INT, NULL);
 		free_irq(MX1_DMA_ERR, NULL);
 	}

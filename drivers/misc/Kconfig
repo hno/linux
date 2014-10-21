@@ -525,6 +525,13 @@ config WL127X_RFKILL
 	---help---
 	 Creates an rfkill entry in sysfs for power control of Bluetooth
 	 TI wl127x chips.
+
+config SUNXI_BROM_READ
+	tristate "Read the BROM infomation"
+	depends on ARCH_SUN8I 
+	default n
+	---help---
+	 This option can allow program access brom space by the file node.
 	 
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
@@ -534,5 +541,4 @@ source "drivers/misc/ti-st/Kconfig"
 source "drivers/misc/lis3lv02d/Kconfig"
 source "drivers/misc/carma/Kconfig"
 source "drivers/misc/altera-stapl/Kconfig"
-source "drivers/misc/sw_3g_module/Kconfig"
 endmenu

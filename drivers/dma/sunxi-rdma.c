@@ -29,8 +29,8 @@
 #include <linux/debugfs.h>
 #include <linux/dma/sunxi-dma.h>
 #include <linux/kthread.h>
-
 #include <mach/platform.h>
+#include <mach/sunxi-smc.h>
 
 #include "dmaengine.h"
 #include "virt-dma.h"
@@ -205,11 +205,11 @@ static size_t sunxi_get_chan_size(struct sunxi_chan *ch)
 
 	sdev = to_sunxi_dmadev(ch->vc.chan.device);
 
-	ctrl_reg = readl(sdev->base + RDMA_CTRL(chan_num));
-	writel(REMAIN_MODE | ctrl_reg, sdev->base + RDMA_CTRL(chan_num));
-	size = readl(sdev->base + RDMA_CNT(chan_num));
-	ctrl_reg = readl(sdev->base + RDMA_CTRL(chan_num));
-	writel(ctrl_reg & (~REMAIN_MODE), sdev->base + RDMA_CTRL(chan_num));
+	ctrl_reg = sunxi_smc_readl(sdev->base + RDMA_CTRL(chan_num));
+	sunxi_smc_writel(REMAIN_MODE | ctrl_reg, sdev->base + RDMA_CTRL(chan_num));
+	size = sunxi_smc_readl(sdev->base + RDMA_CNT(chan_num));
+	ctrl_reg = sunxi_smc_readl(sdev->base + RDMA_CTRL(chan_num));
+	sunxi_smc_writel(ctrl_reg & (~REMAIN_MODE), sdev->base + RDMA_CTRL(chan_num));
 
 	for (lli = txd->cur_lli->v_lln; lli != NULL; lli = lli->v_lln)
 		size += lli->len;
@@ -249,9 +249,9 @@ static inline void sunxi_dump_com_regs(struct sunxi_chan *ch)
 			"\t\tIRQ_EN (0x00): 0x%08x\n"
 			"\t\tIRQ_PEN(0x04): 0x%08x\n"
 			"\t\tGATE   (0x08): 0x%08x\n",
-			readl(sdev->base + RDMA_IRQ_EN),
-			readl(sdev->base + RDMA_IRQ_PEN),
-			readl(sdev->base + RDMA_GATE));
+			sunxi_smc_readl(sdev->base + RDMA_IRQ_EN),
+			sunxi_smc_readl(sdev->base + RDMA_IRQ_PEN),
+			sunxi_smc_readl(sdev->base + RDMA_GATE));
 }
 
 static inline void sunxi_dump_chan_regs(struct sunxi_chan *ch)
@@ -266,13 +266,13 @@ static inline void sunxi_dump_chan_regs(struct sunxi_chan *ch)
 			"\t\tRDMA_CNT (0x%04x): 0x%08x\n",
 			chan_num,
 			RDMA_SRC(chan_num),
-			readl(sdev->base + RDMA_SRC(chan_num)),
+			sunxi_smc_readl(sdev->base + RDMA_SRC(chan_num)),
 			RDMA_DST(chan_num),
-			readl(sdev->base + RDMA_DST(chan_num)),
+			sunxi_smc_readl(sdev->base + RDMA_DST(chan_num)),
 			RDMA_CTRL(chan_num),
-			readl(sdev->base + RDMA_CTRL(chan_num)),
+			sunxi_smc_readl(sdev->base + RDMA_CTRL(chan_num)),
 			RDMA_CNT(chan_num),
-			readl(sdev->base + RDMA_CNT(chan_num)));
+			sunxi_smc_readl(sdev->base + RDMA_CNT(chan_num)));
 }
 
 
@@ -298,7 +298,7 @@ static int sunxi_terminate_all(struct sunxi_chan *ch)
 
 	ch->cyclic = false;
 
-	writel(~CHAN_START, sdev->base + RDMA_CTRL(chan_num));
+	sunxi_smc_writel(~CHAN_START, sdev->base + RDMA_CTRL(chan_num));
 
 	vchan_get_all_descriptors(&ch->vc, &head);
 	spin_unlock_irqrestore(&ch->vc.lock, flags);
@@ -328,25 +328,25 @@ static void sunxi_start_desc(struct sunxi_chan *ch)
 
 	ch->desc = txd;
 
-	while(readl(sdev->base + RDMA_CTRL(chan_num)) & BUSY_BIT)
+	while(sunxi_smc_readl(sdev->base + RDMA_CTRL(chan_num)) & BUSY_BIT)
 			cpu_relax();
 
 	ch->irq_type = IRQ_PKG;
 
 	if (ch->cyclic){
 		ch->irq_type |= IRQ_HALF;
-		writel(1 << 16, sdev->base + RDMA_GATE);
+		sunxi_smc_writel(1 << 16, sdev->base + RDMA_GATE);
 	}
 
-	value = readl(sdev->base + RDMA_IRQ_EN);
+	value = sunxi_smc_readl(sdev->base + RDMA_IRQ_EN);
 	value |= SHIFT_IRQ_MASK(ch->irq_type, chan_num);
-	writel(value, sdev->base + RDMA_IRQ_EN);
+	sunxi_smc_writel(value, sdev->base + RDMA_IRQ_EN);
 
 	/* write the first lli address to register, and start to transfer */
-	writel(txd->cur_lli->src, sdev->base + RDMA_SRC(chan_num));
-	writel(txd->cur_lli->dst, sdev->base + RDMA_DST(chan_num));
-	writel(txd->cur_lli->len, sdev->base + RDMA_CNT(chan_num));
-	writel(txd->cur_lli->cfg | CHAN_START, sdev->base + RDMA_CTRL(chan_num));
+	sunxi_smc_writel(txd->cur_lli->src, sdev->base + RDMA_SRC(chan_num));
+	sunxi_smc_writel(txd->cur_lli->dst, sdev->base + RDMA_DST(chan_num));
+	sunxi_smc_writel(txd->cur_lli->len, sdev->base + RDMA_CNT(chan_num));
+	sunxi_smc_writel(txd->cur_lli->cfg | CHAN_START, sdev->base + RDMA_CTRL(chan_num));
 
 	sunxi_dump_com_regs(ch);
 	sunxi_dump_chan_regs(ch);
@@ -456,8 +456,8 @@ static struct sunxi_rdma_lli *sunxi_lli_load(struct sunxi_chan *chan)
 			return NULL;
 	}
 
-	writel(l_item->src, sdev->base + RDMA_SRC(chan_num));
-	writel(l_item->dst, sdev->base + RDMA_DST(chan_num));
+	sunxi_smc_writel(l_item->src, sdev->base + RDMA_SRC(chan_num));
+	sunxi_smc_writel(l_item->dst, sdev->base + RDMA_DST(chan_num));
 
 	return l_item;
 }
@@ -476,9 +476,9 @@ static irqreturn_t sunxi_rdma_interrupt(int irq, void *dev_id)
 	u32 status = 0;
 
 	/* Get the status of irq */
-	status = readl(sdev->base + RDMA_IRQ_PEN);
+	status = sunxi_smc_readl(sdev->base + RDMA_IRQ_PEN);
 	/* Clear the bit of irq status */
-	writel(status, sdev->base + RDMA_IRQ_PEN);
+	sunxi_smc_writel(status, sdev->base + RDMA_IRQ_PEN);
 
 	dev_dbg(sdev->dma_dev.dev, "[sunxi_rdma]: DMA irq status: 0x%08x\n", status);
 
@@ -848,8 +848,8 @@ static int sunxi_rdma_probe(struct platform_device *pdev)
 		goto chan_err;
 	}
 
-	writel(readl(0xf8001400 + 0x28) | (1 << 16), 0xf8001400 + 0x28);
-	writel(readl(0xf8001400 + 0xB0) | (1 << 16), 0xf8001400 + 0xB0);
+	sunxi_smc_writel(sunxi_smc_readl((void *)(0xf8001400 + 0x28)) | (1 << 16), (void *)(0xf8001400 + 0x28));
+	sunxi_smc_writel(sunxi_smc_readl((void *)(0xf8001400 + 0xB0)) | (1 << 16), (void *)(0xf8001400 + 0xB0));
 
 	return 0;
 

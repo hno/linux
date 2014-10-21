@@ -101,7 +101,8 @@ int arisc_hwmsgbox_send_message(struct arisc_message *pmessage, unsigned int tim
 				return -ETIMEDOUT;
 			}
 		}
-		value = ((volatile unsigned long)pmessage) - arisc_sram_a2_vbase;
+		
+		value = arisc_message_map_to_cpus(pmessage);
 		ARISC_INF("ac327 send hard syn message : %x\n", (unsigned int)value);
 		writel(value, IO_ADDRESS(AW_MSGBOX_MSG_REG(ARISC_HWMSGBOX_AC327_SYN_TX_CH)));
 
@@ -161,7 +162,7 @@ int arisc_hwmsgbox_send_message(struct arisc_message *pmessage, unsigned int tim
 		}
 	}
 	/* write message to message-queue fifo */
-	value = ((volatile unsigned long)pmessage) - arisc_sram_a2_vbase;
+	value = arisc_message_map_to_cpus(pmessage);
 	ARISC_INF("ac327 send message : %x\n", (unsigned int)value);
 	writel(value, IO_ADDRESS(AW_MSGBOX_MSG_REG(ARISC_HWMSGBOX_ARISC_ASYN_RX_CH)));
 	spin_unlock(&asyn_channel_lock);
@@ -198,7 +199,7 @@ int arisc_hwmsgbox_feedback_message(struct arisc_message *pmessage, unsigned int
 				return -ETIMEDOUT;
 			}
 		}
-		value = ((volatile unsigned long)pmessage) - arisc_sram_a2_vbase;
+		value = arisc_message_map_to_cpus(pmessage);
 		ARISC_INF("arisc feedback hard syn message : %x\n", (unsigned int)value);
 		writel(value, IO_ADDRESS(AW_MSGBOX_MSG_REG(ARISC_HWMSGBOX_ARISC_SYN_RX_CH)));
 		spin_unlock(&syn_channel_lock);
@@ -221,7 +222,7 @@ int arisc_hwmsgbox_feedback_message(struct arisc_message *pmessage, unsigned int
 			}
 		}
 		/* write message to message-queue fifo */
-		value = ((volatile unsigned long)pmessage) - arisc_sram_a2_vbase;
+		value = arisc_message_map_to_cpus(pmessage);
 		ARISC_INF("arisc send asyn or soft syn message : %x\n", (unsigned int)value);
 		writel(value, IO_ADDRESS(AW_MSGBOX_MSG_REG(ARISC_HWMSGBOX_ARISC_ASYN_RX_CH)));
 		spin_unlock(&asyn_channel_lock);
@@ -330,8 +331,8 @@ irqreturn_t arisc_hwmsgbox_int_handler(int irq, void *dev)
 	while (readl(IO_ADDRESS(AW_MSGBOX_MSG_STATUS_REG(ARISC_HWMSGBOX_ARISC_ASYN_TX_CH)))) {
 		volatile unsigned long value;
 		struct arisc_message *pmessage;
-		value = readl(IO_ADDRESS(AW_MSGBOX_MSG_REG(ARISC_HWMSGBOX_ARISC_ASYN_TX_CH))) + arisc_sram_a2_vbase;
-		pmessage = (struct arisc_message *)value;
+		value = readl(IO_ADDRESS(AW_MSGBOX_MSG_REG(ARISC_HWMSGBOX_ARISC_ASYN_TX_CH)));
+		pmessage = arisc_message_map_to_cpux(value);
 		if (arisc_message_valid(pmessage)) {
 			/* message state switch */
 			if (pmessage->state == ARISC_MESSAGE_PROCESSED) {
@@ -381,8 +382,8 @@ irqreturn_t arisc_hwmsgbox_int_handler(int irq, void *dev)
 	if (readl(IO_ADDRESS(AW_MSGBOX_MSG_STATUS_REG(ARISC_HWMSGBOX_ARISC_SYN_TX_CH)))) {
 		volatile unsigned long value;
 		struct arisc_message *pmessage;
-		value = readl(IO_ADDRESS(AW_MSGBOX_MSG_REG(ARISC_HWMSGBOX_ARISC_SYN_TX_CH))) + arisc_sram_a2_vbase;
-		pmessage = (struct arisc_message *)value;
+		value = readl(IO_ADDRESS(AW_MSGBOX_MSG_REG(ARISC_HWMSGBOX_ARISC_SYN_TX_CH)));
+		pmessage = arisc_message_map_to_cpux(value);
 		if (arisc_message_valid(pmessage)) {
 			/* message state switch */
 			if (pmessage->state == ARISC_MESSAGE_PROCESSED) {
@@ -425,7 +426,7 @@ struct arisc_message *arisc_hwmsgbox_query_message(void)
 	if (readl(IO_ADDRESS(AW_MSGBOX_MSG_STATUS_REG(ARISC_HWMSGBOX_ARISC_ASYN_TX_CH)))) {
 		volatile unsigned long value;
 		value = readl(IO_ADDRESS(AW_MSGBOX_MSG_REG(ARISC_HWMSGBOX_ARISC_ASYN_TX_CH)));
-		pmessage = (struct arisc_message *)(value + arisc_sram_a2_vbase);
+		pmessage = arisc_message_map_to_cpux(value);
 
 		if (arisc_message_valid(pmessage)) {
 			/* message state switch */
@@ -448,7 +449,7 @@ struct arisc_message *arisc_hwmsgbox_query_message(void)
 	if (readl(IO_ADDRESS(AW_MSGBOX_MSG_STATUS_REG(ARISC_HWMSGBOX_ARISC_SYN_TX_CH)))) {
 		volatile unsigned long value;
 		value = readl(IO_ADDRESS(AW_MSGBOX_MSG_REG(ARISC_HWMSGBOX_ARISC_SYN_TX_CH)));
-		pmessage = (struct arisc_message *)(value + arisc_sram_a2_vbase);
+		pmessage = arisc_message_map_to_cpux(value);
 		if (arisc_message_valid(pmessage)) {
 			/* message state switch */
 			if (pmessage->state == ARISC_MESSAGE_PROCESSED) {
@@ -489,18 +490,6 @@ int arisc_hwmsgbox_message_feedback(struct arisc_message *pmessage)
 	ARISC_INF("up semaphore for message feedback, sem=0x%x.\n",
 			   (unsigned int)(pmessage->private));
 	up((struct semaphore *)(pmessage->private));
-
-	return 0;
-}
-
-int arisc_message_valid(struct arisc_message *pmessage)
-{
-	if ((((u32)pmessage) >= (ARISC_MESSAGE_POOL_START + arisc_sram_a2_vbase)) &&
-		(((u32)pmessage) <  (ARISC_MESSAGE_POOL_END   + arisc_sram_a2_vbase))) {
-
-		/* valid message */
-		return 1;
-	}
 
 	return 0;
 }

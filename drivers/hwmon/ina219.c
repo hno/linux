@@ -359,11 +359,14 @@ static int ina219_probe(struct i2c_client *client,
 	int ret;
 	long shunt;
 
+#if (defined CONFIG_ARCH_SUN9IW1P1)
 	if(client->addr == 0x45)
 		shunt = 5000; /* Cluster1 shunt value 5mOhms */
 	else
 		shunt = 10000; /* default shunt value 10mOhms */
-
+#else
+	shunt = 10000; /* default shunt value 10mOhms */
+#endif
 	if (!i2c_check_functionality(adapter, I2C_FUNC_SMBUS_WORD_DATA))
 		return -ENODEV;
 
@@ -442,6 +445,19 @@ static int ina219_remove(struct i2c_client *client)
 	return 0;
 }
 
+#if (defined CONFIG_ARCH_SUN8IW6P1)
+static const struct i2c_device_id ina219_id[] = {
+	{ "ina219_vcc3", ina219 },
+	{ "ina219_cpua", ina219 },
+	{ "ina219_cpub", ina219 },
+	{ "ina219_syuh", ina219 },
+	{ "ina219_dram", ina219 },
+	{ "ina219_vgpu", ina219 },
+	{ }
+};
+#endif
+
+#if (defined CONFIG_ARCH_SUN9IW1P1)
 static const struct i2c_device_id ina219_id[] = {
 	{ "ina219_sn3v", ina219 },
 	{ "ina219_gpu",  ina219 },
@@ -453,6 +469,7 @@ static const struct i2c_device_id ina219_id[] = {
 	{ "ina219_audi", ina219 },
 	{ }
 };
+#endif
 MODULE_DEVICE_TABLE(i2c, ina219_id);
 
 static struct i2c_driver ina219_driver = {

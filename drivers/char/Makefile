@@ -73,3 +73,6 @@ obj-$(CONFIG_SUNXI_ARISC_TEST)	+= arisc_test/
 obj-$(CONFIG_SUNXI_MODULE)	+= sunxi_module/
 #obj-$(CONFIG_SUNXI_PINCTRL_TEST)+= sunxi_pinctrl_test/
 obj-$(CONFIG_SUNXI_DMA_TEST)	+= dma_test/
+obj-$(CONFIG_SUNXI_TRANSFORM)	+= sunxi_tr/
+obj-y				+= sunxi-scr/
+obj-y				+= sunxi-di/

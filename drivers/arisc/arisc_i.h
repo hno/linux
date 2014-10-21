@@ -55,6 +55,8 @@
 #define DRV_VERSION "1.70"
 #elif defined CONFIG_ARCH_SUN8IW7P1
 #define DRV_VERSION "1.80"
+#elif defined CONFIG_ARCH_SUN8IW9P1
+#define DRV_VERSION "1.90"
 #elif defined CONFIG_ARCH_SUN9IW1P1
 #define DRV_VERSION "2.00"
 #else

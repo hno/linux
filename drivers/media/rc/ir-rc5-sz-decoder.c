@@ -136,7 +136,7 @@ static int __init ir_rc5_sz_decode_init(void)
 {
 	ir_raw_handler_register(&rc5_sz_handler);
 
-	printk(KERN_INFO "IR RC5 (streamzap) protocol handler initialized\n");
+	pr_debug("IR RC5 (streamzap) protocol handler initialized\n");
 	return 0;
 }
 

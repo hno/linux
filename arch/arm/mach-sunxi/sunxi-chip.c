@@ -28,6 +28,7 @@
 
 #include <mach/platform.h>
 #include <mach/sunxi-chip.h>
+#include <mach/sunxi-smc.h>
 
 static unsigned int sunxi_soc_ver;
 static unsigned int sunxi_soc_chipid[4];
@@ -51,7 +52,7 @@ EXPORT_SYMBOL(sunxi_get_soc_chipid);
 int sunxi_get_pmu_chipid(u8 *chipid)
 {
 	memcpy(chipid, sunxi_pmu_chipid, 16);
-	
+
 	return 0;
 }
 EXPORT_SYMBOL(sunxi_get_pmu_chipid);
@@ -63,6 +64,28 @@ int sunxi_get_serial(u8 *serial)
 	return 0;
 }
 EXPORT_SYMBOL(sunxi_get_serial);
+
+static int sunxi_soc_secure_status = 2;
+int sunxi_soc_is_secure(void)
+{
+	if (sunxi_soc_secure_status != 2) {
+		/* sunxi_soc_secure_status initialize already,
+		   use the initialized value derectly. */
+		return sunxi_soc_secure_status;
+	} else {
+		/* default is non-secure, in order to
+		 * compatible with other non-secure platform.
+		 */
+		sunxi_soc_secure_status = 0;
+
+#if (defined CONFIG_ARCH_SUN9IW1P1)
+		/* sun9iw1p1 soc secure bit */
+		sunxi_soc_secure_status = ((readl(SUNXI_SID_VBASE + 0x200 + 0x1F4)) >> 11) & 1;
+#endif
+ 		return sunxi_soc_secure_status;
+	}
+}
+EXPORT_SYMBOL(sunxi_soc_is_secure);
 
 /*
  * get sunxi soc bin
@@ -89,14 +112,19 @@ unsigned int sunxi_get_soc_bin(void)
 	switch (type)
 	{
 		case 0b000000:
+			pr_info("%s: unknown bin\n", __func__);
 			return 0;
 		case 0b000001:
+			pr_info("%s: slow chip\n", __func__);
 			return 1;
 		case 0b000011:
+			pr_info("%s: normal chip\n", __func__);
 			return 0;
 		case 0b000111:
+			pr_info("%s: fast chip\n", __func__);
 			return 2;
 		default:
+			pr_info("%s: invalid bin\n", __func__);
 			return 0;
 	}
 }
@@ -159,10 +187,39 @@ void __init sunxi_soc_ver_init(void)
 	}
 #elif (defined CONFIG_ARCH_SUN8IW6P1)
 	/* sun8iw6p1 chip version init */
-	if ((readl(SUNXI_R_PRCM_VBASE + 0x190) >> 0x3) & 0x1) {
+	if (readl(SUNXI_SRAMCTRL_VBASE + 0x24) & 0x1) {
 		sunxi_soc_ver = SUN8IW6P1_REV_B;
 	} else {
 		sunxi_soc_ver = SUN8IW6P1_REV_A;
+	}
+#elif (defined CONFIG_ARCH_SUN8IW7)
+	/* sun8iw7 chip version init */
+	u32 ss_ctl_reg;
+	if(sunxi_soc_is_secure()) {
+		ss_ctl_reg = sunxi_smc_readl(SUNXI_SS_VBASE + 0x04);
+	} else {
+		u32 ss_clk_reg, bus_clk_reg, bus_rst_reg;
+		/* backup ss clock register */
+		bus_clk_reg = readl(SUNXI_CCM_VBASE + 0x0060);
+		bus_rst_reg = readl(SUNXI_CCM_VBASE + 0x02c0);
+		ss_clk_reg  = readl(SUNXI_CCM_VBASE + 0x009c);
+		writel(bus_clk_reg | (1<<5), SUNXI_CCM_VBASE + 0x0060);
+		writel(bus_rst_reg | (1<<5), SUNXI_CCM_VBASE + 0x02c0);
+		writel(0x80000000, SUNXI_CCM_VBASE + 0x009c);
+		ss_ctl_reg = readl(SUNXI_SS_VBASE + 0x04);
+		writel(bus_clk_reg, SUNXI_CCM_VBASE + 0x0060);
+		writel(bus_rst_reg, SUNXI_CCM_VBASE + 0x02c0);
+		writel(ss_clk_reg, SUNXI_CCM_VBASE + 0x009c);
+	}
+
+	switch(ss_ctl_reg & 0x03) {
+		case 0:
+			sunxi_soc_ver = SUN8IW7P1_REV_A;
+			break;
+		case 1:
+		default:
+			sunxi_soc_ver = SUN8IW7P2_REV_A;
+			break;
 	}
 #elif (defined CONFIG_ARCH_SUN9IW1P1)
 	/* sun9iw1p1 chip version init */
@@ -172,6 +229,7 @@ void __init sunxi_soc_ver_init(void)
 		sunxi_soc_ver = SUN9IW1P1_REV_A;
 	}
 #endif
+	pr_debug("Init chip version:%x\n", sunxi_soc_ver);
 }
 
 void __init sunxi_chip_id_init(void)
@@ -187,7 +245,7 @@ void __init sunxi_chip_id_init(void)
 	if (sunxi_pmu_chipid[0] == 0 && sunxi_pmu_chipid[1] == 0 &&
 		sunxi_pmu_chipid[2] == 0 && sunxi_pmu_chipid[3] == 0) {
 		memset((void *)sunxi_serial, 0, sizeof(sunxi_serial));
-		return 0;
+		return;
 	}
 
 	sunxi_serial[0] = sunxi_pmu_chipid[3];
@@ -209,7 +267,7 @@ void __init sunxi_chip_id_init(void)
 	if (sunxi_pmu_chipid[0] == 0 && sunxi_pmu_chipid[1] == 0 &&
 		sunxi_pmu_chipid[2] == 0 && sunxi_pmu_chipid[3] == 0) {
 		memset((void *)sunxi_serial, 0, sizeof(sunxi_serial));
-		return 0;
+		return;
 	}
 
 	sunxi_serial[0] = sunxi_pmu_chipid[3];
@@ -237,7 +295,7 @@ void __init sunxi_chip_id_init(void)
 	sunxi_serial[0] = sunxi_soc_chipid[3];
 	sunxi_serial[1] = sunxi_soc_chipid[2];
 	sunxi_serial[2] = (sunxi_soc_chipid[1] >> 16) & 0xFFFF;
-#elif (defined CONFIG_ARCH_SUN8IW6P1)
+#elif (defined CONFIG_ARCH_SUN8IW6P1) || (defined CONFIG_ARCH_SUN8IW9P1)
 
 	/* sun8iw6p1 soc chip id init */
 	sunxi_soc_chipid[0] = readl(SUNXI_SID_VBASE + 0x200);

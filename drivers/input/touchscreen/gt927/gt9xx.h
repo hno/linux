@@ -209,4 +209,24 @@ a sample config, send this config should cause the chip cannot work normally*/
 extern struct ctp_config_info config_info;
 //#define CTP_IRQ_NUMBER          (config_info.irq_gpio_number)
 
+s32 gup_enter_update_mode(struct i2c_client *client);
+void gup_leave_update_mode(void);
+s32 gup_update_proc(void *dir);
+
+void gtp_irq_disable(struct goodix_ts_data *);
+void gtp_irq_enable(struct goodix_ts_data *);
+
+s32 init_wr_node(struct i2c_client*);
+void uninit_wr_node(void);
+
+u8 gup_init_update_proc(struct goodix_ts_data *);
+
+void int2io(int status,int level);
+
+s32  gtp_i2c_read(struct i2c_client *client, uint8_t *buf, s32 len);
+s32  gtp_i2c_write(struct i2c_client *client,uint8_t *data,s32 len);
+void gtp_reset_guitar(s32 ms);
+s32  gtp_send_cfg(struct i2c_client *client);
+
+
 #endif /* _LINUX_GOODIX_TOUCH_H */

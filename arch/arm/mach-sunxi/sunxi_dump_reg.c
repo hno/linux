@@ -21,6 +21,7 @@
 #include <linux/io.h>
 #include <linux/slab.h>
 #include <linux/miscdevice.h>
+#include <linux/arisc/hwspinlock.h>
 
 #include <mach/platform.h>
 #include <mach/hardware.h>
@@ -600,10 +601,101 @@ ssize_t write_store(struct class *class, struct class_attribute *attr,
 	return size;
 }
 
+
+#if (defined CONFIG_ARCH_SUN8IW6P1) || (defined CONFIG_ARCH_SUN9IW1P1)
+#define RTC_REG (SUNXI_R_PRCM_VBASE + 0x1F0)
+static u32 rtc_reg_addr = 0;
+
+static int hwspin_lock_timeout(int hwid, unsigned int timeout)
+{
+#ifdef CONFIG_SUNXI_ARISC
+	return arisc_hwspin_lock_timeout(hwid, timeout);
+#else
+	return -ESRCH;
+#endif
+}
+
+static int hwspin_unlock(int hwid)
+{
+#ifdef CONFIG_SUNXI_ARISC
+	return arisc_hwspin_unlock(hwid);
+#else
+	return -ESRCH;
+#endif
+}
+
+static ssize_t __rtc_reg_store(const char *buf, size_t size)
+{
+	u32 addr, data;
+	u32 temp = 0;
+
+	sscanf(buf, "%x %x", &addr, &data);
+	if ((addr < 0x1) || (addr > 0x3)) {
+		printk(KERN_ERR "[sunxi_dump_reg]: rtc address error, address:0x%x\n", addr);
+		return size;
+	}
+
+	if (data > 0xff) {
+		printk(KERN_ERR "[sunxi_dump_reg]: rtc data error, data:0x%x\n", data);
+		return size;
+	}
+
+	rtc_reg_addr = addr;
+
+	if (!hwspin_lock_timeout(AW_RTC_REG_HWSPINLOCK, 100)) {
+		temp = (addr << 16) | (data << 8);
+		writel(temp, RTC_REG);
+		temp |= 1 << 31;
+		writel(temp, RTC_REG);
+		temp &= ~(1<< 31);
+		writel(temp, RTC_REG);
+		hwspin_unlock(AW_RTC_REG_HWSPINLOCK);
+		printk(KERN_INFO "[sunxi_dump_reg]: write rtc reg success, rtc reg 0x%x:0x%x\n", addr, data);
+		return size;
+	}
+
+	printk(KERN_ERR "[sunxi_dump_reg]: get hwspinlock unsuccess\n");
+	return size;
+}
+
+static ssize_t __rtc_reg_show(char *buf)
+{
+	ssize_t size = 0;
+	u32 temp = 0;
+
+	if (!hwspin_lock_timeout(AW_RTC_REG_HWSPINLOCK, 100)) {
+		temp = rtc_reg_addr << 16;
+		writel(temp, RTC_REG);
+		temp = readl(RTC_REG) & 0xff;
+		size = sprintf(buf, "%x\n", temp);
+		hwspin_unlock(AW_RTC_REG_HWSPINLOCK);
+		return size;
+	}
+
+	printk(KERN_ERR "[sunxi_dump_reg]: get hwspinlock unsuccess\n");
+	return size;
+}
+
+ssize_t rtc_reg_store(struct class *class, struct class_attribute *attr,
+			const char *buf, size_t size)
+{
+	return __rtc_reg_store(buf, size);
+}
+
+ssize_t rtc_reg_show(struct class *class, struct class_attribute *attr, char *buf)
+{
+	return __rtc_reg_show(buf);
+}
+
+#endif
+
 static struct class_attribute dump_class_attrs[] = {
 	__ATTR(dump, 	0644, dump_show, dump_store),
 	__ATTR(compare,	0644, compare_show, compare_store),
 	__ATTR(write,	0644, write_show, write_store),
+#if (defined CONFIG_ARCH_SUN8IW6P1) || (defined CONFIG_ARCH_SUN9IW1P1)
+	__ATTR(rtc_reg,	0644, rtc_reg_show, rtc_reg_store),
+#endif
 	__ATTR_NULL,
 };
 
@@ -705,6 +797,56 @@ void sunxi_dump_regs(u32 start_reg, u32 end_reg)
 }
 EXPORT_SYMBOL(sunxi_dump_regs);
 
+#if (defined CONFIG_ARCH_SUN8IW6P1) || (defined CONFIG_ARCH_SUN9IW1P1)
+s32 sunxi_rtc_reg_write(u32 addr, u32 data)
+{
+	u32 temp = 0;
+
+	if ((addr < 0x1) || (addr > 0x3)) {
+		printk(KERN_ERR "[sunxi_dump_reg]: rtc address error, address:0x%x\n", addr);
+		return -EINVAL;
+	}
+
+	if (data > 0xff) {
+		printk(KERN_ERR "[sunxi_dump_reg]: rtc data error, data:0x%x\n", data);
+		return -EINVAL;
+	}
+
+	if (!hwspin_lock_timeout(AW_RTC_REG_HWSPINLOCK, 100)) {
+		temp = (addr << 16) | (data << 8);
+		writel(temp, RTC_REG);
+		temp |= 1 << 31;
+		writel(temp, RTC_REG);
+		temp &= ~(1<< 31);
+		writel(temp, RTC_REG);
+		hwspin_unlock(AW_RTC_REG_HWSPINLOCK);
+		printk(KERN_INFO "[sunxi_dump_reg]: write rtc reg success, rtc reg 0x%x:0x%x\n", addr, data);
+		return 0;
+	}
+
+	printk(KERN_ERR "[sunxi_dump_reg]: get hwspinlock unsuccess\n");
+	return -EBUSY;
+}
+EXPORT_SYMBOL(sunxi_rtc_reg_write);
+
+u32 sunxi_rtc_reg_read(u32 addr)
+{
+	u32 temp = 0;
+
+	if (!hwspin_lock_timeout(AW_RTC_REG_HWSPINLOCK, 100)) {
+		temp = addr << 16;
+		writel(temp, RTC_REG);
+		temp = readl(RTC_REG) & 0xff;
+		hwspin_unlock(AW_RTC_REG_HWSPINLOCK);
+		return 0;
+	}
+
+	printk(KERN_ERR "[sunxi_dump_reg]: get hwspinlock unsuccess\n");
+	return -EBUSY;
+}
+EXPORT_SYMBOL(sunxi_rtc_reg_read);
+#endif
+
 #ifdef ADD_MISC_DRIVER
 static ssize_t misc_dump_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
@@ -784,13 +926,32 @@ static ssize_t misc_write_show(struct device *dev,
 	return __sunxi_write_show(misc_wt_group, buf);
 }
 
+#if (defined CONFIG_ARCH_SUN8IW6P1) || (defined CONFIG_ARCH_SUN9IW1P1)
+static ssize_t misc_rtc_reg_store(struct device *dev,struct device_attribute *attr,
+		const char *buf, size_t size)
+{
+	return __rtc_reg_store(buf, size);
+}
+
+static ssize_t misc_rtc_reg_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return __rtc_reg_show(buf);
+}
+static DEVICE_ATTR(rtc_reg, 0644, misc_rtc_reg_show, misc_rtc_reg_store);
+#endif
+
 static DEVICE_ATTR(dump, 0644, misc_dump_show, misc_dump_store);
 static DEVICE_ATTR(compare, 0644, misc_compare_show, misc_compare_store);
 static DEVICE_ATTR(write, 0644, misc_write_show, misc_write_store);
+
 static struct attribute *misc_attributes[] = {
 	&dev_attr_dump.attr,
 	&dev_attr_compare.attr,
 	&dev_attr_write.attr,
+#if (defined CONFIG_ARCH_SUN8IW6P1) || (defined CONFIG_ARCH_SUN9IW1P1)
+	&dev_attr_rtc_reg.attr,
+#endif
 	NULL
 };
 static struct attribute_group misc_attribute_group = {

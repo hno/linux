@@ -49,7 +49,7 @@ static int is_cpu_load_stable(unsigned int cpu, int stable_type)
 }
 
 #if defined(CONFIG_SCHED_HMP)
-static int autohotplug_smart_tryup(struct auto_cpu_hotplug_loadinfo *load)
+static int autohotplug_smart_tryup_hmp_normal(struct auto_cpu_hotplug_loadinfo *load)
 {
 	unsigned int tmp = CONFIG_NR_CPUS;
 	int big_nr, little_nr, ret;
@@ -102,7 +102,7 @@ static int autohotplug_smart_tryup(struct auto_cpu_hotplug_loadinfo *load)
 	return 0;
 }
 
-static int autohotplug_smart_trydown(struct auto_cpu_hotplug_loadinfo *load)
+static int autohotplug_smart_trydown_hmp_normal(struct auto_cpu_hotplug_loadinfo *load)
 {
 	unsigned int to_down = CONFIG_NR_CPUS;
 	unsigned int on_boost = CONFIG_NR_CPUS;
@@ -125,7 +125,7 @@ static int autohotplug_smart_trydown(struct auto_cpu_hotplug_loadinfo *load)
 	}
 }
 
-static void autohotplug_smart_updatelimits(void)
+static void autohotplug_smart_updatelimits_hmp_normal(void)
 {
 	int i, big_cpu = CONFIG_NR_CPUS;
 	struct cpufreq_policy *policy = cpufreq_cpu_get(0);
@@ -143,6 +143,7 @@ static void autohotplug_smart_updatelimits(void)
 				policy->user_policy.min = little_core_coop_min_freq;
 				cpufreq_update_policy(0);
 			}
+            cpufreq_cpu_put(policy);
 		}
 	} else {
 		if (policy) {
@@ -150,12 +151,13 @@ static void autohotplug_smart_updatelimits(void)
 				policy->user_policy.min = policy->cpuinfo.min_freq;
 				cpufreq_update_policy(0);
 			}
+            cpufreq_cpu_put(policy);
 		}
 	}
 }
-
-#elif defined(CONFIG_SCHED_DCMP)
-static int autohotplug_smart_tryup(struct auto_cpu_hotplug_loadinfo *load)
+#endif
+#if defined(CONFIG_SCHED_HMP) || defined(CONFIG_SCHED_SMP_DCMP)
+static int autohotplug_smart_tryup_hmp_simple(struct auto_cpu_hotplug_loadinfo *load)
 {
 	int ret =0;
 	unsigned int first;
@@ -174,7 +176,7 @@ static int autohotplug_smart_tryup(struct auto_cpu_hotplug_loadinfo *load)
 	return ret;
 }
 
-static int autohotplug_smart_trydown(struct auto_cpu_hotplug_loadinfo *load)
+static int autohotplug_smart_trydown_hmp_simple(struct auto_cpu_hotplug_loadinfo *load)
 {
 	int big_nr, little_nr;
 	unsigned int first, to_down;
@@ -194,10 +196,11 @@ static int autohotplug_smart_trydown(struct auto_cpu_hotplug_loadinfo *load)
 	return 0;
 }
 
-static void autohotplug_smart_updatelimits(void)
+#ifndef CONFIG_ARCH_SUN8IW6
+static void autohotplug_smart_updatelimits_hmp_simple(void)
 {
-	struct cpufreq_policy *policy1;
-	struct cpufreq_policy *policy2;
+	struct cpufreq_policy *policy1=NULL;
+	struct cpufreq_policy *policy2=NULL;
 	int i, big_nr = 0, little_nr = 0, big = 0, little = 0;
 
 	for_each_online_cpu(i) {
@@ -210,7 +213,6 @@ static void autohotplug_smart_updatelimits(void)
 		}
 	}
 
-	policy1 = cpufreq_cpu_get(big);
 	if (little_nr && big_nr) {
 		policy1 = cpufreq_cpu_get(big);
 		if (policy1 && policy1->min < little_core_coop_min_freq) {
@@ -223,14 +225,29 @@ static void autohotplug_smart_updatelimits(void)
 			policy2->user_policy.min = little_core_coop_min_freq;
 			cpufreq_update_policy(little);
 		}
-	} else if (policy1 && policy1->min > policy1->cpuinfo.min_freq) {
-		policy1->user_policy.min = policy1->cpuinfo.min_freq;
-		cpufreq_update_policy(big);
-	}
+	}else if(big_nr){
+		policy1 = cpufreq_cpu_get(big);
+		if (policy1 && policy1->min < little_core_coop_min_freq) {
+			policy1->user_policy.min = little_core_coop_min_freq;
+			cpufreq_update_policy(big);
+		}
+    }else if(little_nr){
+		policy2 = cpufreq_cpu_get(little);
+		if (policy2 && policy2->min < little_core_coop_min_freq) {
+			policy2->user_policy.min = little_core_coop_min_freq;
+			cpufreq_update_policy(little);
+		}
+    }
+    if(policy1)
+        cpufreq_cpu_put(policy1);
+    if(policy2)
+        cpufreq_cpu_put(policy2);
 }
+#endif
+#endif
 
-#else
-static int autohotplug_smart_tryup(struct auto_cpu_hotplug_loadinfo *load)
+#if !defined(CONFIG_SCHED_HMP) && !defined(CONFIG_SCHED_SMP_DCMP)
+static int autohotplug_smart_tryup_smp_normal(struct auto_cpu_hotplug_loadinfo *load)
 {
 	unsigned int first;
 
@@ -243,7 +260,7 @@ static int autohotplug_smart_tryup(struct auto_cpu_hotplug_loadinfo *load)
 	return 0;
 }
 
-static int autohotplug_smart_trydown(struct auto_cpu_hotplug_loadinfo *load)
+static int autohotplug_smart_trydown_smp_normal(struct auto_cpu_hotplug_loadinfo *load)
 {
 	unsigned int first;
 
@@ -256,18 +273,15 @@ static int autohotplug_smart_trydown(struct auto_cpu_hotplug_loadinfo *load)
 	return 0;
 }
 
-static void autohotplug_smart_updatelimits(void)
+static void autohotplug_smart_updatelimits_smp_normal(void)
 {
 
 }
 #endif
-
 static int autohotplug_smart_get_slow_fast_cpus(struct cpumask *fast,
 							struct cpumask *slow)
 {
 #if defined(CONFIG_SCHED_HMP)
-	struct cpumask tmp_cpu_mask;
-
 	arch_get_fast_and_slow_cpus(fast, slow);
 
 	if (cpumask_test_cpu(0, fast))
@@ -276,10 +290,16 @@ static int autohotplug_smart_get_slow_fast_cpus(struct cpumask *fast,
 		hmp_cluster0_is_big = 0;
 
 	if (hmp_cluster0_is_big) {
-		cpumask_copy(&tmp_cpu_mask, fast);
-		cpumask_copy(fast, slow);
-		cpumask_copy(slow, &tmp_cpu_mask);
-	}
+            autohotplug_smart.try_up = autohotplug_smart_tryup_hmp_simple;
+            autohotplug_smart.try_down = autohotplug_smart_trydown_hmp_simple;
+            autohotplug_smart.update_limits = autohotplug_smart_updatelimits_hmp_simple;
+    }
+    else
+    {
+            autohotplug_smart.try_up = autohotplug_smart_tryup_hmp_normal;
+            autohotplug_smart.try_down = autohotplug_smart_trydown_hmp_normal;
+            autohotplug_smart.update_limits = autohotplug_smart_updatelimits_hmp_normal;
+    }
 #elif defined(CONFIG_SCHED_SMP_DCMP)
 	if (strlen(CONFIG_CLUSTER0_CPU_MASK) && strlen(CONFIG_CLUSTER1_CPU_MASK)) {
 		if (cpulist_parse(CONFIG_CLUSTER0_CPU_MASK, fast)) {
@@ -292,8 +312,16 @@ static int autohotplug_smart_get_slow_fast_cpus(struct cpumask *fast,
 			return -1;
 		}
 	}
+    autohotplug_smart.try_up = autohotplug_smart_tryup_hmp_simple;
+    autohotplug_smart.try_down = autohotplug_smart_trydown_hmp_simple;
+#ifndef CONFIG_ARCH_SUN8IW6
+    autohotplug_smart.update_limits = autohotplug_smart_updatelimits_hmp_simple;
+#endif
 #else
 	cpumask_copy(slow, cpu_possible_mask);
+    autohotplug_smart.try_up = autohotplug_smart_tryup_smp_normal;
+    autohotplug_smart.try_down = autohotplug_smart_trydown_smp_normal;
+    autohotplug_smart.update_limits = autohotplug_smart_updatelimits_smp_normal;
 #endif
 
 	return 0;
@@ -313,9 +341,6 @@ static void autohotplug_smart_attr_init(void)
 struct autohotplug_governor autohotplug_smart = {
 	.init_attr = autohotplug_smart_attr_init,
 	.get_fast_and_slow_cpus = autohotplug_smart_get_slow_fast_cpus,
-	.try_up   = autohotplug_smart_tryup,
-	.try_down = autohotplug_smart_trydown,
-	.update_limits = autohotplug_smart_updatelimits,
 };
 
 MODULE_DESCRIPTION("CPU Auto Hotplug");

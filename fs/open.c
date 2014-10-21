@@ -33,10 +33,6 @@
 
 #include "internal.h"
 
-#if (IO_TEST_DEBUG)
-unsigned int io_w_test_count = 0;
-#endif
-
 int do_truncate(struct dentry *dentry, loff_t length, unsigned int time_attrs,
 	struct file *filp)
 {
@@ -983,20 +979,6 @@ long do_sys_open(int dfd, const char __user *filename, int flags, umode_t mode)
 	int fd = PTR_ERR(tmp);
 
 	if (!IS_ERR(tmp)) {
-#if (IO_TEST_DEBUG)
-		if(!(flags & O_DIRECTORY)&& strstr(filename, "_quadrant_.tmp"))
-		{
-			if (flags&0x00000001)
-			{
-				io_w_test_count = (io_w_test_count + 1)%10;
-				flags = 0x00000042;
-			}
-			else
-			{
-				flags = 0x00000002;
-			}
-		}
-#endif
 		fd = get_unused_fd_flags(flags);
 		if (fd >= 0) {
 			struct file *f = do_filp_open(dfd, tmp, &op, lookup);

@@ -264,18 +264,20 @@ void ap6xxx_gpio_init(void)
 	type = script_get_item(wifi_para, "ap6xxx_wl_regon", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_PIO!=type)
 		ap6xxx_msg("get ap6xxx ap6xxx_wl_regon gpio failed\n");
-	else
+	else {
 		gpio_p = &val.gpio;
-	ap6xxx_wl_regon = gpio_p->gpio;
-	sunxi_ap6xxx_gpio_req(gpio_p);
+		ap6xxx_wl_regon = gpio_p->gpio;
+		sunxi_ap6xxx_gpio_req(gpio_p);
+	}
 
 	type = script_get_item(wifi_para, "ap6xxx_bt_regon", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_PIO!=type)
 		ap6xxx_msg("get ap6xxx ap6xxx_bt_regon gpio failed\n");
-	else
+	else {
 		gpio_p = &val.gpio;
-	ap6xxx_bt_regon = gpio_p->gpio;
-	sunxi_ap6xxx_gpio_req(gpio_p);
+		ap6xxx_bt_regon = gpio_p->gpio;
+		sunxi_ap6xxx_gpio_req(gpio_p);
+	}
 
 	type = script_get_item(wifi_para, "ap6xxx_lpo_use_apclk", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT!=type)

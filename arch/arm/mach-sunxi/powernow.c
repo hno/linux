@@ -43,6 +43,13 @@ struct sw_powernow_mode {
 static struct sw_powernow_mode powernow_modes[] = {
     { .code = SW_POWERNOW_EXTREMITY,    .name = "extremity"     },
     { .code = SW_POWERNOW_PERFORMANCE,  .name = "performance"   },
+// these modes below are implemented by cpufreq_fantasys in a23 platform
+#ifndef CONFIG_ARCH_SUN8IW3
+    { .code = SW_POWERNOW_NORMAL,       .name = "normal"        },
+    { .code = SW_POWERNOW_USEREVENT,    .name = "userevent"     },
+    { .code = SW_POWERNOW_USB,          .name = "usb"           },
+    { .code = SW_POWERNOW_MAXPOWER,     .name = "maxpower"      },
+#endif
 };
 static int cur_mode = -1;
 static int usb_status = SW_POWERNOW_USBSTAT_INACTIVE;
@@ -69,16 +76,25 @@ void sw_powernow_switch_to(int mode)
     int target_mode = mode;
     mutex_lock(&mode_mutex);
 
-    if (usb_status == SW_POWERNOW_USBSTAT_ACTIVE && target_mode > SW_POWERNOW_USB){
+    if (mode == SW_POWERNOW_USEREVENT || mode == SW_POWERNOW_MAXPOWER) {
+        if (cur_mode == SW_POWERNOW_EXTREMITY ||
+            usb_status == SW_POWERNOW_USBSTAT_ACTIVE){
+            goto out;
+        }
+    }
+    if (usb_status == SW_POWERNOW_USBSTAT_ACTIVE && target_mode != SW_POWERNOW_EXTREMITY){
         target_mode = SW_POWERNOW_USB;
     }
 
-    if (cur_mode != target_mode){
-        blocking_notifier_call_chain(&sw_powernow_notifier_list,
-                target_mode, NULL);
-        cur_mode = target_mode;
+    blocking_notifier_call_chain(&sw_powernow_notifier_list,
+            powernow_modes[target_mode].code, powernow_modes[target_mode].name);
+    if (mode != SW_POWERNOW_USEREVENT 
+        && mode != SW_POWERNOW_MAXPOWER 
+        && mode != SW_POWERNOW_USB) {
+        cur_mode = mode;
     }
 
+out:
     mutex_unlock(&mode_mutex);
 }
 EXPORT_SYMBOL(sw_powernow_switch_to);
@@ -93,17 +109,14 @@ EXPORT_SYMBOL(sw_powernow_set_usb);
 static ssize_t mode_show(struct class *class, struct class_attribute *attr,
         char *buf)
 {
-    int index = 0;
-    for (index = 0; index < ARRAY_SIZE(powernow_modes); index++) {
-        if (powernow_modes[index].code == cur_mode) {
-            break;
-        }
-    }    
-
-    if (index < 0 || index >= ARRAY_SIZE(powernow_modes)) {
+    int mode = cur_mode;
+    if (usb_status == SW_POWERNOW_USBSTAT_ACTIVE){
+        mode = SW_POWERNOW_USB;
+    }
+    if (mode < 0 || mode >= ARRAY_SIZE(powernow_modes)) {
         return sprintf(buf, "<unknown>\n");
     }
-    return sprintf(buf, "%s\n", powernow_modes[index].name);
+    return sprintf(buf, "%s\n", powernow_modes[mode].name);
 }
 
 static ssize_t mode_store(struct class *class, struct class_attribute *attr,
@@ -124,15 +137,16 @@ static ssize_t mode_store(struct class *class, struct class_attribute *attr,
             continue;
         }
 
-        if (cur_mode != powernow_modes[i].code) {
-            sw_powernow_switch_to(powernow_modes[i].code);
+        if (i == SW_POWERNOW_NORMAL){
+            i = SW_POWERNOW_PERFORMANCE;
+        }
+        
+        if (cur_mode != i) {
+            sw_powernow_switch_to(i);
         }
 
         ret = count;
         break;
-    }
-    if (i == ARRAY_SIZE(powernow_modes)){
-        powernow_inf(KERN_NOTICE "unknown powernow_modes:%s\n", mode_name);
     }
 
     return ret;
@@ -141,7 +155,7 @@ static ssize_t mode_store(struct class *class, struct class_attribute *attr,
 static ssize_t usb_stat_show(struct class *class, struct class_attribute *attr,
         char *buf)
 {
-    return sprintf(buf, "%s\n", usb_status?"active":"inactive");
+    return sprintf(buf, "%d\n", usb_status);
 }
 
 static ssize_t usb_stat_store(struct class *class, struct class_attribute *attr,
@@ -198,8 +212,6 @@ static int __init sw_powernow_init(void)
     } else {
         powernow_inf("create class sw_powernow done\n");
     }
-
-    sw_powernow_switch_to(SW_POWERNOW_PERFORMANCE);
 
     return ret;
 }

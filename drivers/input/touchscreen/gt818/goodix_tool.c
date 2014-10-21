@@ -28,14 +28,14 @@
 
 #define UPDATE_FUNCTIONS
 
-#ifdef UPDATE_FUNCTIONS
-extern s32 gup_enter_update_mode(struct i2c_client *client);
-extern void gup_leave_update_mode(void);
-extern s32 gup_update_proc(void *dir);
-#endif
+//#ifdef UPDATE_FUNCTIONS
+//extern s32 gup_enter_update_mode(struct i2c_client *client);
+//extern void gup_leave_update_mode(void);
+//extern s32 gup_update_proc(void *dir);
+//#endif
 
-extern void gtp_irq_disable(struct goodix_ts_data *);
-extern void gtp_irq_enable(struct goodix_ts_data *);
+//extern void gtp_irq_disable(struct goodix_ts_data *);
+//extern void gtp_irq_enable(struct goodix_ts_data *);
 
 #pragma pack(1)
 typedef struct{
@@ -55,7 +55,7 @@ typedef struct{
     u8* data;       //data pointer
 }st_cmd_head;
 #pragma pack()
-st_cmd_head cmd_head;
+static st_cmd_head cmd_head;
 
 static struct i2c_client *gt_client = NULL;
 
@@ -66,8 +66,8 @@ static s32 goodix_tool_read( char *page, char **start, off_t off, int count, int
 static s32 (*tool_i2c_read)(u8 *, u16);
 static s32 (*tool_i2c_write)(u8 *, u16);
 
-s32 DATA_LENGTH = 0;
-s8 IC_TYPE[16] = {0};
+static s32 DATA_LENGTH = 0;
+static s8 IC_TYPE[16] = {0};
 
 static s32 tool_i2c_read_no_extra(u8* buf, u16 len)
 {
@@ -348,7 +348,7 @@ static s32 goodix_tool_write(struct file *filp, const char __user *buff, unsigne
     GTP_DEBUG("addr len:%d\n", (s32)cmd_head.addr_len);
     GTP_DEBUG("addr:0x%02x%02x\n", cmd_head.addr[0], cmd_head.addr[1]);
     GTP_DEBUG("len:%d\n", (s32)len);
-    GTP_DEBUG("buf[20]:0x%02x\n", buff[CMD_HEAD_LENGTH]);
+    GTP_DEBUG("buf[20]:0x%02x\n", (u8)buff[CMD_HEAD_LENGTH]);
     
     if (1 == cmd_head.wr)
     {
@@ -430,7 +430,7 @@ static s32 goodix_tool_write(struct file *filp, const char __user *buff, unsigne
     else if (15 == cmd_head.wr) //Update firmware!
     {
         memset(cmd_head.data, 0, cmd_head.data_len + 1);
-        memcpy(cmd_head.data, &buff[CMD_HEAD_LENGTH], cmd_head.data_len);
+        memcpy((void*)cmd_head.data, (void*)&buff[CMD_HEAD_LENGTH], (size_t)cmd_head.data_len);
 
         if (FAIL == gup_update_proc((void*)cmd_head.data))
         {

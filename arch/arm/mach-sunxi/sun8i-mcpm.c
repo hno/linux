@@ -21,6 +21,7 @@
 #include <linux/sched.h>
 #include <linux/errno.h>
 #include <linux/delay.h>
+#include <linux/cpu.h>
 
 #include <asm/mcpm.h>
 #include <asm/proc-fns.h>
@@ -28,14 +29,53 @@
 #include <asm/cputype.h>
 #include <asm/cp15.h>
 #include <asm/smp_plat.h>
+#include <asm/hardware/gic.h>
 
 #include <mach/platform.h>
 #include <mach/cci.h>
 #include <mach/sun8i/platsmp.h>
+#include <linux/arisc/arisc.h>
+#include <linux/arisc/arisc-notifier.h>
+#include <mach/sys_config.h>
+#include <mach/sunxi-chip.h>
 
-#define SUN8I_POWER_SWITCH_OFF	(0xFF)
-#define SUN8I_POWER_SWITCH_ON	(0x00)
-#define SUN8I_IS_WFI_MODE(cluster, cpu)  (readl(SUNXI_CPUXCFG_VBASE + SUNXI_CLUSTER_CPU_STATUS(cluster)) & (1 << (16 + cpu)))
+#ifdef CONFIG_EVB_PLATFORM
+#define MCPM_WITH_ARISC_DVFS_SUPPORT	1
+#endif
+
+#ifdef MCPM_WITH_ARISC_DVFS_SUPPORT
+/* sync with arisc module */
+static bool arisc_ready = 0;
+#endif
+
+#define is_arisc_ready()   (arisc_ready)
+#define set_arisc_ready(x) (arisc_ready = (x))
+
+#if defined(CONFIG_ARCH_SUN8IW6)
+static unsigned int soc_version;
+#define CORES_PER_CLUSTER	(4)
+#elif defined(CONFIG_ARCH_SUN8IW9)
+#define CORES_PER_CLUSTER	(3)
+#endif
+
+/* sun8i platform support two clusters,
+ * cluster0 : cortex-a7,
+ * cluster1 : cortex-a7.
+ */
+
+#define CLUSTER_0	    0
+#define CLUSTER_1	    1
+#define MAX_CLUSTERS	2
+
+
+#define SUN8I_CPU_IS_WFI_MODE(cluster, cpu) (readl(sun8i_cpuxcfg_base + SUNXI_CLUSTER_CPU_STATUS(cluster)) & (1 << (16 + cpu)))
+#define SUN8I_L2CACHE_IS_WFI_MODE(cluster)  (readl(sun8i_cpuxcfg_base + SUNXI_CLUSTER_CPU_STATUS(cluster)) & (1 << 0))
+
+#define SUN8I_C0_CLSUTER_PWRUP_FREQ   (600000)  /* freq base on khz */
+#define SUN8I_C1_CLSUTER_PWRUP_FREQ   (600000)  /* freq base on khz */
+
+static unsigned int cluster_pll[MAX_CLUSTERS];
+static unsigned int cluster_powerup_freq[MAX_CLUSTERS];
 
 /*
  * We can't use regular spinlocks. In the switcher case, it is possible
@@ -64,102 +104,357 @@ static int sun8i_cluster_use_count[MAX_NR_CLUSTERS];
  */
 static cpumask_t dead_cpus[MAX_NR_CLUSTERS];
 
+/* add by huangshr
+ * to check cpu really power state*/
+cpumask_t cpu_power_up_state_mask;
+/* end by huangshr*/
+
 /* hrtimer, use to power-down cluster process,
  * power-down cluster use the time-delay solution mainly for keep long time
  * L2-cache coherecy, this can decrease IKS switch and cpu power-on latency.
  */
 static struct hrtimer cluster_power_down_timer;
-static int sun8i_cpu_power_control(unsigned int cpu, unsigned int cluster, bool enable)
+
+static int sun8i_cpu_power_switch_set(unsigned int cluster, unsigned int cpu, bool enable)
 {
-	unsigned int value;
 	if (enable) {
-		/* step1: power switch on */
-		writel(SUN8I_POWER_SWITCH_ON, sun8i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
-		while(SUN8I_POWER_SWITCH_ON != readl(sun8i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu))) {
+		if (0x00 == readl(sun8i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu))) {
+			pr_debug("%s: power switch enable already\n", __func__);
+			return 0;
+		}
+		/* de-active cpu power clamp */
+		writel(0xFE, sun8i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
+		udelay(20);
+
+		writel(0xF8, sun8i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
+		udelay(10);
+
+		writel(0xE0, sun8i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
+		udelay(10);
+#ifdef CONFIG_ARCH_SUN8IW6
+		writel(0xc0, sun8i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
+		udelay(10);
+#endif
+		writel(0x80, sun8i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
+		udelay(10);
+
+		writel(0x00, sun8i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
+		udelay(20);
+		while(0x00 != readl(sun8i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu))) {
 			;
 		}
-		mdelay(5);
-
-		/* step2: power gating off */
-		value = readl(sun8i_prcm_base + SUNXI_CLUSTER_PWROFF_GATING(cluster));
-		value &= (~(0x1<<cpu));
-		writel(value, sun8i_prcm_base + SUNXI_CLUSTER_PWROFF_GATING(cluster));
-		mdelay(2);
-
-		pr_info("sun8i power-up cluster-%d cpu-%d\n", cluster, cpu);
-
-		/* step3: clear reset */
-		value  = readl(sun8i_cpuscfg_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
-		value |= (1<<cpu);
-		writel(value, sun8i_cpuscfg_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
-
-		/* step4: core reset */
-		value  = readl(sun8i_cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
-		value |= (1<<cpu);
-		writel(value, sun8i_cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
-
-		pr_info("sun8i power-up cluster-%d cpu-%d already\n", cluster, cpu);
 	} else {
-		/*
-		 * power-down cpu core process
-		 */
-		/* step1: assert core reset */
-		value  = readl(sun8i_cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
-		value &= ~(1 << cpu);
-		writel(value, sun8i_cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
-
-		/* step2: assert reset */
-		value  = readl(sun8i_cpuscfg_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
-		value &= ~(1 << cpu);
-		writel(value, sun8i_cpuscfg_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
-
-
-		/* step3: power gating on */
- 		mdelay(2);
-		value = readl(sun8i_prcm_base + SUNXI_CLUSTER_PWROFF_GATING(cluster));
-		value |= (1 << cpu);
-		writel(value, sun8i_prcm_base + SUNXI_CLUSTER_PWROFF_GATING(cluster));
-
-		mdelay(5);
-
-		/* step4: power switch off */
-		writel(SUN8I_POWER_SWITCH_OFF, sun8i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
-		mdelay(1);
-		pr_info("sun8i power-down cluster-%d cpu-%d already\n", cluster, cpu);
+		if (0xFF == readl(sun8i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu))) {
+			pr_debug("%s: power switch disable already\n", __func__);
+			return 0;
+		}
+		writel(0xFF, sun8i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
+		udelay(30);
+		while(0xFF != readl(sun8i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu))) {
+			;
+		}
 	}
 	return 0;
 }
 
-static int sun8i_cluster_power_control(unsigned int cluster, bool enable)
+
+int sun8i_cpu_power_set(unsigned int cluster, unsigned int cpu, bool enable)
 {
 	unsigned int value;
 	if (enable) {
+		/*
+		 * power-up cpu core process
+		 */
+		pr_debug("sun8i power-up cluster-%d cpu-%d\n", cluster, cpu);
 
-		pr_info("sun8i power-up cluster-%d\n", cluster);
+		cpumask_set_cpu(((cluster)*4 + cpu), &cpu_power_up_state_mask);
+
+		/* assert cpu core reset */
+		value  = readl(sun8i_cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
+		value &= (~(1<<cpu));
+		writel(value, sun8i_cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
+		udelay(10);
+
+		/* assert cpu power-on reset */
+		value  = readl(sun8i_cpuscfg_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
+		value &= (~(1<<cpu));
+		writel(value, sun8i_cpuscfg_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
+		udelay(10);
+
+		/* L1RSTDISABLE hold low */
+		value = readl(sun8i_cpuxcfg_base + SUNXI_CLUSTER_CTRL0(cluster));
+		value &= ~(1<<cpu);
+		writel(value, sun8i_cpuxcfg_base + SUNXI_CLUSTER_CTRL0(cluster));
+
+		/* release power switch */
+		sun8i_cpu_power_switch_set(cluster, cpu, 1);
+
+#ifdef CONFIG_ARCH_SUN8IW6
+		if (cpu == 0) {
+			if (soc_version == SUN8IW6P1_REV_A) {
+				/* de-assert cpu power-on reset */
+				value = readl(sun8i_cpuscfg_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
+				value |= ((1<<cpu));
+				writel(value, sun8i_cpuscfg_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
+				udelay(10);
+
+				/* assert cpu core reset */
+				value  = readl(sun8i_cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
+				value |= (1<<cpu);
+				writel(value, sun8i_cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
+				udelay(10);
+				return 0;
+			} else {
+				/* bit4: C1_cpu0 */
+				cpu = 4;
+			}
+		}
+#endif
+
+		/* clear power-off gating */
+		value = readl(sun8i_prcm_base + SUNXI_CLUSTER_PWROFF_GATING(cluster));
+		value &= (~(0x1<<cpu));
+		writel(value, sun8i_prcm_base + SUNXI_CLUSTER_PWROFF_GATING(cluster));
+		udelay(20);
+
+#ifdef CONFIG_ARCH_SUN8IW6
+		if (cpu == 4)
+			cpu = 0;
+#endif
+
+		/* de-assert cpu power-on reset */
+		value  = readl(sun8i_cpuscfg_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
+		value |= ((1<<cpu));
+		writel(value, sun8i_cpuscfg_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
+		udelay(10);
+
+		/* de-assert core reset */
+		value  = readl(sun8i_cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
+		value |= (1<<cpu);
+		writel(value, sun8i_cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
+		udelay(10);
+
+		pr_debug("sun8i power-up cluster-%d cpu-%d already\n", cluster, cpu);
+	} else {
+		/*
+		 * power-down cpu core process
+		 */
+		pr_debug("sun8i power-down cluster-%d cpu-%d\n", cluster, cpu);
+#ifdef CONFIG_ARCH_SUN8IW6
+		if (cpu == 0) {
+			if (soc_version == SUN8IW6P1_REV_A) {
+				/* assert cpu core reset */
+				value = readl(sun8i_cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
+				value &= (~(1<<cpu));
+				writel(value, sun8i_cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
+				udelay(10);
+
+				cpumask_clear_cpu(((cluster)*4 + cpu), &cpu_power_up_state_mask);
+				return 0;
+			} else {
+				/* bit4: C1_cpu0 */
+				cpu = 4;
+			}
+		}
+#endif
+		/* enable cpu power-off gating */
+		value = readl(sun8i_prcm_base + SUNXI_CLUSTER_PWROFF_GATING(cluster));
+		value |= (1 << cpu);
+		writel(value, sun8i_prcm_base + SUNXI_CLUSTER_PWROFF_GATING(cluster));
+		udelay(20);
+
+#ifdef CONFIG_ARCH_SUN8IW6
+		if (cpu == 4)
+			cpu = 0;
+#endif
+
+		/* active the power output switch */
+		sun8i_cpu_power_switch_set(cluster, cpu, 0);
+
+		cpumask_clear_cpu(((cluster)*4 + cpu), &cpu_power_up_state_mask);
+		pr_debug("sun8i power-down cpu%d ok.\n", cpu);
+	}
+	return 0;
+}
+
+static int sun8i_cluster_power_set(unsigned int cluster, bool enable)
+{
+	unsigned int value;
+	int          i;
+#ifdef MCPM_WITH_ARISC_DVFS_SUPPORT
+	/* cluster operation must wait arisc ready */
+	if (!is_arisc_ready()) {
+		pr_debug("%s: arisc not ready, can't power-up cluster\n", __func__);
+		return -EINVAL;
+	}
+#endif
+	if (enable) {
+		pr_debug("sun8i power-up cluster-%d\n", cluster);
+
+		/* assert cluster cores resets */
+		value = readl(sun8i_cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
+#if defined(CONFIG_ARCH_SUN8IW6)
+		value &= (~(0xF<<0));   /* Core Reset    */
+#elif defined(CONFIG_ARCH_SUN8IW9)
+		value &= (~(0x7<<0));   /* Core Reset    */
+#endif
+		writel(value, sun8i_cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
+		udelay(10);
+
+		/* assert cluster cores power-on reset */
+		value = readl(sun8i_cpuscfg_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
+#if defined(CONFIG_ARCH_SUN8IW6)
+		value &= (~(0xF));
+#elif defined(CONFIG_ARCH_SUN8IW9)
+		value &= (~(0x7));
+#endif
+		writel(value, sun8i_cpuscfg_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
+		udelay(10);
+
+		/* assert cluster resets */
+		value = readl(sun8i_cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
+		value &= (~(0x1<<24));  /* SOC DBG Reset */
+#if defined(CONFIG_ARCH_SUN8IW6)
+		value &= (~(0xF<<20));  /* ETM Reset     */
+		value &= (~(0xF<<16));  /* Debug Reset   */
+#elif defined(CONFIG_ARCH_SUN8IW9)
+		value &= (~(0x7<<20));  /* ETM Reset     */
+		value &= (~(0x7<<16));  /* Debug Reset   */
+#endif
+		value &= (~(0x1<<12));  /* HReset        */
+		value &= (~(0x1<<8));   /* L2 Cache Reset*/
+		writel(value, sun8i_cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
+		udelay(10);
+
+		/* Set L2RSTDISABLE LOW */
+		value = readl(sun8i_cpuxcfg_base + SUNXI_CLUSTER_CTRL0(cluster));
+		value &= (~(0x1<<4));
+		writel(value, sun8i_cpuxcfg_base + SUNXI_CLUSTER_CTRL0(cluster));
+
+#ifdef MCPM_WITH_ARISC_DVFS_SUPPORT
+		/* notify arisc to power-up cluster */
+		arisc_dvfs_set_cpufreq(cluster_powerup_freq[cluster], cluster_pll[cluster],
+		                       ARISC_MESSAGE_ATTR_SOFTSYN, NULL, NULL);
+		mdelay(1);
+#endif
+
+#ifdef CONFIG_ARCH_SUN8IW6
+		if (soc_version == SUN8IW6P1_REV_A)
+			sun8i_cpu_power_switch_set(cluster, 0, 1);
+#endif
+		/* active ACINACTM */
+		value = readl(sun8i_cpuxcfg_base + SUNXI_CLUSTER_CTRL1(cluster));
+		value |= (1<<0);
+		writel(value, sun8i_cpuxcfg_base + SUNXI_CLUSTER_CTRL1(cluster));
 
 		/* clear cluster power-off gating */
 		value = readl(sun8i_prcm_base + SUNXI_CLUSTER_PWROFF_GATING(cluster));
+#ifdef CONFIG_ARCH_SUN8IW6
+		if (soc_version == SUN8IW6P1_REV_A)
+			value &= (~(0x1<<4));
+		value &= (~(0x1<<0));
+#else
 		value &= (~(0x1<<4));
+#endif
 		writel(value, sun8i_prcm_base + SUNXI_CLUSTER_PWROFF_GATING(cluster));
+		udelay(20);
 
-		pr_info("sun8i power-up cluster-%d ok\n", cluster);
+		/* de-active ACINACTM */
+		value = readl(sun8i_cpuxcfg_base + SUNXI_CLUSTER_CTRL1(cluster));
+		value &= (~(1<<0));
+		writel(value, sun8i_cpuxcfg_base + SUNXI_CLUSTER_CTRL1(cluster));
+
+		/* de-assert cores reset */
+		value = readl(sun8i_cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
+		value |= (0x1<<24);  /* SOC DBG Reset */
+#if defined(CONFIG_ARCH_SUN8IW6)
+		value |= (0xF<<20);  /* ETM Reset     */
+		value |= (0xF<<16);  /* Debug Reset   */
+#elif defined(CONFIG_ARCH_SUN8IW9)
+		value |= (0x7<<20);  /* ETM Reset     */
+		value |= (0x7<<16);  /* Debug Reset   */
+#endif
+		value |= (0x1<<12);  /* HReset        */
+		value |= (0x1<<8);   /* L2 Cache Reset*/
+		writel(value, sun8i_cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
+		udelay(20);
+		pr_debug("sun8i power-up cluster-%d ok\n", cluster);
 	} else {
 
-		pr_info("sun8i power-down cluster-%d\n", cluster);
+		pr_debug("sun8i power-down cluster-%d\n", cluster);
 
-		/* enable cluster power-off gating */
+		/* active ACINACTM */
+		value = readl(sun8i_cpuxcfg_base + SUNXI_CLUSTER_CTRL1(cluster));
+		value |= (1<<0);
+		writel(value, sun8i_cpuxcfg_base + SUNXI_CLUSTER_CTRL1(cluster));
+
+		while (1) {
+			if (SUN8I_L2CACHE_IS_WFI_MODE(cluster)) {
+				break;
+			}
+			/* maybe should support timeout to avoid deadloop */
+		}
+
+		/* assert cluster cores resets */
+		value = readl(sun8i_cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
+#if defined(CONFIG_ARCH_SUN8IW6)
+		value &= (~(0xF<<0));   /* Core Reset    */
+#elif defined(CONFIG_ARCH_SUN8IW9)
+		value &= (~(0x7<<0));   /* Core Reset    */
+#endif
+		writel(value, sun8i_cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
+		udelay(10);
+
+		/* assert cluster cores power-on reset */
+		value = readl(sun8i_cpuscfg_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
+#if defined(CONFIG_ARCH_SUN8IW6)
+		value &= (~(0xF));
+#elif defined(CONFIG_ARCH_SUN8IW9)
+		value &= (~(0x7));
+#endif
+		writel(value, sun8i_cpuscfg_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
+		udelay(10);
+
+		/* assert cluster resets */
+		value = readl(sun8i_cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
+		value &= (~(0x1<<24));  /* SOC DBG Reset */
+#if defined(CONFIG_ARCH_SUN8IW6)
+		value &= (~(0xF<<20));  /* ETM Reset     */
+		value &= (~(0xF<<16));  /* Debug Reset   */
+#elif defined(CONFIG_ARCH_SUN8IW9)
+		value &= (~(0x7<<20));  /* ETM Reset     */
+		value &= (~(0x7<<16));  /* Debug Reset   */
+#endif
+		value &= (~(0x1<<12));  /* HReset        */
+		value &= (~(0x1<<8));   /* L2 Cache Reset*/
+		writel(value, sun8i_cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
+		udelay(10);
+
+		/* enable cluster and cores power-off gating */
 		value = readl(sun8i_prcm_base + SUNXI_CLUSTER_PWROFF_GATING(cluster));
 		value |= (1<<4);
+#if defined(CONFIG_ARCH_SUN8IW6)
+		value |= (0xF<<0);
+#elif defined(CONFIG_ARCH_SUN8IW9)
+		value |= (0x7<<0);
+#endif
 		writel(value, sun8i_prcm_base + SUNXI_CLUSTER_PWROFF_GATING(cluster));
+		udelay(20);
 
-		pr_info("sun8i power-down cluster-%d ok\n", cluster);
+		/* disable cluster cores power switch */
+		for (i = 0; i < CORES_PER_CLUSTER; i++) {
+			sun8i_cpu_power_switch_set(cluster, i, 0);
+		}
+
+#ifdef MCPM_WITH_ARISC_DVFS_SUPPORT
+		/* notify arisc to power-down cluster,
+		 * arisc will disable cluster clock and power-off cpu power domain.
+		 */
+		arisc_dvfs_set_cpufreq(0, cluster_pll[cluster],
+		                       ARISC_MESSAGE_ATTR_SOFTSYN, NULL, NULL);
+#endif
+		pr_debug("sun8i power-down cluster-%d ok\n", cluster);
 	}
-
-	/* disable cluster clock */
-
-	/* de-assert cluster reset */
-
-	/* power-down cluster dcdc regulator */
 
 	return 0;
 }
@@ -168,16 +463,26 @@ static int sun8i_cluster_power_status(unsigned int cluster)
 {
 	int          status = 0;
 	unsigned int value;
+#ifdef CONFIG_ARCH_SUN8IW6
+	unsigned int value_rst;
+#endif
 
 	value = readl(sun8i_cpuxcfg_base + SUNXI_CLUSTER_CPU_STATUS(cluster));
 
 	/* cluster WFI status :
 	 * all cpu cores enter WFI mode + L2Cache enter WFI status
 	 */
-	if ((((value >> 16) & 0xf) == 0xf) && (value & 0x1)) {
+#ifdef CONFIG_ARCH_SUN8IW6
+	value_rst = readl(sun8i_cpuxcfg_base + SUNXI_CPU_RST_CTRL(cluster));
+	if( (!(value_rst & 0x1)) &&  (((value >> 16) & 0xe) == 0xe))
+	{
 		status = 1;
 	}
-
+#elif defined(CONFIG_ARCH_SUN8IW9)
+	if (((value >> 16) & 0x7) == 0x7) {
+		status = 1;
+	}
+#endif
 	return status;
 }
 
@@ -186,6 +491,7 @@ enum hrtimer_restart sun8i_cluster_power_down(struct hrtimer *timer)
 	ktime_t              period;
 	int                  cluster;
 	enum hrtimer_restart ret;
+
 	arch_spin_lock(&sun8i_mcpm_lock);
 	if (sun8i_cluster_use_count[0] == 0) {
 		cluster = 0;
@@ -202,8 +508,7 @@ enum hrtimer_restart sun8i_cluster_power_down(struct hrtimer *timer)
 		ret = HRTIMER_RESTART;
 		goto end;
 	} else {
-		disable_cci_snoops(cluster);
-		sun8i_cluster_power_control(cluster, 0);
+		sun8i_cluster_power_set(cluster, 0);
 		ret = HRTIMER_NORESTART;
 	}
 end:
@@ -213,7 +518,7 @@ end:
 
 static int sun8i_mcpm_power_up(unsigned int cpu, unsigned int cluster)
 {
-	pr_info("%s: cluster %u cpu %u\n", __func__, cluster, cpu);
+	pr_debug("%s: cluster %u cpu %u\n", __func__, cluster, cpu);
 	if (cpu >= MAX_CPUS_PER_CLUSTER || cluster >= MAX_NR_CLUSTERS) {
 		return -EINVAL;
 	}
@@ -226,18 +531,21 @@ static int sun8i_mcpm_power_up(unsigned int cpu, unsigned int cluster)
 
 	sun8i_cpu_use_count[cluster][cpu]++;
 	if (sun8i_cpu_use_count[cluster][cpu] == 1) {
-
 		sun8i_cluster_use_count[cluster]++;
 		if (sun8i_cluster_use_count[cluster] == 1) {
 			/* first-man should power-up cluster resource */
-			pr_info("sun8i power-on first-man cpu-%d on cluster-%d", cpu, cluster);
-			sun8i_cluster_power_control(cluster, 1);
-
-			/* enable cci snoops */
-			enable_cci_snoops(cluster);
+			pr_debug("%s: power-on cluster-%d", __func__, cluster);
+			if (sun8i_cluster_power_set(cluster, 1)) {
+				pr_debug("%s: power-on cluster-%d fail\n", __func__, cluster);
+				sun8i_cluster_use_count[cluster]--;
+				sun8i_cpu_use_count[cluster][cpu]--;
+				arch_spin_unlock(&sun8i_mcpm_lock);
+				local_irq_enable();
+				return -EINVAL;
+			}
 		}
 		/* power-up cpu core */
-		sun8i_cpu_power_control(cpu, cluster, 1);
+		sun8i_cpu_power_set(cluster, cpu, 1);
 	} else if (sun8i_cpu_use_count[cluster][cpu] != 2) {
 		/*
 		 * The only possible values are:
@@ -249,7 +557,7 @@ static int sun8i_mcpm_power_up(unsigned int cpu, unsigned int cluster)
 		 */
 		BUG();
 	} else {
-		pr_info("sun8i power-on cluster-%d cpu-%d been skiped, usage count %d\n",
+		pr_debug("sun8i power-on cluster-%d cpu-%d been skiped, usage count %d\n",
 		         cluster, cpu, sun8i_cpu_use_count[cluster][cpu]);
 	}
 	arch_spin_unlock(&sun8i_mcpm_lock);
@@ -266,7 +574,8 @@ static void sun8i_mcpm_power_down(void)
 	cpu = MPIDR_AFFINITY_LEVEL(mpidr, 0);
 	cluster = MPIDR_AFFINITY_LEVEL(mpidr, 1);
 
-	pr_info("%s: cluster %u cpu %u\n", __func__, cluster, cpu);
+	/* gic cpu interface exit */
+	gic_cpu_exit(0);
 
 	BUG_ON(cpu >= MAX_CPUS_PER_CLUSTER || cluster >= MAX_NR_CLUSTERS);
 
@@ -279,7 +588,7 @@ static void sun8i_mcpm_power_down(void)
 	if (sun8i_cpu_use_count[cluster][cpu] == 0) {
 		/* check is the last-man */
 		sun8i_cluster_use_count[cluster]--;
-		if (sun8i_cluster_use_count[cluster]) {
+		if (sun8i_cluster_use_count[cluster] == 0) {
 			last_man = true;
 		}
 	} else if (sun8i_cpu_use_count[cluster][cpu] == 1) {
@@ -306,7 +615,7 @@ static void sun8i_mcpm_power_down(void)
 		/*
 		 * Flush all cache levels for this cluster.
 		 *
-		 * A15/A7 can hit in the cache with SCTLR.C=0, so we don't need
+		 * Cluster1/Cluster0 can hit in the cache with SCTLR.C=0, so we don't need
 		 * a preliminary flush here for those CPUs.  At least, that's
 		 * the theory -- without the extra flush, Linux explodes on
 		 * RTSM (maybe not needed anymore, to be investigated).
@@ -326,13 +635,16 @@ static void sun8i_mcpm_power_down(void)
 		set_auxcr(get_auxcr() & ~(1 << 6));
 
 		__mcpm_outbound_leave_critical(cluster, CLUSTER_DOWN);
+
+		/* disable cluster cci snoop */
+		disable_cci_snoops(cluster);
 	} else {
 		arch_spin_unlock(&sun8i_mcpm_lock);
 
 		/*
 		 * Flush the local CPU cache.
 		 *
-		 * A15/A7 can hit in the cache with SCTLR.C=0, so we don't need
+		 * Cluster1/Cluster0 can hit in the cache with SCTLR.C=0, so we don't need
 		 * a preliminary flush here for those CPUs.  At least, that's
 		 * the theory -- without the extra flush, Linux explodes on
 		 * RTSM (maybe not needed anymore, to be investigated).
@@ -350,7 +662,9 @@ static void sun8i_mcpm_power_down(void)
 	/* Now we are prepared for power-down, do it: */
 	if (!skip_power_down) {
 		dsb();
-		wfi();
+		while (1) {
+			wfi();
+		}
 	}
 	/* Not dead at this point?  Let our caller cope. */
 }
@@ -403,13 +717,24 @@ static int sun8i_mcpm_cpu_kill(unsigned int cpu)
 
 	killer = get_cpu();
 	put_cpu();
-	pr_info("sun8i hotplug: cpu(%d) try to kill cpu(%d)\n", killer, cpu);
+	pr_debug("sun8i hotplug: cpu(%d) try to kill cpu(%d)\n", killer, cpu);
 
 	for (i = 0; i < 1000; i++) {
-		if (cpumask_test_cpu(cpu_id, &dead_cpus[cluster_id]) && SUN8I_IS_WFI_MODE(cluster_id, cpu_id)) {
-
+		if (cpumask_test_cpu(cpu_id, &dead_cpus[cluster_id]) &&
+        SUN8I_CPU_IS_WFI_MODE(cluster_id, cpu_id)) {
+			local_irq_disable();
+			arch_spin_lock(&sun8i_mcpm_lock);
 			/* power-down cpu core */
-			sun8i_cpu_power_control(cpu_id, cluster_id, 0);
+			sun8i_cpu_power_set(cluster_id, cpu_id, 0);
+#ifndef CONFIG_BL_SWITCHER
+			/* if bL swithcer disable, the last-man should power-down cluster */
+			if ((sun8i_cluster_use_count[cluster_id] == 0) && (sun8i_cluster_power_status(cluster_id))) {
+				sun8i_cluster_power_set(cluster_id, 0);
+			}
+#endif
+			arch_spin_unlock(&sun8i_mcpm_lock);
+			local_irq_enable();
+			pr_debug("sun8i hotplug: cpu:%d is killed!\n", cpu);
 			return 1;
 		}
 		mdelay(1);
@@ -446,7 +771,42 @@ static const struct mcpm_platform_ops sun8i_mcpm_power_ops = {
 	.cpu_kill       = sun8i_mcpm_cpu_kill,
 	.cpu_disable    = sun8i_mcpm_cpu_disable,
 };
+#ifdef MCPM_WITH_ARISC_DVFS_SUPPORT
+/* sun8i_arisc_notify_call - callback that gets triggered when arisc ready. */
+static int sun8i_arisc_notify_call(struct notifier_block *nfb,
+                                   unsigned long action, void *parg)
+{
+	switch (action) {
+		case ARISC_INIT_READY: {
+		unsigned int cpu;
 
+		/* arisc ready now */
+		set_arisc_ready(1);
+
+		/* power-off cluster-1 first */
+		sun8i_cluster_power_set(CLUSTER_1, 0);
+
+		/* power-up off-line cpus*/
+		for_each_present_cpu(cpu) {
+			if (num_online_cpus() >= setup_max_cpus) {
+				break;
+			}
+			if (!cpu_online(cpu)) {
+				cpu_up(cpu);
+			}
+		}
+		break;
+		}
+	}
+	return NOTIFY_OK;
+}
+
+static struct notifier_block sun8i_arisc_notifier = {
+	&sun8i_arisc_notify_call,
+	NULL,
+	0
+};
+#endif
 static void __init sun8i_mcpm_boot_cpu_init(void)
 {
 	unsigned int mpidr, cpu, cluster;
@@ -455,12 +815,31 @@ static void __init sun8i_mcpm_boot_cpu_init(void)
 	cpu = MPIDR_AFFINITY_LEVEL(mpidr, 0);
 	cluster = MPIDR_AFFINITY_LEVEL(mpidr, 1);
 
-	pr_info("%s: cpu %u cluster %u\n", __func__, cpu, cluster);
+	pr_debug("%s: cpu %u cluster %u\n", __func__, cpu, cluster);
 	BUG_ON(cpu >= MAX_CPUS_PER_CLUSTER || cluster >= MAX_NR_CLUSTERS);
 	sun8i_cpu_use_count[cluster][cpu] = 1;
 	sun8i_cluster_use_count[cluster]++;
+
+	cpumask_clear(&cpu_power_up_state_mask);
+	cpumask_set_cpu((cluster*4 + cpu),&cpu_power_up_state_mask);
 }
 
+
+int sun8i_mcpm_cpu_map_init(void)
+{
+	/* default cpu logical map */
+	cpu_logical_map(0) = 0x000;
+	cpu_logical_map(1) = 0x001;
+	cpu_logical_map(2) = 0x002;
+	cpu_logical_map(3) = 0x003;
+	cpu_logical_map(4) = 0x100;
+	cpu_logical_map(5) = 0x101;
+	cpu_logical_map(6) = 0x102;
+	cpu_logical_map(7) = 0x103;
+
+
+	return 0;
+}
 extern void sun8i_power_up_setup(unsigned int affinity_level);
 extern int __init cci_init(void);
 
@@ -490,6 +869,18 @@ static int __init sun8i_mcpm_init(void)
 	/* set sun8i platform non-boot cpu startup entry. */
 	sunxi_set_secondary_entry((void *)(virt_to_phys(mcpm_entry_point)));
 
+	/* initialize cluster0 and cluster1 cluster pll number */
+	cluster_pll[CLUSTER_0] = ARISC_DVFS_PLL1;
+	cluster_pll[CLUSTER_1] = ARISC_DVFS_PLL2;
+
+	/* initialize ca7 and ca15 cluster power-up freq as deafult */
+	cluster_powerup_freq[CLUSTER_0] = SUN8I_C0_CLSUTER_PWRUP_FREQ;
+	cluster_powerup_freq[CLUSTER_1] = SUN8I_C1_CLSUTER_PWRUP_FREQ;
+#ifdef MCPM_WITH_ARISC_DVFS_SUPPORT
+	/* register arisc ready notifier */
+	arisc_register_notifier(&sun8i_arisc_notifier);
+#endif
+#ifdef CONFIG_FPGA_V7_PLATFORM
 	/* hard-encode by sunny to support sun8i 2big+2little,
 	 * we should use device-tree to config the cluster and cpu topology information.
 	 * but sun8i not support device-tree now, so I just hard-encode for temp debug.
@@ -498,6 +889,11 @@ static int __init sun8i_mcpm_init(void)
 	cpu_logical_map(1) = 0x001;
 	cpu_logical_map(2) = 0x100;
 	cpu_logical_map(3) = 0x101;
+#endif
+
+#ifdef CONFIG_ARCH_SUN8IW6
+	soc_version = sunxi_get_soc_ver();
+#endif
 
 	return 0;
 }

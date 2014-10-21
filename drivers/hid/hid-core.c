@@ -2063,18 +2063,7 @@ static bool hid_ignore(struct hid_device *hdev)
 		if (hdev->product == USB_DEVICE_ID_JESS_YUREX &&
 				hdev->type == HID_TYPE_USBNONE)
 			return true;
-		break;
-	case USB_VENDOR_ID_RAPOO:
-		if (hdev->product == USB_DEVICE_ID_RAPOO_1090 &&
-				hdev->type != HID_TYPE_USBMOUSE)
-			return true;
-		break;
-	case USB_VENDOR_ID_TURBOX:
-		if ((hdev->product == USB_DEVICE_ID_TURBOX_KEYBOARD_T10 ||
-				hdev->product == USB_DEVICE_ID_TURBOX_KEYBOARD_G10) &&
-				hdev->type != HID_TYPE_USBMOUSE)
-			return true;
-		break;
+	break;
 	}
 
 	if (hdev->type == HID_TYPE_USBMOUSE &&

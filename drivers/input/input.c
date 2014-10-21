@@ -598,6 +598,8 @@ static void input_dev_release_keys(struct input_dev *dev)
 
 	if (is_event_supported(EV_KEY, dev->evbit, EV_MAX)) {
 		for (code = 0; code <= KEY_MAX; code++) {
+			/* 2014-07-16 by Ming Li*/
+			/* to slove press long power can't power system in shutdown charge */
 			if (code == KEY_POWER)
 				continue;
 			if (is_event_supported(code, dev->keybit, KEY_MAX) &&
@@ -1865,7 +1867,7 @@ int input_register_device(struct input_dev *dev)
 		return error;
 
 	path = kobject_get_path(&dev->dev.kobj, GFP_KERNEL);
-	pr_info("%s as %s\n",
+	pr_debug("%s as %s\n",
 		dev->name ? dev->name : "Unspecified device",
 		path ? path : "N/A");
 	kfree(path);

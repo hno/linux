@@ -14,12 +14,10 @@ module_param_named(ctp_mask, ctp_mask, int , S_IRUGO | S_IWUSR | S_IWGRP);
 
 /*gsensor info*/
 static struct sw_device_info gsensors[] = {
-        {    "bma250", {0x18, 0x19, 0x08, 0x38}, 0x00, {0x02,0x03,0xf9,0xf8}, 0},
-        {   "stk831x", {0x3d, 0x22            }, 0x00, {0x00               }, 1},
+        {    "bma250", {0x18, 0x19, 0x08, 0x38}, 0x00, {0x02,0x03,0xf9}, 0},
         {   "mma8452", {0x1c, 0x1d            }, 0x0d, {0x2A          }, 0},
         {   "mma7660", {0x4c                  }, 0x00, {0x00          }, 0},
         {   "mma865x", {0x1d                  }, 0x0d, {0x4A,0x5A     }, 0},
-        {   "mc32x0" , {0x4c                  }, 0x00, {0x00               }, 1},
         {    "afa750", {0x3d                  }, 0x37, {0x3d,0x3c     }, 0},
         {"lis3de_acc", {0x28, 0x29            }, 0x0f, {0x33          }, 0},
         {"lis3dh_acc", {0x18, 0x19            }, 0x0f, {0x33          }, 0},
@@ -32,25 +30,17 @@ static struct sw_device_info gsensors[] = {
 };
 /*ctp info*/
 static struct sw_device_info ctps[] = {
-        { "ft5x_ts", {      0x38},   0xa3, {0x3,0x0a,0x55,0x06,0x08,0x02,0xa3}, 0},
+        { "ft5x_ts", {      0x38},   0xa3, {0x55,0x08,0x02,0x06,0xa3}, 0},
         {   "gt82x", {      0x5d},  0xf7d, {0x13,0x27,0x28          }, 0},
-        { "gslX680", {      0x40},   0x00, {0x00                    }, 1},
-        {"gslX680new", {    0x40},   0x00, {0x00                    }, 1},
+        { "gslX680", {      0x40},   0x00, {0x00                    }, 0},
         {"gt9xx_ts", {0x14, 0x5d}, 0x8140, {0x39                    }, 0},
-        {"gt9xxnew_ts", {0x14, 0x5d}, 0x8140, {0x39                    }, 0},
-        {"gt9xxf_ts",{ 0x14,0x5d},   0x00, {0x00                    }, 1},
-        {   "tu_ts", {      0x5f},   0x00, {0x00                    }, 1},
-        {"gt818_ts", {      0x5d},  0x715, {0xc3                    }, 0},
-        { "zet622x", {      0x76},   0x00, {0x00                    }, 0},
+        {   "gt811", {      0x5d},  0x715, {0x11                    }, 0},
         {"aw5306_ts", {     0x38},   0x01, {0xA8                    }, 0},
-        {"icn83xx_ts",{     0x40},   0x00, {0x00                    }, 1},
+        { "zet622x", {      0x76},   0x00, {0x00                    }, 0},
 };
 
 static struct sw_device_info lsensors[] = {
         {"ltr_501als", {0x23   },    0x87, {0x05                    }, 0},
-        {"jsa1212",    {0x44,0x45   },    0x00, {0x21                    }, 0},
-        {"jsa1127",    {0x39,0x29,0x44},  0x00, {0x00                    }, 1},
-        {"stk3x1x",    {0x48        },    0x00, {0x00                    }, 1},
 };
 
 static struct sw_device_info gyr_sensors[] = {
@@ -110,15 +100,6 @@ static struct para_name c_name = {
         "ctp_det_used",
         "ctp_twi_id",
         CTP_DEVICE_KEY_NAME,
-};
-static struct para_power c_power = {
-	.keyname             = "ctp_para",
-	.power_ldo_name      = "ctp_power_ldo",
-	.power_ldo_vol_name  = "ctp_power_ldo_vol",
-	.power_io_name       = "ctp_power_io",
-	.reset_pin_name      = "ctp_wakeup",
-	.power_ldo           = NULL,
-	.ldo                 = NULL,
 };
 	
 static struct sw_device_name d_name = {"", "", "", "", 0, 0, 0, 0};
@@ -266,35 +247,26 @@ script_get_item_err:
 	return val;
 }
 
-static void get_power_para(struct para_power *pm)
+static void get_pio_para(char* name[], struct gpio_config value[], int num)
 {
         script_item_u	val;
-	int num = 0;
+        int ret = 0;
         
-	while(num < 4) {
-		val = get_para_value(pm->keyname,*(&(pm->power_ldo_name) + num));
-		if(val.val != -1) {
-			switch(num) {
-				case 0:
-					pm->power_ldo = val.str;
-					break;
-				case 1:
-					pm->power_ldo_vol = val.val;
-					break;
-				case 2:
-					pm->power_io = val.gpio;
-					break;
-				case 3:
-					pm->reset_pin = val.gpio;
-					break;
+        if(num < 1) {
+                printk("%s: num:%d ,error!\n", __func__, num);
+                return;
         }
         
+        while(ret < num)
+        {     
+                val = get_para_value(name[0],name[ret+1]); 
+                if(val.val == -1) {                        
+                        val.val = 0;
+                        val.gpio.gpio = -1;
                 }
-		num ++;
+                value[ret] = val.gpio;
+	        ret++;
         }
-	dprintk(DEBUG_INIT, "[sw_device]:%s: power_ldo = %s,power_ldo_vol = %d,"
-			"power_io = %d,reset_pin = %d\n", __func__,
-			pm->power_ldo,pm->power_ldo_vol,pm->power_io.gpio,pm->reset_pin.gpio);
 }
 
 /*
@@ -890,10 +862,10 @@ static int sw_register_device_detect(struct sw_device_info info[], struct para_n
 	        
 	client = kzalloc(sizeof(struct i2c_client), GFP_KERNEL);
 	if (!client){
+		printk("allocate client fail!\n");
 		kfree(sw);
-	        printk("allocate memery for client fail!\n");
-                return -ENOMEM;
-	}        
+                return -ENOMEM;        
+	}
 		
 	sw->temp_client = client;      
 	sw->info = info;
@@ -919,44 +891,15 @@ static int sw_register_device_detect(struct sw_device_info info[], struct para_n
 	return 0; 
 }
 
-static void sw_devices_set_power(struct para_power *pm)
-{
-	if (pm->power_ldo) {
-		pm->ldo = regulator_get(NULL, pm->power_ldo);
-		if (!pm->ldo)
-			printk("%s: could not get  ldo '%s' ,ignore firstly\n",
-					__func__,pm->power_ldo);
-		else {
-			regulator_set_voltage(pm->ldo,
-					(int)(pm->power_ldo_vol)*1000,
-					(int)(pm->power_ldo_vol)*1000);
-			regulator_enable(pm->ldo);
-		}
-	} else if(0 != pm->power_io.gpio) {
-		if(0 != gpio_request(pm->power_io.gpio, NULL))
-			printk("%s : %d gpio_request is failed,ignore firstly\n",
-					__func__,pm->power_io.gpio);
-		else
-			gpio_direction_output(pm->power_io.gpio, 1);
-	}
-}
 
-static void sw_devices_power_free(struct para_power *pm)
-{
-	if(pm->ldo) {
-		regulator_disable(pm->ldo);
-		regulator_put(pm->ldo);
-		pm->ldo = NULL;
-	} else if (0 != pm->power_io.gpio)
-		gpio_free(pm->power_io.gpio);
-}
 static void sw_devices_events(struct work_struct *work)
 {
         int ret = -1;
         int device_number = 0;
+        struct gpio_config value;
+        char *name[] = {"ctp_para", "ctp_wakeup"};
         
-        get_power_para(&c_power);
-        sw_devices_set_power(&c_power);
+        get_pio_para(name, &value, 1);
         
         dprintk(DEBUG_INIT, "[sw_device]:%s begin!\n", __func__);
         
@@ -983,13 +926,12 @@ static void sw_devices_events(struct work_struct *work)
         }
         
         device_number = (sizeof(ctps)) / (sizeof(ctps[0]));
-        ctp_wakeup(c_power.reset_pin, 20);
+        ctp_wakeup(value, 20);
         msleep(50);
         ret = sw_register_device_detect(ctps, &c_name, device_number);        
         if(ret < 0)
                 printk("ctp detect fail!\n"); 
         
-        sw_devices_power_free(&c_power);
         dprintk(DEBUG_INIT, "[sw_device]:%s end!\n", __func__);       
 }	
 

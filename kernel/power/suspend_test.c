@@ -92,14 +92,28 @@ static void __init test_wakealarm(struct rtc_device *rtc, suspend_state_t state)
 	}
 
 	if (state == PM_SUSPEND_MEM) {
-		printk(info_test, pm_states[state]);
-		status = pm_suspend(state);
-		if (status == -ENODEV)
-			state = PM_SUSPEND_STANDBY;
+	    printk(info_test, pm_states[state]);
+#ifdef CONFIG_EARLYSUSPEND
+	    {
+		status = 0;
+		request_suspend_state(state);
+	    }
+#else
+	    status = pm_suspend(state);
+#endif
+	    if (status == -ENODEV)
+		state = PM_SUSPEND_STANDBY;
 	}
 	if (state == PM_SUSPEND_STANDBY) {
-		printk(info_test, pm_states[state]);
-		status = pm_suspend(state);
+	    printk(info_test, pm_states[state]);
+#ifdef CONFIG_EARLYSUSPEND
+	    {
+		status = 0;
+		request_suspend_state(state);
+	    }
+#else
+	    status = pm_suspend(state);
+#endif
 	}
 	if (status < 0)
 		printk(err_suspend, status);

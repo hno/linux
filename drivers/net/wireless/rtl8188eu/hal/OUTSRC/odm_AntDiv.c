@@ -111,7 +111,7 @@ ODM_UpdateRxIdleAnt(IN PDM_ODM_T pDM_Odm, IN u1Byte Ant)
 			ODM_SetBBReg(pDM_Odm, 0xC08 , BIT24|BIT23|BIT22, OptionalAnt);//Optional RX
 			ODM_SetBBReg(pDM_Odm, 0xC08 , BIT27|BIT26|BIT25, DefaultAnt);	 //Default TX
 		}
-		ODM_SetMACReg(pDM_Odm, 0x6D8 , BIT10|BIT9|BIT8, DefaultAnt);	//PathA Resp Tx
+		ODM_SetMACReg(pDM_Odm, 0x6D8 , BIT10|BIT9|BIT8, DefaultAnt);	//PathA Resp Tx
 	}
 	else// pDM_FatTable->RxIdleAnt == Ant
 	{

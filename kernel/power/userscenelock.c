@@ -13,6 +13,7 @@
 #include <linux/slab.h>
 #include <mach/gpio.h>
 #include "power.h"
+#include "linux/power/aw_pm.h"
 
 enum {
 	DEBUG_FAILURE	= BIT(0),
@@ -90,11 +91,14 @@ static struct user_scene_lock *lookup_scene_lock_name(
 	}
 	memcpy(l->name, buf, name_len);
 
-	for (i = 0; i < sizeof(extended_standby)/sizeof(extended_standby[0]); i++) {
-		if (!strncmp(l->name, extended_standby[i].name, strlen(extended_standby[i].name))) {
-			type = extended_standby[i].scene_type;
-			break;
+	for (i = 0; i < extended_standby_cnt; i++) {
+	    //first, judge the extended standby initialized.
+	    if (extended_standby[i].scene_type){ 
+		if (name_len == strlen(extended_standby[i].name) && !strncmp(l->name, extended_standby[i].name, strlen(extended_standby[i].name))) {
+		    type = extended_standby[i].scene_type;
+		    break;
 		}
+	    }
 	}
 
 	if (SCENE_MAX == type) {
@@ -116,10 +120,33 @@ bad_arg:
 	return ERR_PTR(-EINVAL);
 }
 
+static char *show_scene_state(char *s, char *end)
+{
+    int i = 0;
+    for (i = 0; i < extended_standby_cnt; i++) {
+	//first, judge the extended standby initialized.
+	if (extended_standby[i].scene_type){ 
+	    if (!check_scene_locked(extended_standby[i].scene_type)) {
+		s += scnprintf(s, end - s, "[%s] ", extended_standby[i].name);
+	    }else{
+		s += scnprintf(s, end - s, "%s ", extended_standby[i].name);
+	    }
+	}
+    }
+   
+    s += scnprintf(s, end - s, "\n");
+
+    return s;
+
+}
 ssize_t scene_lock_show(
 	struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
-	return  1;
+    char *s = buf;
+    char *end = buf + PAGE_SIZE;
+    s = show_scene_state(s, end);
+
+    return (s - buf);
 }
 
 ssize_t scene_lock_store(
@@ -137,11 +164,11 @@ ssize_t scene_lock_store(
 
 	scene_lock(&l->scene_lock);
 
-	if (!strncmp(l->name, "usb_standby", 11)) {
+	if (strlen(l->name) == strlen("usb_standby") && !strncmp(l->name, "usb_standby", strlen("usb_standby"))) {
 		enable_wakeup_src(CPUS_USBMOUSE_SRC, 0);
-	} else if (!strncmp(l->name, "talking_standby", 15)) {
+	} else if (strlen(l->name) == strlen("talking_standby") && !strncmp(l->name, "talking_standby", strlen("talking_standby"))) {
 		;
-	} else if (!strncmp(l->name, "mp3_standby", 11)) {
+	} else if (strlen(l->name) == strlen("mp3_standby") && !strncmp(l->name, "mp3_standby", strlen("mp3_standby"))) {
 		;
 	}
 bad_name:
@@ -175,14 +202,14 @@ ssize_t scene_unlock_store(
 	scene_unlock(&l->scene_lock);
 
 	if (0 == l->scene_lock.count) {
-		if (!strncmp(l->name, "usb_standby", 11)) {
-			if (check_scene_locked(SCENE_USB_STANDBY))
-				disable_wakeup_src(CPUS_USBMOUSE_SRC, 0);
-		} else if (!strncmp(l->name, "talking_standby", 15)) {
-			;
-		} else if (!strncmp(l->name, "mp3_standby", 11)) {
-			;
-		}
+	    if (strlen(l->name) == strlen("usb_standby") && !strncmp(l->name, "usb_standby", strlen("usb_standby"))) {
+		if (check_scene_locked(SCENE_USB_STANDBY))
+		    disable_wakeup_src(CPUS_USBMOUSE_SRC, 0);
+	    } else if (strlen(l->name) == strlen("talking_standby") && !strncmp(l->name, "talking_standby", strlen("talking_standby"))) {
+		;
+	    } else if (strlen(l->name) == strlen("mp3_standby") && !strncmp(l->name, "mp3_standby", strlen("mp3_standby"))) {
+		;
+	    }
 	}
 not_found:
 	mutex_unlock(&tree_lock);
@@ -198,33 +225,110 @@ ssize_t scene_state_store(struct kobject *kobj, struct kobj_attribute *attr,
 ssize_t scene_state_show(
 	struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
-	int i;
+	char *s = buf;
+	char *end = buf + PAGE_SIZE;
+
+	s = show_scene_state(s, end);
+
+	return (s - buf);
+}
+
+ssize_t wakeup_src_store(struct kobject *kobj, struct kobj_attribute *attr,
+	const char *buf, size_t n)
+{
+	cpu_wakeup_src_e src;
+	__u32 para = 0;
+	__u32 enable = 0;
+
+	sscanf(buf, "%x %x %x\n", (__u32 *)&src, (__u32 *)&para, (__u32 *)&enable);
+	if(enable){
+	    enable_wakeup_src(src, para);
+	}else{
+	    disable_wakeup_src(src, para);
+	}
+
+	return n;
+}
+
+ssize_t wakeup_src_show(
+	struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
 	char *s = buf;
 	char *end = buf + PAGE_SIZE;
 	const extended_standby_manager_t *manager = NULL;
-
-	for (i = 0; i < (sizeof(extended_standby)/sizeof(extended_standby[0])); i++) {
-		if (!check_scene_locked(extended_standby[i].scene_type)) {
-			s += scnprintf(s, end - s, "%s ", extended_standby[i].name);
-		}
-	}
-
-	s += scnprintf(s, end - s, "\n");
 
 	manager = get_extended_standby_manager();
 
 	if (NULL != manager) {
 
+		s += scnprintf(s, end - s, "%s\n", "dynamic wakeup src config:");
 		s += scnprintf(s, end - s, "wakeup_src 0x%lx\n", manager->event);
-
+		s += parse_wakeup_event(s, end - s, manager->event);	
 		s += scnprintf(s, end - s, "wakeup_gpio_map 0x%lx\n", manager->wakeup_gpio_map);
-
+		s += parse_wakeup_gpio_map(s, end -s, manager->wakeup_gpio_map);	
 		s += scnprintf(s, end - s, "wakeup_gpio_group 0x%lx\n", manager->wakeup_gpio_group);
-
+		s += parse_wakeup_gpio_group_map(s, end - s, manager->wakeup_gpio_group);
 		if (NULL != manager->pextended_standby)
 			s += scnprintf(s, end - s, "extended_standby id = 0x%lx\n", manager->pextended_standby->id);
 	}
 
+	s += scnprintf(s, end - s, "%s\n", "==========================wakeup src setting usage help info========:");
+	s += scnprintf(s, end - s, "%s\n", "echo wakeup_src_e para (1:enable)/(0:disable) > /sys/power/wakeup_src");
+	s += scnprintf(s, end - s, "%s\n", "demo: echo 0x2000 0x200 1 > /sys/power/wakeup_src");
+	s += scnprintf(s, end - s, "%s\n", "wakeup_src_e para info: ");
+	s += parse_wakeup_event(s, end - s, 0xffffffff);
+	s += scnprintf(s, end - s, "%s\n", "gpio para info: ");
+	s += show_gpio_config(s, end - s);
+
 	return (s - buf);
 }
+
+ssize_t sys_pwr_dm_mask_show(struct kobject *kobj, struct kobj_attribute *attr,
+	char *buf)
+{
+	char *s = buf;
+	char *end = buf + PAGE_SIZE;
+	__u32 dm = 0;
+
+	dm = get_sys_pwr_dm_mask();
+	s += scnprintf(s, end - s, "0x%x \n", dm);
+	s += parse_pwr_dm_map(s, end - s, dm);
+	s += scnprintf(s, end - s, "%s\n", "==========================sys pwr_dm mask setting usage help info========:");
+	s += scnprintf(s, end - s, "%s\n", "echo pwr_dm (1:enable)/(0:disable) > /sys/power/sys_pwr_dm_mask");
+	s += scnprintf(s, end - s, "%s\n", "demo: for add cpub to sys_pwr_dm, \n echo 0x2 1 > /sys/power/sys_pwr_dm_mask");
+	s += scnprintf(s, end - s, "%s\n", "sys pwr dm info: ");
+	s += parse_pwr_dm_map(s, end - s, 0xffffffff);
+
+	return (s - buf);
+}
+
+ssize_t sys_pwr_dm_mask_store(struct kobject *kobj, struct kobj_attribute *attr,
+	const char *buf, size_t n)
+{
+	__u32 dm = 0;
+	__u32 enable = 0;
+
+	sscanf(buf, "%x %x \n", (__u32 *)&dm, (__u32 *)&enable);
+	set_sys_pwr_dm_mask(get_sys_pwr_dm_mask(), enable);
+
+	return n;
+}
+
+static int __init userscene_lock_init(void)
+{
+
+#ifdef CONFIG_ARCH_SUN8IW6P1
+	printk(KERN_INFO "lock super standby for a83!\n");
+	scene_lock_store(NULL, NULL, "super_standby", 0);
+#endif
+	return 0;
+}
+
+static void __exit userscene_lock_exit(void)
+{
+    return  ;
+}
+
+module_init(userscene_lock_init);
+module_exit(userscene_lock_exit);
 

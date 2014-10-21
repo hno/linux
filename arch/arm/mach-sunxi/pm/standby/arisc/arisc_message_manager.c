@@ -103,6 +103,7 @@ struct arisc_message *arisc_message_allocate(unsigned int msg_attr)
 	
 	if (palloc == (struct arisc_message *)(NULL)) {
 		ARISC_ERR("allocate message frame fail\n");
+		return palloc;
 	}
 
 	/* initialize messgae frame */

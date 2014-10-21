@@ -884,12 +884,7 @@ static const struct hid_device_id mt_devices[] = {
 	{ .driver_data = MT_CLS_DUAL_INRANGE_CONTACTNUMBER,
 		HID_USB_DEVICE(USB_VENDOR_ID_GENERAL_TOUCH,
 			USB_DEVICE_ID_GENERAL_TOUCH_WIN7_TWOFINGERS) },
-			
-	/* Chalkboard-Electronics touchscreen */
-	{ .driver_data = MT_CLS_DEFAULT,
-		HID_USB_DEVICE(USB_VENDOR_ID_MICROCHIP,
-			USB_DEVICE_ID_CHALKELECT_F724)},
-			
+
 	/* Gametel game controller */
 	{ .driver_data = MT_CLS_DEFAULT,
 		HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_FRUCTEL,

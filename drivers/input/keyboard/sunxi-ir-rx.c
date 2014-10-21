@@ -15,6 +15,7 @@
 #include <linux/timer.h>
 #include <linux/gpio.h>
 #include <linux/clk.h>
+#include <linux/kernel.h>
 #include <linux/pm.h>
 #include <linux/init-input.h>
 #include <linux/arisc/arisc.h>
@@ -22,6 +23,7 @@
 #include <asm/io.h>
 #include <mach/irqs.h>
 #include <mach/hardware.h>
+#include <mach/sunxi-smc.h>
 #include "ir-keymap.h"
 #include "sunxi-ir-rx.h"
 #undef CONFIG_HAS_EARLYSUSPEND
@@ -65,7 +67,7 @@ static char ir_dev_name[] = "s_cir0";
 
 static u32 debug_mask = 0;
 #define dprintk(level_mask, fmt, arg...)	if (unlikely(debug_mask & level_mask)) \
-	printk(KERN_DEBUG fmt , ## arg)
+	pr_debug(fmt , ## arg)
 
 static inline void ir_reset_rawbuffer(void)
 {
@@ -77,7 +79,7 @@ static inline void ir_write_rawbuffer(unsigned char data)
 	if (ir_rawbuf.dcnt < IR_RAW_BUF_SIZE)
 		ir_rawbuf.buf[ir_rawbuf.dcnt++] = data;
 	else
-		printk(KERN_DEBUG "ir_write_rawbuffer: IR Rx Buffer Full!!\n");
+		pr_err("ir_write_rawbuffer: IR Rx Buffer Full!!\n");
 }
 
 static inline unsigned char ir_read_rawbuffer(void)
@@ -107,7 +109,7 @@ static void ir_clk_cfg(void)
 
 	ir_clk_source = clk_get(NULL, HOSC_CLK);
 	if (!ir_clk_source || IS_ERR(ir_clk_source)) {
-		printk(KERN_DEBUG "try to get ir_clk_source clock failed!\n");
+		pr_err("try to get ir_clk_source clock failed!\n");
 		return;
 	}
 
@@ -116,19 +118,21 @@ static void ir_clk_cfg(void)
 
 	ir_clk = clk_get(NULL, "cpurcir");
 	if (!ir_clk || IS_ERR(ir_clk)) {
-		printk(KERN_DEBUG "try to get ir clock failed!\n");
+		pr_err("try to get ir clock failed!\n");
 		return;
 	}
 
 	if(clk_set_parent(ir_clk, ir_clk_source))
-		printk("%s: set ir_clk parent to ir_clk_source failed!\n", __func__);
+		pr_err("%s: set ir_clk parent to ir_clk_source failed!\n", __func__);
 
 	if (clk_set_rate(ir_clk, 3000000)) {
-		printk(KERN_DEBUG "set ir clock freq to 3M failed!\n");
+		pr_err("set ir clock freq to 3M failed!\n");
 	}
+	rate = clk_get_rate(ir_clk);
+	dprintk(DEBUG_INIT, "%s: get ir_clk rate %dHZ\n", __func__, (__u32)rate);
 
 	if (clk_prepare_enable(ir_clk)) {
-			printk(KERN_DEBUG "try to enable ir_clk failed!\n");
+			pr_err("try to enable ir_clk failed!\n");
 	}
 
 	return;
@@ -138,7 +142,7 @@ static void ir_clk_uncfg(void)
 {
 
 	if(NULL == ir_clk || IS_ERR(ir_clk)) {
-		printk("ir_clk handle is invalid, just return!\n");
+		pr_err("ir_clk handle is invalid, just return!\n");
 		return;
 	} else {
 		clk_disable_unprepare(ir_clk);
@@ -147,7 +151,7 @@ static void ir_clk_uncfg(void)
 	}
 
 	if(NULL == ir_clk_source || IS_ERR(ir_clk_source)) {
-		printk("ir_clk_source handle is invalid, just return!\n");
+		pr_err("ir_clk_source handle is invalid, just return!\n");
 		return;
 	} else {
 		clk_put(ir_clk_source);
@@ -160,11 +164,11 @@ static void ir_sys_cfg(void)
 	int ret = -1;
 
 	if (input_fetch_sysconfig_para(&(ir_info.input_type))) {
-		printk("%s: ir_rx_fetch_sysconfig_para err.\n", __func__);
+		pr_err("%s: ir_rx_fetch_sysconfig_para err.\n", __func__);
 		return;
 	}
 	if (ir_info.ir_used == 0) {
-		printk("*** ir_used set to 0 !\n");
+		pr_err("*** ir_used set to 0 !\n");
 		return;
 	}
 
@@ -172,7 +176,7 @@ static void ir_sys_cfg(void)
 	ir_info.dev = &(ir_dev->dev);
 	ret = input_init_platform_resource(&(ir_info.input_type));
         if(0 != ret) {
-		printk("%s:ctp_ops.init_platform_resource err. \n", __func__);
+		pr_err("%s:ctp_ops.init_platform_resource err. \n", __func__);
 		goto end;
         }
 
@@ -201,24 +205,24 @@ static void ir_mode_set(enum ir_mode set_mode)
 
 	switch (set_mode) {
 	case CIR_MODE_ENABLE:
-		ctrl_reg = readl(IR_BASE+IR_CTRL_REG);
+		ctrl_reg = sunxi_smc_readl(IR_BASE+IR_CTRL_REG);
 		ctrl_reg |= IR_CIR_MODE;
 		break;
 	case IR_MODULE_ENABLE:
-		ctrl_reg = readl(IR_BASE+IR_CTRL_REG);
+		ctrl_reg = sunxi_smc_readl(IR_BASE+IR_CTRL_REG);
 		ctrl_reg |= IR_ENTIRE_ENABLE;
 		break;
 	default:
 		return;
 	}
-	writel(ctrl_reg, IR_BASE+IR_CTRL_REG);
+	sunxi_smc_writel(ctrl_reg, IR_BASE+IR_CTRL_REG);
 }
 
 static void ir_sample_config(enum ir_sample_config set_sample)
 {
 	u32 sample_reg = 0;
 
-	sample_reg = readl(IR_BASE+IR_SPLCFG_REG);
+	sample_reg = sunxi_smc_readl(IR_BASE+IR_SPLCFG_REG);
 
 	switch (set_sample) {
 	case IR_SAMPLE_REG_CLEAR:
@@ -244,14 +248,14 @@ static void ir_sample_config(enum ir_sample_config set_sample)
 	default:
 		return;
 	}
-	writel(sample_reg, IR_BASE+IR_SPLCFG_REG);
+	sunxi_smc_writel(sample_reg, IR_BASE+IR_SPLCFG_REG);
 }
 
 static void ir_signal_invert(void)
 {
 	u32 reg_value;
 	reg_value = 0x1<<2;
-	writel(reg_value, IR_BASE+IR_RXCFG_REG);
+	sunxi_smc_writel(reg_value, IR_BASE+IR_RXCFG_REG);
 }
 
 static void ir_irq_config(enum ir_irq_config set_irq)
@@ -260,20 +264,20 @@ static void ir_irq_config(enum ir_irq_config set_irq)
 
 	switch (set_irq) {
 	case IR_IRQ_STATUS_CLEAR:
-		writel(0xef, IR_BASE+IR_RXINTS_REG);
+		sunxi_smc_writel(0xef, IR_BASE+IR_RXINTS_REG);
 		return;
 	case IR_IRQ_ENABLE:
-		irq_reg = readl(IR_BASE+IR_RXINTE_REG);
+		irq_reg = sunxi_smc_readl(IR_BASE+IR_RXINTE_REG);
 		irq_reg |= IR_IRQ_STATUS;
 		break;
 	case IR_IRQ_FIFO_SIZE:
-		irq_reg = readl(IR_BASE+IR_RXINTE_REG);
+		irq_reg = sunxi_smc_readl(IR_BASE+IR_RXINTE_REG);
 		irq_reg |= IR_FIFO_32;
 		break;
 	default:
 		return;
 	}
-	writel(irq_reg, IR_BASE+IR_RXINTE_REG);
+	sunxi_smc_writel(irq_reg, IR_BASE+IR_RXINTE_REG);
 }
 
 static void ir_reg_cfg(void)
@@ -321,21 +325,32 @@ static void ir_setup(void)
 
 static inline unsigned char ir_get_data(void)
 {
-	return (unsigned char)(readl(IR_BASE + IR_RXDAT_REG));
+	return (unsigned char)(sunxi_smc_readl(IR_BASE + IR_RXDAT_REG));
 }
 
 static inline unsigned long ir_get_intsta(void)
 {
-	return (readl(IR_BASE + IR_RXINTS_REG));
+	return (sunxi_smc_readl(IR_BASE + IR_RXINTS_REG));
 }
 
 static inline void ir_clr_intsta(unsigned long bitmap)
 {
-	unsigned long tmp = readl(IR_BASE + IR_RXINTS_REG);
+	unsigned long tmp = sunxi_smc_readl(IR_BASE + IR_RXINTS_REG);
 
 	tmp &= ~0xff;
 	tmp |= bitmap&0xff;
-	writel(tmp, IR_BASE + IR_RXINTS_REG);
+	sunxi_smc_writel(tmp, IR_BASE + IR_RXINTS_REG);
+}
+
+static void print_err_code(unsigned char *buf, unsigned long dcnt)
+{
+	unsigned long i=0;
+	printk("error code:\n");
+	for(i = 0; i < dcnt; i++){
+		printk("%d:%d  ",(buf[i]&0x80)>>7, buf[i]&0x7f);
+		if((i+1)%6 == 0)
+			printk("\n");
+	}
 }
 
 static unsigned long ir_packet_handler(unsigned char *buf, unsigned long dcnt)
@@ -371,8 +386,10 @@ static unsigned long ir_packet_handler(unsigned char *buf, unsigned long dcnt)
 
 	dprintk(DEBUG_DATA_INFO, "%d len = %ld\n", __LINE__, len);
 
-	if ((val&0x80) || (len<=IR_L1_MIN))
-		return IR_ERROR_CODE; /* Invalid Code */
+	if ((val&0x80) || (len<=IR_L1_MIN)){
+		dprintk(DEBUG_DATA_INFO, "start 1 error code\n" );
+		goto error_code; /* Invalid Code */
+	}
 
 	/* Find Lead '0' */
 	len = 0;
@@ -388,8 +405,11 @@ static unsigned long ir_packet_handler(unsigned char *buf, unsigned long dcnt)
 		}
 	}
 
-	if ((!(val&0x80)) || (len<=IR_L0_MIN))
-		return IR_ERROR_CODE; /* Invalid Code */
+	if ((!(val&0x80)) || (len<=IR_L0_MIN)){
+		dprintk(DEBUG_DATA_INFO, "start 0 error code\n");
+		goto error_code; /* Invalid Code */
+	}
+
 
 	/* go decoding */
 	code = 0;  /* 0 for Repeat Code */
@@ -403,7 +423,8 @@ static unsigned long ir_packet_handler(unsigned char *buf, unsigned long dcnt)
 				len += val & 0x7f;
 			} else {
 				if (len > IR_PMAX) {		/* Error Pulse */
-					return IR_ERROR_CODE;
+					dprintk(DEBUG_DATA_INFO, "len > IR_PMAX\n");
+					goto error_code;
 				}
 				last = 0;
 				len = val & 0x7f;
@@ -411,7 +432,8 @@ static unsigned long ir_packet_handler(unsigned char *buf, unsigned long dcnt)
 		} else {
 			if (val & 0x80) {
 				if (len > IR_DMAX){		/* Error Distant */
-					return IR_ERROR_CODE;
+					dprintk(DEBUG_DATA_INFO, "len > IR_DMAX\n");
+					goto error_code;
 				} else {
 					if (len > IR_DMID)  {
 						/* data '1'*/
@@ -429,6 +451,10 @@ static unsigned long ir_packet_handler(unsigned char *buf, unsigned long dcnt)
 		}
 	}
 	return code;
+error_code:
+	if (unlikely(debug_mask & DEBUG_ERR))
+		print_err_code(buf,dcnt);
+	return IR_ERROR_CODE;
 }
 
 static int ir_code_valid(unsigned long code)
@@ -610,7 +636,7 @@ static int sunxi_ir_suspend(struct device *dev)
 	disable_irq_nosync(IR_IRQNO);
 
 	if(NULL == ir_clk || IS_ERR(ir_clk)) {
-		printk("ir_clk handle is invalid, just return!\n");
+		pr_err("ir_clk handle is invalid, just return!\n");
 		return -1;
 	} else {
 		clk_disable_unprepare(ir_clk);
@@ -653,7 +679,7 @@ static int __init ir_rx_init(void)
 
 	ir_dev = input_allocate_device();
 	if (!ir_dev) {
-		printk(KERN_ERR "ir_dev: not enough memory for input device\n");
+		pr_err("ir_dev: not enough memory for input device\n");
 		err = -ENOMEM;
 		goto fail1;
 	}
@@ -684,7 +710,7 @@ static int __init ir_rx_init(void)
 	s_timer = kmalloc(sizeof(struct timer_list), GFP_KERNEL);
 	if (!s_timer) {
 		ret =  - ENOMEM;
-		printk(KERN_DEBUG " IR FAIL TO  Request Time\n");
+		pr_err(" IR FAIL TO  Request Time\n");
 		goto fail3;
 	}
 	init_timer(s_timer);

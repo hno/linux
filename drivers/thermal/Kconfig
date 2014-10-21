@@ -119,6 +119,13 @@ config SUNXI_THERMAL
 	  If you say yes here you get support for (Thermal Management
 	  Unit) on ALLWINEER series of SoC.
 
+config SUNXI_BATTERY
+	tristate "Battery vol sensor on ALLWINNERTECH"
+	depends on ARCH_SUN9IW1P1
+	help
+	  If you say yes here you get support for (BATTERY VOL Thermal Management
+	  Unit) on ALLWINEER series of SoC.
+
 config SUNXI_CPUFREQ_COOLING
 	tristate "sunxi cpufreq cooling"
 	depends on ARCH_SUNXI

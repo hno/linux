@@ -50,6 +50,9 @@ struct ion_heap **pheap;
 struct ion_heap *carveout_heap = NULL;
 int num_heaps;
 extern struct tag_mem32 ion_mem;
+struct ion_device *idev;
+EXPORT_SYMBOL(idev);
+
 int sunxi_ion_show(struct seq_file *m, void *unused);
 long sunxi_ion_ioctl(struct ion_client *client, unsigned int cmd, unsigned long arg);
 
@@ -114,8 +117,7 @@ void sunxi_mem_free(unsigned int phys_addr, unsigned int size)
 	ion_carveout_free(carveout_heap, phys_addr, size);
 }
 EXPORT_SYMBOL_GPL(sunxi_mem_free);
- struct ion_device *idev;
-EXPORT_SYMBOL(idev);
+
 int sunxi_ion_probe(struct platform_device *pdev)
 {
 	struct ion_platform_data *pdata = pdev->dev.platform_data;
@@ -159,12 +161,12 @@ err:
 
 int sunxi_ion_remove(struct platform_device *pdev)
 {
-	struct ion_device *idev = platform_get_drvdata(pdev);
+	struct ion_device *dev = platform_get_drvdata(pdev);
 
 	while(num_heaps--)
 		ion_heap_destroy(pheap[num_heaps]);
 	kfree(pheap);
-	ion_device_destroy(idev);
+	ion_device_destroy(dev);
 	return 0;
 }
 
@@ -190,7 +192,7 @@ static struct ion_platform_data ion_data = {
 		},
 	}
 };
-struct platform_device ion_dev = {
+static struct platform_device ion_dev = {
 	.name = DEV_NAME,
 	.dev = {
 		.platform_data = &ion_data,
@@ -240,6 +242,6 @@ static void __exit sunxi_ion_exit(void)
 	platform_driver_unregister(&ion_driver);
 	platform_device_unregister(&ion_dev);
 }
-//EXPORT_SYMBOL(ion_dev);//add by xxx
+
 subsys_initcall(sunxi_ion_init);
 module_exit(sunxi_ion_exit);

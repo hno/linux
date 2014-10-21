@@ -1998,9 +1998,11 @@ exit_kfree_pdata:
 	kfree(stat->pdata_mag);
 err_mutexunlock:
 	mutex_unlock(&stat->lock);
-	kfree(stat);
+	//kfree(stat);
 exit_check_functionality_failed:
 	pr_err("%s: Driver Init failed\n", LSM303D_DEV_NAME);
+	if(NULL != stat)
+		kfree(stat);
 	return err;
 }
 

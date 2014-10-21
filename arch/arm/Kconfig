@@ -44,7 +44,7 @@ config ARM
 
 config ARM_HAS_SG_CHAIN
 	bool
-	default y
+    default y
 
 config HAVE_PWM
 	bool
@@ -1692,7 +1692,7 @@ config SCHED_HMP_LITTLE_PACKING
 
 config SCHED_DCMP
 	bool "Dual Cluster symmetric support"
-	depends on ARCH_SUN8IW6
+	depends on ARCH_SUN8IW6 || ARCH_SUN8IW9
 	default n
 	help
 	  Allows the Dual cluster symmetric
@@ -2538,5 +2538,3 @@ source "security/Kconfig"
 source "crypto/Kconfig"
 
 source "lib/Kconfig"
-
-source "modules/Kconfig"

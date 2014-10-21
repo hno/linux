@@ -610,6 +610,7 @@ static ssize_t show_affected_cpus(struct cpufreq_policy *policy, char *buf)
 
 #if defined(CONFIG_ARM_SUNXI_CPUFREQ) || (CONFIG_ARM_SUNXI_IKS_CPUFREQ)
 extern int sunxi_dvfs_debug;
+extern int sunxi_boot_freq_lock;
 
 static ssize_t show_dvfs_debug(struct cpufreq_policy *policy, char *buf)
 {
@@ -639,70 +640,38 @@ static ssize_t store_dvfs_debug(struct cpufreq_policy *policy,
 	return count;
 }
 
-/**
- * show_cpuinfo_boot_freq - show the CPU boot frequency
- */
 static ssize_t show_cpuinfo_boot_freq(struct cpufreq_policy *policy, char *buf)
 {
 	return sprintf(buf, "%u\n", policy->cpuinfo.boot_freq);
 }
-
-/**
- * show_cpuinfo_burst_freq - show the CPU burst frequency
- */
-static ssize_t show_cpuinfo_burst_freq(struct cpufreq_policy *policy, char *buf)
+static ssize_t show_boot_lock(struct cpufreq_policy *policy, char *buf)
 {
-	return sprintf(buf, "%u\n", policy->cpuinfo.burst_freq);
-}
-#endif
-
-
-#ifdef CONFIG_CPU_FREQ_SETFREQ_DEBUG
-extern int setgetfreq_debug;
-extern unsigned long long setfreq_time_usecs;
-extern unsigned long long getfreq_time_usecs;
-
-static ssize_t show_freq_debug_enable(struct cpufreq_policy *policy, char *buf)
-{
-	return sprintf(buf, "%d\n", setgetfreq_debug);
+	return sprintf(buf, "%d\n", sunxi_boot_freq_lock);
 }
 
-static ssize_t store_freq_debug_enable(struct cpufreq_policy *policy,
+static ssize_t store_boot_lock(struct cpufreq_policy *policy,
 					const char *buf, size_t count)
 {
-    char value;
-    if(strlen(buf) != 2)
-        return -EINVAL;
-    if(buf[0] < '0' || buf[0] > '1')
+	char value;
+	if(strlen(buf) != 2)
 		return -EINVAL;
-    value = buf[0];
-    switch(value)
-    {
-        case '1':
-            setgetfreq_debug = 1;
-            break;
-        case '0':
-            setgetfreq_debug = 0;
-            setfreq_time_usecs = 0;
-            getfreq_time_usecs = 0;
-            break;
-        default:
-            return -EINVAL;
-    }
+	if(buf[0] < '0' || buf[0] > '1')
+		return -EINVAL;
+	value = buf[0];
+	switch(value)
+	{
+		case '1':
+			sunxi_boot_freq_lock = 1;
+			break;
+		case '0':
+			sunxi_boot_freq_lock = 0;
+			break;
+		default:
+			return -EINVAL;
+	}
 	return count;
 }
-
-static ssize_t show_freq_set_time(struct cpufreq_policy *policy, char *buf)
-{
-	return sprintf(buf, "%llu\n", setfreq_time_usecs);
-}
-
-static ssize_t show_freq_get_time(struct cpufreq_policy *policy, char *buf)
-{
-	return sprintf(buf, "%llu\n", getfreq_time_usecs);
-}
 #endif
-
 
 static ssize_t store_scaling_setspeed(struct cpufreq_policy *policy,
 					const char *buf, size_t count)
@@ -762,12 +731,7 @@ cpufreq_freq_attr_rw(scaling_setspeed);
 #if defined(CONFIG_ARM_SUNXI_CPUFREQ) || (CONFIG_ARM_SUNXI_IKS_CPUFREQ)
 cpufreq_freq_attr_rw(dvfs_debug);
 cpufreq_freq_attr_ro(cpuinfo_boot_freq);
-cpufreq_freq_attr_ro(cpuinfo_burst_freq);
-#endif
-#ifdef CONFIG_CPU_FREQ_SETFREQ_DEBUG
-cpufreq_freq_attr_rw(freq_debug_enable);
-cpufreq_freq_attr_ro(freq_set_time);
-cpufreq_freq_attr_ro(freq_get_time);
+cpufreq_freq_attr_rw(boot_lock);
 #endif
 
 static struct attribute *default_attrs[] = {
@@ -785,12 +749,7 @@ static struct attribute *default_attrs[] = {
 #if defined(CONFIG_ARM_SUNXI_CPUFREQ) || (CONFIG_ARM_SUNXI_IKS_CPUFREQ)
 	&dvfs_debug.attr,
 	&cpuinfo_boot_freq.attr,
-	&cpuinfo_burst_freq.attr,
-#endif
-#ifdef CONFIG_CPU_FREQ_SETFREQ_DEBUG
-	&freq_debug_enable.attr,
-	&freq_set_time.attr,
-	&freq_get_time.attr,
+	&boot_lock.attr,
 #endif
 	NULL
 };

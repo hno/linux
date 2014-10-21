@@ -2802,12 +2802,6 @@ int vfs_unlink(struct inode *dir, struct dentry *dentry)
 {
 	int error = may_delete(dir, dentry, 0);
 
-#if (IO_TEST_DEBUG)
-	if (0 == strcmp("_quadrant_.tmp", &dentry->d_iname))
-	{
-		io_w_test_count = 0;
-	}
-#endif
 	if (error)
 		return error;
 

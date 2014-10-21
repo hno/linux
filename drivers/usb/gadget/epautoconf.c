@@ -123,7 +123,6 @@ ep_matches (
 	                 * except the toggle-quirky iso-synch kind
 	                 */
 	                if ('s' == tmp[2]){ // == "-iso"
-	                    printk("-iso\n");
 	                    return 0;
 	                }
 

@@ -1,5 +1,7 @@
 
 obj-$(CONFIG_BTRFS_FS) := btrfs.o
+GCOV_PROFILE_volumes.o := n
+GCOV_PROFILE_free-space-cache.o :=n
 
 btrfs-y += super.o ctree.o extent-tree.o print-tree.o root-tree.o dir-item.o \
 	   file-item.o inode-item.o inode-map.o disk-io.o \

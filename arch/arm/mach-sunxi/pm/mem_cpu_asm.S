@@ -312,7 +312,25 @@ ENTRY(mem_clear_runtime_context)
 	/* return*/                                                      
         mov     pc, lr  
 ENDPROC(mem_clear_runtime_context)                                                          
-	.align	4 
+
+    .align	4     
+ENTRY(disable_prefetch)
+    push    {r0-r3}
+    mrc     p15, 0, r0, c1, c0, 0
+    bic     r0, r0, #(0x1 << 11)      //Disable all forms of branch prediction
+    mcr     p15, 0, r0, c1, c0, 0
+
+    // enable invalidate btb ...
+    mrc     p15, 0, r0, c1, c0, 1
+    orr     r0, r0, #(0x11 << 0)      //Invalidate BTB, disable indirect predictor
+    orr     r0, r0, #(0x1 << 15)      //Forces in-order issue in branch execution unit
+    orr     r0, r0, #(0xE << 20)      //Disable L2 TLB prefetching, force in-order load issue, force in-order requests to the same set and way
+    mcr     p15, 0, r0, c1, c0, 1
+
+    pop     {r0-r3}   
+    /* return*/                                                      
+    mov     pc, lr  
+ENDPROC(disable_prefetch)                                                          
 
 	.align	4  
 	.globl save_runtime_context

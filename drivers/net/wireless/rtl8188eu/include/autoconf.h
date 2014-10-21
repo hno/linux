@@ -18,9 +18,10 @@
  *
  ******************************************************************************/
 //***** temporarily flag *******
-#define CONFIG_SINGLE_IMG
 
 //#define CONFIG_DISABLE_ODM
+#define CONFIG_ODM_REFRESH_RAMASK
+#define CONFIG_PHY_SETTING_WITH_ODM
 //for FPGA VERIFICATION config
 #define RTL8188E_FPGA_TRUE_PHY_VERIFICATION 0
 
@@ -34,12 +35,13 @@
 
 #define CONFIG_USB_HCI	
 
+#define CONFIG_RTL8188E	
+
 #define PLATFORM_LINUX	
 
 //#define CONFIG_IOCTL_CFG80211 
-//#define CONFIG_IEEE80211W
 
-#if defined(CONFIG_PLATFORM_ACTIONS_ATM702X)
+#if defined( CONFIG_PLATFORM_ARM_SUNxI) || defined(CONFIG_PLATFORM_ACTIONS_ATM702X)
 	#ifndef CONFIG_IOCTL_CFG80211 
 		#define CONFIG_IOCTL_CFG80211 
 	#endif
@@ -110,9 +112,6 @@
 	//#define CONFIG_CONCURRENT_MODE 
 	#ifdef CONFIG_CONCURRENT_MODE
 		//#define CONFIG_HWPORT_SWAP				//Port0->Sec , Port1 -> Pri
-		#define CONFIG_RUNTIME_PORT_SWITCH
-		//#define DBG_RUNTIME_PORT_SWITCH
-		#define CONFIG_STA_MODE_SCAN_UNDER_AP_MODE
 		#define CONFIG_TSF_RESET_OFFLOAD 			// For 2 PORT TSF SYNC.
 	#endif
 
@@ -152,9 +151,6 @@
 
 	#define CONFIG_P2P_PS
 	//#define CONFIG_P2P_IPS
-	#define CONFIG_P2P_OP_CHK_SOCIAL_CH
-	#define CONFIG_CFG80211_ONECHANNEL_UNDER_CONCURRENT  //replace CONFIG_P2P_CHK_INVITE_CH_LIST flag
-	#define CONFIG_P2P_INVITE_IOT
 #endif
 
 //	Added by Kurt 20110511
@@ -201,7 +197,6 @@
 #define CONFIG_NEW_SIGNAL_STAT_PROCESS
 //#define CONFIG_SIGNAL_DISPLAY_DBM //display RX signal with dbm
 #define RTW_NOTCH_FILTER 0 /* 0:Disable, 1:Enable, */
-#define CONFIG_DEAUTH_BEFORE_CONNECT
 
 #define CONFIG_BR_EXT		// Enable NAT2.5 support for STA mode interface with a L2 Bridge
 #ifdef CONFIG_BR_EXT
@@ -209,7 +204,8 @@
 #endif	// CONFIG_BR_EXT
 
 #define CONFIG_TX_MCAST2UNI		// Support IP multicast->unicast
-//#define CONFIG_CHECK_AC_LIFETIME 	// Check packet lifetime of 4 ACs.
+#define CONFIG_CHECK_AC_LIFETIME 	// Check packet lifetime of 4 ACs.
+
 
 /* 
  * Interface  Related Config 
@@ -231,6 +227,12 @@
 //#define CONFIG_USE_USB_BUFFER_ALLOC_RX 	// For RX path
 #ifdef CONFIG_USE_USB_BUFFER_ALLOC_RX
 #undef CONFIG_PREALLOC_RECV_SKB
+#endif
+
+#ifdef CONFIG_PLATFORM_ARM_SUNxI
+	#ifndef 	CONFIG_USE_USB_BUFFER_ALLOC_TX 
+		#define CONFIG_USE_USB_BUFFER_ALLOC_TX
+	#endif
 #endif
 
 /* 
@@ -259,7 +261,7 @@
 
 #define CONFIG_OUT_EP_WIFI_MODE	0
 
-#define ENABLE_USB_DROP_INCORRECT_OUT
+#define ENABLE_USB_DROP_INCORRECT_OUT	0
 
 
 //#define RTL8192CU_ADHOC_WORKAROUND_SETTING	
@@ -339,20 +341,7 @@
 #define RTL8188EU_SUPPORT				1
 #define RTL8188ES_SUPPORT				0
 #define RTL8188E_SUPPORT				(RTL8188EE_SUPPORT|RTL8188EU_SUPPORT|RTL8188ES_SUPPORT)
-#define TESTCHIP_SUPPORT				0
-
-#define RTL8812E_SUPPORT				0
-#define RTL8812AU_SUPPORT				0
-#define RTL8812A_SUPPORT				(RTL8812E_SUPPORT|RTL8812AU_SUPPORT)
-
-#define RTL8821A_SUPPORT				0
-
-#define RTL8723B_SUPPORT				0
-
-#define RTL8192E_SUPPORT				0
-
-#define RTL8813A_SUPPORT				0
-
+#define RTL8188E_FOR_TEST_CHIP			0
 //#if (RTL8188E_SUPPORT==1)
 #define RATE_ADAPTIVE_SUPPORT 			1
 #define POWER_TRAINING_ACTIVE			1

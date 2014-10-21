@@ -140,6 +140,8 @@ void save_processor_state(void);
 void restore_processor_state(void);
 void restore_processor_ttbr0(void);
 void set_ttbr0(void);
+extern int get_cur_cluster_id(void);
+
 
 /* Used in mem_cpu_asm.S */
 #define SYS_CONTEXT_SIZE (2)

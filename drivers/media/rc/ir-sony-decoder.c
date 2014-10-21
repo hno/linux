@@ -165,7 +165,7 @@ static int __init ir_sony_decode_init(void)
 {
 	ir_raw_handler_register(&sony_handler);
 
-	printk(KERN_INFO "IR Sony protocol handler initialized\n");
+	pr_debug("IR Sony protocol handler initialized\n");
 	return 0;
 }
 

@@ -19,12 +19,12 @@
 
 enum {
 	DEBUG_EXIT_SUSPEND = 1U << 0,
-	DEBUG_WAKEUP = 1U << 1,
+	DEBUG_SHOW_NAME = 1U << 1,
 	DEBUG_SUSPEND = 1U << 2,
 	DEBUG_EXPIRE = 1U << 3,
 	DEBUG_SCENE_LOCK = 1U << 4,
 };
-static int debug_mask = 0xff;//DEBUG_WAKEUP;
+static int debug_mask = 0xf0;//DEBUG_SHOW_NAME;
 module_param_named(debug_mask, debug_mask, int, 0644);
 
 #define SCENE_LOCK_TYPE_MASK              (0x0f)
@@ -38,7 +38,7 @@ static DEFINE_SPINLOCK(extended_standby_list_lock);
 static LIST_HEAD(extended_standby_list);
 
 #ifdef CONFIG_HAS_WAKELOCK
-struct wake_lock mp3_extended_standby_wake_lock;
+static struct wake_lock mp3_extended_standby_wake_lock;
 #endif
 
 /* Caller must acquire the list_lock spinlock */
@@ -71,7 +71,7 @@ static long has_scene_lock(aw_power_scene_e type)
 	unsigned long irqflags;
 	spin_lock_irqsave(&list_lock, irqflags);
 	ret = has_scene_lock_locked(type);
-	if ((!ret) && (debug_mask & DEBUG_WAKEUP))
+	if ((!ret) && (debug_mask & DEBUG_SHOW_NAME))
 		print_active_locks(type);
 	spin_unlock_irqrestore(&list_lock, irqflags);
 	return ret;
@@ -113,45 +113,43 @@ EXPORT_SYMBOL(scene_lock_destroy);
 
 void scene_lock(struct scene_lock *lock)
 {
-	aw_power_scene_e type;
-	unsigned long irqflags;
-	bool err = false;
-	scene_extended_standby_t *local_standby;
+    aw_power_scene_e type;
+    unsigned long irqflags;
+    bool err = false;
+    scene_extended_standby_t *local_standby;
 
-	spin_lock_irqsave(&list_lock, irqflags);
-	type = lock->flags & SCENE_LOCK_TYPE_MASK;
-	BUG_ON(type >= SCENE_MAX);
-	BUG_ON(!(lock->flags & SCENE_LOCK_INITIALIZED));
+    spin_lock_irqsave(&list_lock, irqflags);
+    type = lock->flags & SCENE_LOCK_TYPE_MASK;
+    BUG_ON(type >= SCENE_MAX);
+    BUG_ON(!(lock->flags & SCENE_LOCK_INITIALIZED));
 
-	if (!(lock->flags & SCENE_LOCK_ACTIVE)) {
-		lock->flags |= SCENE_LOCK_ACTIVE;
+    if (!(lock->flags & SCENE_LOCK_ACTIVE)) {
+	lock->flags |= SCENE_LOCK_ACTIVE;
+    }
+    lock->count += 1;
+    list_del(&lock->link);
+
+    if (debug_mask & DEBUG_SCENE_LOCK)
+	pr_info("scene_lock: %s, type %d, count %d\n", lock->name,
+		type, lock->count);
+
+    list_add(&lock->link, &active_scene_locks[type]);
+    spin_unlock_irqrestore(&list_lock, irqflags);
+
+    spin_lock_irqsave(&extended_standby_list_lock, irqflags);
+    list_for_each_entry(local_standby, &extended_standby_list, list) {
+	if (type == local_standby->scene_type) {
+	    err = set_extended_standby_manager(local_standby);
+	    if (!err)
+		printk("set extended standby manager err\n");
 	}
-	lock->count += 1;
-	list_del(&lock->link);
-
-	if (debug_mask & DEBUG_SCENE_LOCK)
-		pr_info("scene_lock: %s, type %d, count %d\n", lock->name,
-			type, lock->count);
-
-	list_add(&lock->link, &active_scene_locks[type]);
-	spin_unlock_irqrestore(&list_lock, irqflags);
-
-	spin_lock_irqsave(&extended_standby_list_lock, irqflags);
-	list_for_each_entry(local_standby, &extended_standby_list, list) {
-		if (type == local_standby->scene_type) {
-			if (0 != local_standby->pwr_dm_en) {
-				err = set_extended_standby_manager(local_standby);
-				if (!err)
-					printk("set extended standby manager err\n");
-			}
-		}
-	}
-	spin_unlock_irqrestore(&extended_standby_list_lock, irqflags);
+    }
+    spin_unlock_irqrestore(&extended_standby_list_lock, irqflags);
 
 #ifdef CONFIG_HAS_WAKELOCK
-	if (SCENE_MP3_STANDBY == type) {
-		wake_lock(&mp3_extended_standby_wake_lock);
-	}
+    if (SCENE_MP3_STANDBY == type) {
+	wake_lock(&mp3_extended_standby_wake_lock);
+    }
 #endif
 }
 EXPORT_SYMBOL(scene_lock);
@@ -159,50 +157,48 @@ EXPORT_SYMBOL(scene_lock);
 
 void scene_unlock(struct scene_lock *lock)
 {
-	aw_power_scene_e type;
-	unsigned long irqflags;
-	bool err = false;
-	scene_extended_standby_t *local_standby;
+    aw_power_scene_e type;
+    unsigned long irqflags;
+    bool err = false;
+    scene_extended_standby_t *local_standby;
 
-	spin_lock_irqsave(&list_lock, irqflags);
-	type = lock->flags & SCENE_LOCK_TYPE_MASK;
+    spin_lock_irqsave(&list_lock, irqflags);
+    type = lock->flags & SCENE_LOCK_TYPE_MASK;
 
-	if (debug_mask & DEBUG_SCENE_LOCK)
-			pr_info("scene_unlock: %s, count: %d\n", lock->name, lock->count);
-	if (1 < lock->count) {
-		lock->count -= 1;
-		spin_unlock_irqrestore(&list_lock, irqflags);
-	} else if (1 == lock->count) {
-		lock->count -= 1;
-		lock->flags &= ~(SCENE_LOCK_ACTIVE);
-		list_del(&lock->link);
-		list_add(&lock->link, &inactive_locks);
+    if (debug_mask & DEBUG_SCENE_LOCK)
+	pr_info("scene_unlock: %s, count: %d\n", lock->name, lock->count);
+    if (1 < lock->count) {
+	lock->count -= 1;
+	spin_unlock_irqrestore(&list_lock, irqflags);
+    } else if (1 == lock->count) {
+	lock->count -= 1;
+	lock->flags &= ~(SCENE_LOCK_ACTIVE);
+	list_del(&lock->link);
+	list_add(&lock->link, &inactive_locks);
 
 	spin_unlock_irqrestore(&list_lock, irqflags);
 
 	err = set_extended_standby_manager(NULL);
 	if (!err)
-		printk("clear extended standby manager err\n");
+	    printk("clear extended standby manager err\n");
 
 	spin_lock_irqsave(&extended_standby_list_lock, irqflags);
-		list_for_each_entry(local_standby, &extended_standby_list, list) {
-			if (!check_scene_locked(local_standby->scene_type)) {
-				if (0 != local_standby->pwr_dm_en) {
-					err = set_extended_standby_manager(local_standby);
-					if (!err)
-						printk("set extended standby manager err\n");
-				}
-			}
-		}
-	spin_unlock_irqrestore(&extended_standby_list_lock, irqflags);
-	} else {
-		spin_unlock_irqrestore(&list_lock, irqflags);
+	list_for_each_entry(local_standby, &extended_standby_list, list) {
+	    if (!check_scene_locked(local_standby->scene_type)) {
+		err = set_extended_standby_manager(local_standby);
+		if (!err)
+		    printk("set extended standby manager err\n");
+	    }
 	}
+	spin_unlock_irqrestore(&extended_standby_list_lock, irqflags);
+    } else {
+	spin_unlock_irqrestore(&list_lock, irqflags);
+    }
 
 #ifdef CONFIG_HAS_WAKELOCK
-	if (SCENE_MP3_STANDBY == type) {
-		wake_unlock(&mp3_extended_standby_wake_lock);
-	}
+    if (SCENE_MP3_STANDBY == type) {
+	wake_unlock(&mp3_extended_standby_wake_lock);
+    }
 #endif
 }
 EXPORT_SYMBOL(scene_unlock);
@@ -292,16 +288,23 @@ int standby_show_state(void)
 {
 	scene_extended_standby_t *local_standby;
 	unsigned long irqflags;
+	int lock_cnt = 0;
 
 	printk("scence_lock: ");
 	spin_lock_irqsave(&extended_standby_list_lock, irqflags);
 		list_for_each_entry(local_standby, &extended_standby_list, list) {
 			if (!check_scene_locked(local_standby->scene_type)) {
 				printk("%s \n", local_standby->name);
+				lock_cnt++;	
 		}
 	}
 	spin_unlock_irqrestore(&extended_standby_list_lock, irqflags);
-	printk("\n");
+	
+	if(lock_cnt){
+	    printk("\n");
+	}else{
+	    printk("none \n");
+	}
 
 	return 0;
 }

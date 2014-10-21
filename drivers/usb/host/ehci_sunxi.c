@@ -27,15 +27,15 @@
 #include <linux/power/scenelock.h>
 #include "sunxi_hci.h"
 
-static struct scene_lock  ehci_standby_lock[3];
+static struct scene_lock  ehci_standby_lock[4];
 
 //#define  SUNXI_USB_EHCI_DEBUG
 
 #define  SUNXI_EHCI_NAME		"sunxi-ehci"
 static const char ehci_name[] = SUNXI_EHCI_NAME;
 
-static struct sunxi_hci_hcd *g_sunxi_ehci[3];
-static u32 ehci_first_probe[3] = {1, 1, 1};
+static struct sunxi_hci_hcd *g_sunxi_ehci[4];
+static u32 ehci_first_probe[4] = {1, 1, 1, 1};
 
 extern int usb_disabled(void);
 int sunxi_usb_disable_ehci(__u32 usbc_no);
@@ -132,7 +132,7 @@ static void ehci_test_mode(const struct ehci_hcd *ehci, __u32 regs, u32 test_mod
 	ehci_writel(ehci, reg_val, (__u32 __iomem *)(regs + EHCI_OPR_PORTSC));
 }
 
-void __ehci_ed_test(const struct ehci_hcd *ehci, __u32 regs, __u32 test_mode)
+static void __ehci_ed_test(const struct ehci_hcd *ehci, __u32 regs, __u32 test_mode)
 {
 	ehci_set_interrupt_enable(ehci, regs, 0x00);
 	ehci_disable_periodic_schedule(ehci, regs);
@@ -146,7 +146,7 @@ void __ehci_ed_test(const struct ehci_hcd *ehci, __u32 regs, __u32 test_mode)
 
 	if(!ehci_is_halt(ehci, regs))
 	{
-		pr_err("%s_%d\n", __func__, __LINE__);
+		DMSG_ERR("%s_%d\n", __func__, __LINE__);
 	}
 
 	ehci_start(ehci, regs);
@@ -243,7 +243,7 @@ static ssize_t ehci_ed_test(struct device *dev, struct device_attribute *attr,
 	}
 
 	DMSG_INFO("regs: 0x%p\n",hcd->regs);
-	__ehci_ed_test(ehci, (__u32)hcd->regs, test_mode);
+	__ehci_ed_test(ehci, (__u32 __force)hcd->regs, test_mode);
 
 	mutex_unlock(&dev->mutex);
 
@@ -285,6 +285,9 @@ static int sunxi_release_io_resource(struct platform_device *pdev, struct sunxi_
 
 static void sunxi_start_ehci(struct sunxi_hci_hcd *sunxi_ehci)
 {
+#if defined (CONFIG_ARCH_SUN8IW6) || defined (CONFIG_ARCH_SUN9IW1)	
+	sunxi_ehci->hci_phy_ctrl(sunxi_ehci, 1);
+#endif
 	open_ehci_clock(sunxi_ehci);
 	sunxi_ehci->usb_passby(sunxi_ehci, 1);
 	sunxi_ehci_port_configure(sunxi_ehci, 1);
@@ -297,6 +300,9 @@ static void sunxi_stop_ehci(struct sunxi_hci_hcd *sunxi_ehci)
 	sunxi_ehci_port_configure(sunxi_ehci, 0);
 	sunxi_ehci->usb_passby(sunxi_ehci, 0);
 	close_ehci_clock(sunxi_ehci);
+#if defined (CONFIG_ARCH_SUN8IW6) || defined (CONFIG_ARCH_SUN9IW1)	
+	sunxi_ehci->hci_phy_ctrl(sunxi_ehci, 0);
+#endif
 }
 
 static int sunxi_ehci_setup(struct usb_hcd *hcd)
@@ -431,6 +437,10 @@ static int sunxi_ehci_hcd_probe(struct platform_device *pdev)
 
 	sunxi_ehci->probe = 1;
 
+	if(sunxi_ehci->not_suspend){
+		scene_lock_init(&ehci_standby_lock[sunxi_ehci->usbc_no], SCENE_USB_STANDBY,  "ehci_standby");
+	}
+
 	/* Disable ehci, when driver probe */
 	if(sunxi_ehci->host_init_state == 0){
 		if(ehci_first_probe[sunxi_ehci->usbc_no]){
@@ -439,9 +449,6 @@ static int sunxi_ehci_hcd_probe(struct platform_device *pdev)
 		}
 	}
 
-	if(sunxi_ehci->not_suspend){
-		scene_lock_init(&ehci_standby_lock[sunxi_ehci->usbc_no], SCENE_USB_STANDBY,  "ehci_standby");
-	}
 	return 0;
 
 ERR3:
@@ -585,6 +592,10 @@ static int sunxi_ehci_hcd_suspend(struct device *dev)
 		val = ehci_readl(ehci, &ehci->regs->intr_enable);
 		val |= (0x7 << 0);
 		ehci_writel(ehci, val, &ehci->regs->intr_enable);
+		
+#if defined (CONFIG_ARCH_SUN8IW6) || defined (CONFIG_ARCH_SUN9IW1)
+			sunxi_ehci->hci_phy_ctrl(sunxi_ehci, 0);
+#endif
 
 	}else{
 		DMSG_INFO("[%s]: sunxi_ehci_hcd_suspend\n", sunxi_ehci->hci_name);
@@ -640,6 +651,9 @@ static int sunxi_ehci_hcd_resume(struct device *dev)
 
 	if(sunxi_ehci->not_suspend){
 		DMSG_INFO("[%s]: controller not suspend, need not resume\n", sunxi_ehci->hci_name);
+#if defined (CONFIG_ARCH_SUN8IW6) || defined (CONFIG_ARCH_SUN9IW1)
+		sunxi_ehci->hci_phy_ctrl(sunxi_ehci, 1);
+#endif
 		scene_unlock(&ehci_standby_lock[sunxi_ehci->usbc_no]);
 		disable_wakeup_src(CPUS_USBMOUSE_SRC, 0);
 	}else{

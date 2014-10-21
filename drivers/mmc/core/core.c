@@ -1206,7 +1206,11 @@ static void mmc_power_up(struct mmc_host *host)
 
 void mmc_power_off(struct mmc_host *host)
 {
+#if defined CONFIG_ARCH_SUN8IW5P1 || defined CONFIG_ARCH_SUN8IW6P1 || defined CONFIG_ARCH_SUN9IW1P1
+	
+#else
 	int err = 0;
+#endif 
 	mmc_host_clk_hold(host);
 
 	host->ios.clock = 0;
@@ -1217,12 +1221,12 @@ void mmc_power_off(struct mmc_host *host)
 	 * POWER_OFF_NOTIFY command, because in sleep state
 	 * eMMC 4.5 devices respond to only RESET and AWAKE cmd
 	 */
-#ifdef CONFIG_ARCH_SUN8IW5P1
+#if defined CONFIG_ARCH_SUN8IW5P1 || defined CONFIG_ARCH_SUN8IW6P1 || defined CONFIG_ARCH_SUN9IW1P1
 	if (host->card && host->bus_ops->resume) {
-			printk("[mmc]: mmc poweroff notifiy\n");
+			pr_info("start mmc poweroff notifiy...\n");
 			mmc_poweroff_notify(host);
 	} else {
-			printk("[mmc]: mmc not poweroff notifiy\n");
+			//printk("[mmc]: mmc not poweroff notifiy\n");
 	}
 #else
 	if (host->card && mmc_card_is_sleep(host->card) &&

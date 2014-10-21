@@ -14,64 +14,75 @@
 
 static int rtl8188eu_powerup = 0;
 static int rtk8188eu_suspend = 0;
-static char * axp_name = NULL;
+static char *axp_name[4] = {NULL};
 
 // power control by axp
 static int rtl8188eu_module_power(int onoff)
 {
-	struct regulator* wifi_ldo = NULL;
+	struct regulator* wifi_ldo[4] = {NULL};
 	static int first = 1;
-	int ret = 0;
+	int i = 0, ret = 0;
 
 	rtl8188eu_msg("rtl8188eu module power set by axp.\n");
-	wifi_ldo = regulator_get(NULL, axp_name);
-	if (IS_ERR(wifi_ldo)) {
-		rtl8188eu_msg("get power regulator failed.\n");
-		return -ret;
+	for (i = 0; axp_name[i] != NULL; i++){
+	  wifi_ldo[i] = regulator_get(NULL, axp_name[i]);
+	  if (IS_ERR(wifi_ldo[i])) {
+      rtl8188eu_msg("get power regulator %s failed.\n", axp_name[i]);
+      goto exit;
+		}
 	}
-#if 0
+
+exit:
+  wifi_ldo[i] = NULL;
+
 	if (first) {
 		rtl8188eu_msg("first time\n");
-		ret = regulator_force_disable(wifi_ldo);
-		if (ret < 0) {
-			rtl8188eu_msg("regulator_force_disable fail, return %d.\n", ret);
-			regulator_put(wifi_ldo);
-			return ret;
+		for (i = 0; wifi_ldo[i] != NULL; i++){
+		  ret = regulator_force_disable(wifi_ldo[i]);
+      if (ret < 0) {
+        rtl8188eu_msg("regulator_force_disable  %s fail, return %d.\n", axp_name[i], ret);
+        regulator_put(wifi_ldo[i]);
+        return ret;
+      }
 		}
-		regulator_put(wifi_ldo);
+		
 		first = 0;
-		return ret;
 	}
-#endif
+
 	if (onoff) {
 		rtl8188eu_msg("regulator on.\n");
-		if(!strcmp(axp_name, "axp15_sw0"))
-        ;
-		else{
-			ret = regulator_set_voltage(wifi_ldo, 3300000, 3300000);
-			if (ret < 0) {
-				rtl8188eu_msg("regulator_set_voltage fail, return %d.\n", ret);
-				regulator_put(wifi_ldo);
-				return ret;
-			}
-		}
 
-		ret = regulator_enable(wifi_ldo);
-		if (ret < 0) {
-			rtl8188eu_msg("regulator_enable fail, return %d.\n", ret);
-			regulator_put(wifi_ldo);
-			return ret;
+		for(i = 0; wifi_ldo[i] != NULL; i++){
+      ret = regulator_set_voltage(wifi_ldo[i], 3300000, 3300000);
+      if (ret < 0) {
+        rtl8188eu_msg("regulator_set_voltage %s fail, return %d.\n", axp_name[i], ret);
+        regulator_put(wifi_ldo[i]);
+        return ret;
+      }
+
+      ret = regulator_enable(wifi_ldo[i]);
+      if (ret < 0) {
+        rtl8188eu_msg("regulator_enable %s fail, return %d.\n", axp_name[i], ret);
+        regulator_put(wifi_ldo[i]);
+        return ret;
+      }
 		}
+		
 	} else {
 		rtl8188eu_msg("regulator off.\n");
-		ret = regulator_disable(wifi_ldo);
-		if (ret < 0) {
-			rtl8188eu_msg("regulator_disable fail, return %d.\n", ret);
-			regulator_put(wifi_ldo);
-			return ret;
+		for(i = 0; wifi_ldo[i] != NULL; i++){
+      ret = regulator_disable(wifi_ldo[i]);
+      if (ret < 0) {
+        rtl8188eu_msg("regulator_disable %s fail, return %d.\n", axp_name[i], ret);
+        regulator_put(wifi_ldo[i]);
+        return ret;
+      }
 		}
 	}
-	regulator_put(wifi_ldo);
+	
+	for(i = 0; wifi_ldo[i] != NULL; i++){
+	  regulator_put(wifi_ldo[i]);
+	}
 	return ret;
 }
 
@@ -124,14 +135,36 @@ void rtl8188eu_gpio_init(void)
 	type = script_get_item(wifi_para, "wifi_power", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_STR != type) {
 		rtl8188eu_msg("failed to fetch wifi_power\n");
-		return ;
+		return;
 	}
 
-	axp_name = val.str;
-	rtl8188eu_msg("module power name %s\n", axp_name);
+	axp_name[0] = val.str;
+	rtl8188eu_msg("module power name %s\n", axp_name[0]);
+
+  type = script_get_item(wifi_para, "wifi_power_ext1", &val);
+	if (SCIRPT_ITEM_VALUE_TYPE_STR != type) {
+		rtl8188eu_msg("failed to fetch wifi_power\n");
+		return;
+	}
+  axp_name[1] = val.str;
+  rtl8188eu_msg("module power ext1 name %s\n", axp_name[1]);
+  
+  type = script_get_item(wifi_para, "wifi_power_ext2", &val);
+	if (SCIRPT_ITEM_VALUE_TYPE_STR != type) {
+		rtl8188eu_msg("failed to fetch wifi_power\n");
+		return;
+	}
+  axp_name[2] = val.str;
+  rtl8188eu_msg("module power ext2 name %s\n", axp_name[2]);
+
+  axp_name[3] = NULL;
 	
 	rtl8188eu_powerup = 0;
 	rtk8188eu_suspend = 0;
 	ops->power     = rtl8188eu_power;
 	ops->standby   = rtl8188eu_standby;
+
+	// force to disable wifi power in system booting,
+	// make sure wifi power is down when system start up
+	rtl8188eu_module_power(0);
 }

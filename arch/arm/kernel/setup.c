@@ -58,6 +58,7 @@
 #include <asm/memblock.h>
 
 #include <mach/sunxi-chip.h>
+#include <mach/sys_config.h>
 
 #if defined(CONFIG_DEPRECATED_PARAM_STRUCT)
 #include "compat.h"
@@ -1086,6 +1087,9 @@ void __init setup_arch(char **cmdline_p)
 		arm_pm_restart = mdesc->restart;
 
 	unflatten_device_tree();
+
+	/* init sys_config script parse */
+	script_init();
 
 #ifdef CONFIG_SMP
 	if (is_smp()) {

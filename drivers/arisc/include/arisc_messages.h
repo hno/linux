@@ -86,6 +86,8 @@ typedef struct arisc_message
 #define ARISC_AXP_ENABLE_IRQ             (ARISC_MESSAGE_BASE + 0x42)  /* enable axp irq of arisc                 */
 #define ARISC_AXP_GET_CHIP_ID            (ARISC_MESSAGE_BASE + 0x43)  /* axp get chip id                         */
 #define ARISC_AXP_SET_PARAS              (ARISC_MESSAGE_BASE + 0x44)  /* config axp parameters (ac327 to arisc)  */
+#define ARISC_SET_PMU_VOLT               (ARISC_MESSAGE_BASE + 0x45)  /* set pmu volt (ac327 to arisc)           */
+#define ARISC_GET_PMU_VOLT               (ARISC_MESSAGE_BASE + 0x46)  /* get pmu volt (ac327 to arisc)           */
 
 /* set arisc debug commands */
 #define ARISC_SET_DEBUG_LEVEL            (ARISC_MESSAGE_BASE + 0x50)  /* set arisc debug level  (ac327 to arisc)     */
@@ -94,6 +96,7 @@ typedef struct arisc_message
 #define ARISC_SET_DRAM_PARAS             (ARISC_MESSAGE_BASE + 0x53)  /* config dram parameter (ac327 to arisc)      */
 #define ARISC_SET_DEBUG_DRAM_CRC_PARAS   (ARISC_MESSAGE_BASE + 0x54)  /* config dram crc parameters (ac327 to arisc) */
 #define ARISC_SET_IR_PARAS               (ARISC_MESSAGE_BASE + 0x55)  /* config ir parameter (ac327 to arisc)        */
+#define ARISC_REPORT_ERR_INFO            (ARISC_MESSAGE_BASE + 0x56)  /* report arisc error info (arisc to ac327)    */
 
 /* audio commands */
 #define ARISC_AUDIO_START                (ARISC_MESSAGE_BASE + 0x60)  /* audio start play/capture(ac327 to arisc) */
@@ -110,7 +113,7 @@ typedef struct arisc_message
 #define ARISC_P2WI_WRITE_BLOCK_DATA      (ARISC_MESSAGE_BASE + 0x71)  /* p2wi write block data       (ac327 to arisc) */
 #define ARISC_P2WI_BITS_OPS_SYNC         (ARISC_MESSAGE_BASE + 0x72)  /* p2wi clear bits sync        (ac327 to arisc) */
 #elif (defined CONFIG_ARCH_SUN8IW3P1) || (defined CONFIG_ARCH_SUN8IW5P1) || (defined CONFIG_ARCH_SUN8IW6P1) || \
-      (defined CONFIG_ARCH_SUN8IW7P1) || (defined CONFIG_ARCH_SUN9IW1P1)
+      (defined CONFIG_ARCH_SUN8IW7P1) || (defined CONFIG_ARCH_SUN8IW9P1) || (defined CONFIG_ARCH_SUN9IW1P1)
 /* rsb commands */
 #define ARISC_RSB_READ_BLOCK_DATA        (ARISC_MESSAGE_BASE + 0x70)  /* rsb read block data        (ac327 to arisc) */
 #define ARISC_RSB_WRITE_BLOCK_DATA       (ARISC_MESSAGE_BASE + 0x71)  /* rsb write block data       (ac327 to arisc) */

@@ -101,6 +101,8 @@ struct videobuf_buffer {
 	/* Private pointer to allow specific methods to store their data */
 	int			privsize;
 	void                    *priv;
+	/*add by yang*/
+	int                    image_quality;
 };
 
 struct videobuf_queue_ops {

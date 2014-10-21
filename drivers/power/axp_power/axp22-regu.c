@@ -82,7 +82,11 @@ static int axp_get_voltage(struct regulator_dev *rdev)
 		return ret;
 
 	mask = ((1 << info->vol_nbits) - 1)  << info->vol_shift;
-	switch_val = ((info->switch_uV- info->min_uV + info->step1_uV - 1) / info->step1_uV);
+	if (info->step1_uV != 0) {
+		switch_val = ((info->switch_uV- info->min_uV + info->step1_uV - 1) / info->step1_uV);
+	} else {
+		switch_val = 0;
+	}
 	val = (val & mask) >> info->vol_shift;
 
 	if ((info->switch_uV != 0) && (info->step2_uV!= 0) &&

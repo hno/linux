@@ -88,7 +88,7 @@ ENTRY(sun9i_power_up_setup)
 2:
 	cmp	r0, #1                  @ A15 cluster ?
 	bne     3f
-	
+
 	@sun9i platform-specific Cortex-A15 setup.
 	mrc p15, 1, r1, c15, c0, 4      @ ACTLR2
 	orr r1, r1, #(0x1<<31)          @ Enable CPU regional clock gates
@@ -101,7 +101,7 @@ ENTRY(sun9i_power_up_setup)
 	mrc p15, 1, r1, c15, c0, 0      @ L2ACTLR
 	orr r1, r1, #(0x1<<3)           @ Disables clean/evict from being pushed to external
 	mcr p15, 1, r1, c15, c0, 0
-	
+
 	mrc p15, 1, r1, c9, c0, 2
 	bic r1, r1, #(0x7<<0)           @ L2 data ram latency
 	orr r1, r1, #(0x3<<0)

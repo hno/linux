@@ -23,13 +23,13 @@
 #endif
 
 #define DRIVER_NAME "sunxi-mmc"
-#define DRIVER_RIVISION "v1.76 2014-06-17 14:41"
+#define DRIVER_RIVISION "v1.93 2014-09-04 10:10"
 #define DRIVER_VERSION "SD/MMC/SDIO Host Controller Driver(" DRIVER_RIVISION ")" \
 			" Compiled in " __DATE__ " at " __TIME__""
-			
+
 /*========== platform define ==========*/
 /*---------- for sun8iw1 and sun8iw3 and sun8iw5 and sun8iw6 ----------*/
-#if defined CONFIG_ARCH_SUN8IW1 || defined CONFIG_ARCH_SUN8IW3 
+#if defined CONFIG_ARCH_SUN8IW1 || defined CONFIG_ARCH_SUN8IW3
 #define REG_FIFO_OS	(0x200)
 #define SMC_IRQNO(x)	(SUNXI_IRQ_MMC0 + (x))
 
@@ -71,6 +71,12 @@
 
 /*---------- for sun9iw1----------*/
 #ifdef CONFIG_ARCH_SUN9IW1
+
+//secure storage relate
+#define MAX_SECURE_STORAGE_MAX_ITEM			32
+#define SDMMC_SECURE_STORAGE_START_ADD	(6*1024*1024/512)//6M
+#define SDMMC_ITEM_SIZE									(4*1024/512)//4K
+
 #define REG_FIFO_OS	(0x200)
 #define SMC_IRQNO(x)	(SUNXI_IRQ_SDMMC0 + (x))
 
@@ -94,14 +100,19 @@
 #endif
 #endif
 
-/*---------- for sun8iw5  ----------*/
-#if defined CONFIG_ARCH_SUN8IW5 || defined CONFIG_ARCH_SUN8IW6 
+/*---------- for sun8iw5 sun8iw6 sun8iw7----------*/
+#if defined CONFIG_ARCH_SUN8IW5 || defined CONFIG_ARCH_SUN8IW6 \
+	|| defined (CONFIG_ARCH_SUN8IW7)
 #define REG_FIFO_OS	(0x200)
 #define SMC_IRQNO(x)	(SUNXI_IRQ_MMC0 + (x))
 
 
 #define MMC_SRCCLK_HOSC   "hosc"
+#if defined (CONFIG_ARCH_SUN8IW7)
+#define MMC_SRCCLK_PLL   "pll_periph0"
+#else
 #define MMC_SRCCLK_PLL   "pll_periph"
+#endif
 #define MMC_2MOD_CLK     "sdmmc2mod"
 
 #define	SUNXI_CCM_BASE	 	0x01c20000
@@ -141,7 +152,29 @@
 #endif
 
 
+/*---------- for sun8iw9  ----------*/
+#if defined CONFIG_ARCH_SUN8IW9
+#define REG_FIFO_OS	(0x200)
+#define SMC_IRQNO(x)	(SUNXI_IRQ_MMC0 + (x))
 
+
+#define MMC_SRCCLK_HOSC   "hosc"
+#define MMC_SRCCLK_PLL   "pll_periph1"  //"pll_periph0"
+#define MMC_2MOD_CLK     "sdmmc2mod"
+
+#define	SUNXI_CCM_BASE	 	0x01c20000
+#define SUNXI_PIO_BASE		0x01c20800
+
+#define MMC_MODCLK_PREFIX "sdmmc"
+#define MMC3_DMA_TL       (0x2007000f)
+
+#ifdef MMC_FPGA
+#undef SMC_IRQNO
+#define SMC_IRQNO(x)	((x) & 2 ? SUNXI_IRQ_MMC2 : SUNXI_IRQ_MMC0)
+#define SMC_FPGA_MMC_PREUSED(x)	((x) == 2 || (x) == 0)
+#endif
+
+#endif
 
 
 
@@ -173,10 +206,12 @@
 #define SDXC_REG_CBCR	( 0x48 ) // SMC CIU Byte Count Register
 #define SDXC_REG_BBCR	( 0x4C ) // SMC BIU Byte Count Register
 #define SDXC_REG_DBGC	( 0x50 ) // SMC Debug Enable Register
-#if defined CONFIG_ARCH_SUN8IW3 || defined CONFIG_ARCH_SUN9IW1 || defined CONFIG_ARCH_SUN8IW5 || defined CONFIG_ARCH_SUN8IW6 || defined CONFIG_ARCH_SUN8IW8
+#if defined CONFIG_ARCH_SUN8IW3 || defined CONFIG_ARCH_SUN9IW1 || defined CONFIG_ARCH_SUN8IW5 || defined CONFIG_ARCH_SUN8IW6 || defined CONFIG_ARCH_SUN8IW8 \
+	|| defined (CONFIG_ARCH_SUN8IW7) || defined CONFIG_ARCH_SUN8IW9
 #define SDXC_REG_A12A	(0x58 )		//auto cmd12 arg
 #endif
-#if defined CONFIG_ARCH_SUN8IW5 || defined CONFIG_ARCH_SUN8IW6 || defined CONFIG_ARCH_SUN8IW8
+#if defined CONFIG_ARCH_SUN8IW5 || defined CONFIG_ARCH_SUN8IW6 || defined CONFIG_ARCH_SUN8IW8 \
+	|| defined (CONFIG_ARCH_SUN8IW7) || defined CONFIG_ARCH_SUN8IW9
 #define SDXC_REG_NTSR       ( 0x5C )//SMC Newtiming Set Register
 #endif
 #define SDXC_REG_HWRST	( 0x78 ) // SMC Card Hardware Reset for Register
@@ -412,7 +447,9 @@ struct sunxi_mmc_platform_data {
 	u32 dma_tl;
 	char* regulator;
 	char* power_supply;
-#if defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1) ||defined(CONFIG_ARCH_SUN8IW8P1)
+#if defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1) \
+		||defined(CONFIG_ARCH_SUN8IW8P1) || defined(CONFIG_ARCH_SUN8IW7P1) \
+		|| defined(CONFIG_ARCH_SUN8IW9P1) 
 	u32  used_2xmod;
 	u32  used_ddrmode;
 #endif
@@ -430,7 +467,7 @@ struct sunxi_mmc_platform_data {
 	struct gpio_config wp;
 #endif
 	struct pinctrl *pinctrl;
-	
+
 		/*sample delay and output deley setting*/
 	struct sunxi_mmc_clk_dly mmc_clk_dly[MMC_CLK_MOD_NUM];
 };
@@ -514,6 +551,8 @@ struct sunxi_mmc_host {
 	u32 read_only:8;
 	u32 io_flag:8;
 	u32 suspend:8;
+
+	u32 power_for_card;/*used for card power on flag*/
 
 	u32 debuglevel;
 	u32 dump_ctl;

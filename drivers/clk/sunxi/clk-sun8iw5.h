@@ -80,6 +80,11 @@
 #define APB1_RST            0x02D0
 #define APB2_RST            0x02D8
 
+#define CPUS_CFG			(0x0000+IO_ADDRESS(0x01f01400))
+#define CPUS_APB0	        (0x000c+IO_ADDRESS(0x01f01400))
+#define CPUS_APB0_GATE      (0x0028+IO_ADDRESS(0x01f01400))
+#define CPUS_APB0_RST       (0x00B0+IO_ADDRESS(0x01f01400))
+#define CPUS_CLK_MAX_REG    (0x0110+IO_ADDRESS(0x01f01400))
 #define SUNXI_CLK_MAX_REG   0x02D8
 #define LOSC_OUT_GATE       0x01F00060
 #define F_N8X7_M0X4(nv,mv) FACTOR_ALL(nv,8,7,0,0,0,mv,0,4,0,0,0,0,0,0,0,0,0)	

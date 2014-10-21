@@ -26,13 +26,18 @@
 #define DRQSRC_SDRAM		0
 
 #if !defined(CONFIG_ARCH_SUN8IW5) \
-	&& !defined(CONFIG_ARCH_SUN8IW3)
+	&& !defined(CONFIG_ARCH_SUN8IW3) \
+	&& !defined(CONFIG_ARCH_SUN8IW8) \
+	&& !defined(CONFIG_ARCH_SUN8IW9)
 #define DRQSRC_SPDIFRX		2
 #endif
 
+#if !defined(CONFIG_ARCH_SUN8IW9)
 #define DRQSRC_DAUDIO_0_RX	3
+#endif
 
-#ifndef CONFIG_ARCH_SUN9I
+#if !defined(CONFIG_ARCH_SUN9I) \
+	&& !defined(CONFIG_ARCH_SUN8IW8)
 #define DRQSRC_DAUDIO_1_RX	4
 #define DRQSRC_NAND0		5
 #endif
@@ -40,8 +45,11 @@
 #define DRQSRC_UART0RX		6
 #define DRQSRC_UART1RX 		7
 #define DRQSRC_UART2RX		8
+
+#ifndef CONFIG_ARCH_SUN8IW8
 #define DRQSRC_UART3RX		9
 #define DRQSRC_UART4RX		10
+#endif
 /* #define DRQSRC_RESEVER		11 */
 /* #define DRQSRC_RESEVER		12 */
 
@@ -52,14 +60,12 @@
 #define DRQSRC_HDMI_AUDIO	14
 #endif
 
-#if defined(CONFIG_ARCH_SUN8IW1) \
-	|| defined(CONFIG_ARCH_SUN8IW3) \
-	|| defined(CONFIG_ARCH_SUN8IW5)
+#if !defined(CONFIG_ARCH_SUN8IW6)
 #define DRQSRC_AUDIO_CODEC	15
 #endif
 
-#if defined(CONFIG_ARCH_SUN8IW1) \
-	|| defined(CONFIG_ARCH_SUN8IW5)
+#if !defined(CONFIG_ARCH_SUN8IW3) \
+	&& !defined(CONFIG_ARCH_SUN8IW6)
 #define DRQSRC_SS		16
 #endif
 
@@ -67,7 +73,11 @@
 #define DRQSRC_OTG_EP2		18
 #define DRQSRC_OTG_EP3		19
 #define DRQSRC_OTG_EP4		20
+
+#if !defined(CONFIG_ARCH_SUN8IW8)
 #define DRQSRC_OTG_EP5		21
+#endif
+
 #else
 #define DRQSRC_AC97		18
 #endif
@@ -78,7 +88,10 @@
 #endif
 
 #define DRQSRC_SPI0RX		23
+
+#if !defined(CONFIG_ARCH_SUN8IW8)
 #define DRQSRC_SPI1RX		24
+#endif
 
 #if defined(CONFIG_ARCH_SUN8IW1) \
 	|| defined(CONFIG_ARCH_SUN9I)
@@ -92,7 +105,8 @@
 #define DRQSRC_MTC_ACC		29
 #define DRQSRC_DIGITAL_MIC	30
 
-#elif defined(CONFIG_ARCH_SUN8IW6)
+#elif defined(CONFIG_ARCH_SUN8IW6) \
+	|| defined(CONFIG_ARCH_SUN8IW7)
 
 #define DRQDST_TDMRX		28
 #endif
@@ -106,25 +120,38 @@
 #define DRQDST_SDRAM		0
 
 #if !defined(CONFIG_ARCH_SUN8IW5) \
-	&& !defined(CONFIG_ARCH_SUN8IW5)
+	&& !defined(CONFIG_ARCH_SUN8IW5) \
+	&& !defined(CONFIG_ARCH_SUN8IW8)
 #define DRQDST_SPDIFRX		2
 #endif
 
+#if !defined(CONFIG_ARCH_SUN8IW9)
 #define DRQDST_DAUDIO_0_TX	3
-#define DRQDST_DAUDIO_1_TX	4
+#endif
 
-#ifndef CONFIG_ARCH_SUN9I
+#if !defined(CONFIG_ARCH_SUN8IW8) \
+	&& !defined(CONFIG_ARCH_SUN8IW9)
+#define DRQDST_DAUDIO_1_TX	4
+#endif
+
+#if !defined(CONFIG_ARCH_SUN9I) \
+	&& !defined(CONFIG_ARCH_SUN8IW8)
 #define DRQDST_NAND0		5
 #endif
 
 #define DRQDST_UART0TX		6
 #define DRQDST_UART1TX 		7
 #define DRQDST_UART2TX		8
+
+#if !defined(CONFIG_ARCH_SUN8IW8)
 #define DRQDST_UART3TX		9
 #define DRQDST_UART4TX		10
+#endif
 
 #if defined(CONFIG_ARCH_SUN8IW3) \
-	|| defined(CONFIG_ARCH_SUN8IW5)
+	|| defined(CONFIG_ARCH_SUN8IW5) \
+	|| defined(CONFIG_ARCH_SUN8IW8) \
+	|| defined(CONFIG_ARCH_SUN8IW9)
 #define DRQSRC_TCON0		12
 #endif
 
@@ -135,14 +162,12 @@
 #define DRQDST_HDMI_AUDIO	14
 #endif
 
-#if defined(CONFIG_ARCH_SUN8IW1) \
-	|| defined(CONFIG_ARCH_SUN8IW3) \
-	|| defined(CONFIG_ARCH_SUN8IW5)
+#if !defined(CONFIG_ARCH_SUN8IW6)
 #define DRQDST_AUDIO_CODEC	15
 #endif
 
-#if defined(CONFIG_ARCH_SUN8IW1) \
-	|| defined(CONFIG_ARCH_SUN8IW5)
+#if !defined(CONFIG_ARCH_SUN8IW3) \
+	&& !defined(CONFIG_ARCH_SUN8IW6)
 #define DRQDST_SS		16
 #endif
 
@@ -150,7 +175,10 @@
 #define DRQDST_OTG_EP2		18
 #define DRQDST_OTG_EP3		19
 #define DRQDST_OTG_EP4		20
+#if !defined(CONFIG_ARCH_SUN8IW8)
 #define DRQDST_OTG_EP5		21
+#endif
+
 #else
 #define DRQDST_CIR_TX		15
 #define DRQDST_AC97		18
@@ -175,7 +203,8 @@
 #define DRQDST_MTC_ACC		29
 #define DRQDST_DIGITAL_MIC	30
 
-#elif defined(CONFIG_ARCH_SUN8IW6)
+#elif defined(CONFIG_ARCH_SUN8IW6) \
+	|| defined(CONFIG_ARCH_SUN8IW7)
 
 #define DRQDST_DAUDIO_2_TX	27
 #define DRQDST_TDM_TX		28

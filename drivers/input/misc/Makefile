@@ -6,9 +6,8 @@
 
 obj-$(CONFIG_E_COMPASS_L3M303D)		+= lsm303d.o
 obj-$(CONFIG_E_COMPASS_FXOS8700)	+= fxos8700.o
-obj-$(CONFIG_GYR_L3GD20)			+= l3gd20_gyr.o
+obj-$(CONFIG_GYR_L3GD20)		+= l3gd20_gyr.o
 obj-$(CONFIG_INPUT_LTR501ALS)		+= ltr_501als.o
-obj-$(CONFIG_INPUT_JSA1127)			+= jsa1127.o
 obj-$(CONFIG_INPUT_88PM860X_ONKEY)	+= 88pm860x_onkey.o
 obj-$(CONFIG_INPUT_AB8500_PONKEY)	+= ab8500-ponkey.o
 obj-$(CONFIG_INPUT_AD714X)		+= ad714x.o

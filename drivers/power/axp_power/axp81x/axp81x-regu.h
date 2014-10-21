@@ -25,6 +25,36 @@
 *     FLDO3		axp28_fldo3	 reg-23-cs-fldo3
 */
 
+/* Unified sub device IDs for AXP */
+/* LDO0 For RTCLDO ,LDO1-3 for ALDO,LDO*/
+enum {
+	AXP81X_ID_LDO1,   //RTC
+	AXP81X_ID_LDO2,   //ALDO1
+	AXP81X_ID_LDO3,   //ALDO2
+	AXP81X_ID_LDO4,   //ALDO3
+	AXP81X_ID_LDO5,   //DLDO1
+	AXP81X_ID_LDO6,   //DLDO2
+	AXP81X_ID_LDO7,   //DLDO3
+	AXP81X_ID_LDO8,   //DLDO4
+	AXP81X_ID_LDO9,   //ELDO1
+	AXP81X_ID_LDO10,  //ELDO2
+	AXP81X_ID_LDO11,  //ELDO3
+	AXP81X_ID_LDO12,  //FLDO1
+	AXP81X_ID_LDO13,  //FLDO2
+	AXP81X_ID_LDO14,  //FLDO3
+	AXP81X_ID_SW0,   //DC1SW
+	AXP81X_ID_LDOIO0 = AXP_LDOIO_ID_START,
+	AXP81X_ID_LDOIO1,
+	AXP81X_ID_DCDC1 = AXP_DCDC_ID_START,
+	AXP81X_ID_DCDC2,
+	AXP81X_ID_DCDC3,
+	AXP81X_ID_DCDC4,
+	AXP81X_ID_DCDC5,
+	AXP81X_ID_DCDC6,
+	AXP81X_ID_DCDC7,
+	AXP81X_ID_SUPPLY,
+};
+
 /* AXP81X Regulator Registers */
 #define AXP81X_LDO1		AXP81X_STATUS
 #define AXP81X_LDO2		AXP81X_ALDO1OUT_VOL
@@ -76,59 +106,7 @@
 #define AXP81X_LDOIO1EN		AXP81X_GPIO1_CTL
 #define AXP81X_DC1SWEN		AXP81X_LDO_DC_EN2
 
-struct axp_regu_data {
-	struct axp_consumer_supply axp_ldo1_data[20];
-	struct axp_consumer_supply axp_ldo2_data[20];
-	struct axp_consumer_supply axp_ldo3_data[20];
-	struct axp_consumer_supply axp_ldo4_data[20];
-	struct axp_consumer_supply axp_ldo5_data[20];
-	struct axp_consumer_supply axp_ldo6_data[20];
-	struct axp_consumer_supply axp_ldo7_data[20];
-	struct axp_consumer_supply axp_ldo8_data[20];
-	struct axp_consumer_supply axp_ldo9_data[20];
-	struct axp_consumer_supply axp_ldo10_data[20];
-	struct axp_consumer_supply axp_ldo11_data[20];
-	struct axp_consumer_supply axp_ldo12_data[20];
-	struct axp_consumer_supply axp_ldo13_data[20];
-	struct axp_consumer_supply axp_ldo14_data[20];
-	struct axp_consumer_supply axp_ldo15_data[20];
-	struct axp_consumer_supply axp_ldo16_data[20];
-	struct axp_consumer_supply axp_ldo17_data[20];
-	struct axp_consumer_supply axp_ldo18_data[20];
-	struct axp_consumer_supply axp_ldo19_data[20];
-	struct axp_consumer_supply axp_ldo20_data[20];
-	struct axp_consumer_supply axp_ldo21_data[20];
-	struct axp_consumer_supply axp_ldo22_data[20];
-	struct axp_consumer_supply axp_ldo23_data[20];
-};
-
-struct axp_supply_data {
-	struct regulator_consumer_supply axp_ldo1_data[20];
-	struct regulator_consumer_supply axp_ldo2_data[20];
-	struct regulator_consumer_supply axp_ldo3_data[20];
-	struct regulator_consumer_supply axp_ldo4_data[20];
-	struct regulator_consumer_supply axp_ldo5_data[20];
-	struct regulator_consumer_supply axp_ldo6_data[20];
-	struct regulator_consumer_supply axp_ldo7_data[20];
-	struct regulator_consumer_supply axp_ldo8_data[20];
-	struct regulator_consumer_supply axp_ldo9_data[20];
-	struct regulator_consumer_supply axp_ldo10_data[20];
-	struct regulator_consumer_supply axp_ldo11_data[20];
-	struct regulator_consumer_supply axp_ldo12_data[20];
-	struct regulator_consumer_supply axp_ldo13_data[20];
-	struct regulator_consumer_supply axp_ldo14_data[20];
-	struct regulator_consumer_supply axp_ldo15_data[20];
-	struct regulator_consumer_supply axp_ldo16_data[20];
-	struct regulator_consumer_supply axp_ldo17_data[20];
-	struct regulator_consumer_supply axp_ldo18_data[20];
-	struct regulator_consumer_supply axp_ldo19_data[20];
-	struct regulator_consumer_supply axp_ldo20_data[20];
-	struct regulator_consumer_supply axp_ldo21_data[20];
-	struct regulator_consumer_supply axp_ldo22_data[20];
-	struct regulator_consumer_supply axp_ldo23_data[20];
-};
-
-extern struct axp_funcdev_info (* axp81x_regu_init(void))[23];
+extern struct axp_funcdev_info *axp81x_regu_init(void);
 extern void axp81x_regu_exit(void);
 
 #endif

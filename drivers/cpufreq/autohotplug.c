@@ -86,7 +86,11 @@ static char *cpu_state_sysfs[]=
 	"cpu7_off"
 };
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,5,0)) || defined(CONFIG_ARCH_SUN9IW1) || defined(CONFIG_ARCH_SUN8IW5) || defined(CONFIG_ARCH_SUN8IW6)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,5,0)) || \
+defined(CONFIG_ARCH_SUN9IW1) || \
+defined(CONFIG_ARCH_SUN8IW5) || \
+defined(CONFIG_ARCH_SUN8IW6) || \
+defined(CONFIG_ARCH_SUN8IW7)
 extern u64 get_cpu_idle_time(unsigned int cpu, u64 *wall, int io_busy);
 #else
 static inline cputime64_t get_cpu_idle_time_jiffy(unsigned int cpu,
@@ -594,14 +598,16 @@ static int autohotplug_task(void *data)
 				} else {
 					if (cur_governor->try_up(&load)) {
 						try_attemp = 1;
-						cur_governor->update_limits();
+						if (cur_governor->update_limits)
+							cur_governor->update_limits();
 					} else {
 						if (time_after_eq(jiffies, cpu_up_lasttime
 								+ usecs_to_jiffies(hotplug_up_attempt_hold_us)))
 						{
 							if (cur_governor->try_down(&load)) {
 								try_attemp = 2;
-								cur_governor->update_limits();
+								if (cur_governor->update_limits)
+									cur_governor->update_limits();
 							}
 						}
 					}
@@ -758,7 +764,7 @@ static int autohotplug_timer_start(void)
 	cpu_boost_lasttime = jiffies;
 
 	/* init hotplug timer */
-	init_timer_deferrable(&hotplug_task_timer);
+	init_timer(&hotplug_task_timer);
 	hotplug_task_timer.function  = autohotplug_task_timer;
 	hotplug_task_timer.data = (unsigned long)&governor.load;
 	hotplug_task_timer.expires = jiffies + usecs_to_jiffies(hotplug_period_us);
@@ -1144,9 +1150,12 @@ int autohotplug_init(void)
 		return -EINVAL;
 	}
 
-	if (cur_governor->get_fast_and_slow_cpus)
-		cur_governor->get_fast_and_slow_cpus(&hmp_fast_cpu_mask,
-			&hmp_slow_cpu_mask);
+	if (cur_governor->get_fast_and_slow_cpus == NULL) {
+		pr_err("get_fast_and_slow_cpus is NULL, failed\n");
+		return -EINVAL;
+	}
+
+	cur_governor->get_fast_and_slow_cpus(&hmp_fast_cpu_mask, &hmp_slow_cpu_mask);
 
 	/* init per_cpu load_lock */
 	for_each_possible_cpu(cpu) {
@@ -1186,7 +1195,7 @@ int autohotplug_init(void)
 	/* turn hotplug task on*/
 	wake_up_process(auto_hotplug_task);
 
-	printk("%s init ok\n", __func__);
+	pr_debug("%s init ok\n", __func__);
 	return 0;
 }
 

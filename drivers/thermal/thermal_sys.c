@@ -760,7 +760,7 @@ thermal_cooling_device_cur_state_store(struct device *dev,
 	unsigned long state;
 	int result;
 
-	if (!sscanf(buf, "%ld\n", &state))
+	if (!sscanf(buf, "%lu\n", &state))
 		return -EINVAL;
 
 	if ((long)state < 0)

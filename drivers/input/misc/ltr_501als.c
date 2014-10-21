@@ -75,6 +75,7 @@ static struct sensor_config_info ls_sensor_info = {
 	.input_type = LS_TYPE,
 	.int_number = 0,
 	.ldo = NULL,
+	.dev = NULL,
 };
 
 /* Addresses to scan */
@@ -115,14 +116,14 @@ static struct ltr_data *ltr558_data;
 
 int ltr558_als_read(void)
 {
-	int div_tmp;
+	int div_tmp = 0;
 	
-	int alsval_ch0_lo, alsval_ch0_hi;
-	int alsval_ch1_lo, alsval_ch1_hi;
-	int luxdata_int;
-	int ratio;
-	int alsval_ch0, alsval_ch1;
-	int ch0_coeff, ch1_coeff;
+	int alsval_ch0_lo = 0, alsval_ch0_hi = 0;
+	int alsval_ch1_lo = 0, alsval_ch1_hi = 0;
+	int luxdata_int = 0;
+	int ratio = 0;
+	int alsval_ch0 = 0, alsval_ch1 = 0;
+	int ch0_coeff = 0, ch1_coeff = 0;
 
 	alsval_ch0_lo = ltr558_i2c_read_reg(LTR558_ALS_DATA_CH0_0);
 	alsval_ch0_hi = ltr558_i2c_read_reg(LTR558_ALS_DATA_CH0_1);
@@ -151,7 +152,7 @@ int ltr558_als_read(void)
 		ch0_coeff = 16900;
 		ch1_coeff = 1690;
 	}
-	else
+	else if (ratio >= 85)
 	{
 		ch0_coeff = 0;
 		ch1_coeff = 0;
@@ -675,6 +676,7 @@ static enum hrtimer_restart ltr_timer_func(struct hrtimer *timer)
 	return HRTIMER_RESTART;
 }
 
+#if 0
 /* interrupt happened due to transition/change of near/far proximity state */
 static irqreturn_t ltr_irq_handler(int irq, void *dev_id)
 {
@@ -683,6 +685,7 @@ static irqreturn_t ltr_irq_handler(int irq, void *dev_id)
 	dprintk(DEBUG_CONTROL_INFO, "in irq\n");
 	return 0;
 }
+#endif
 
 static void ltr558_schedwork(struct work_struct *work)
 {
@@ -739,6 +742,7 @@ static void ltr558_schedwork(struct work_struct *work)
 	//wake_lock_timeout(&ip->prx_wake_lock, 3*HZ);
 }
 
+#if 0
 static int ltr_setup_irq(struct ltr_data *ltr)
 {
 	int ret = -EIO;
@@ -759,6 +763,7 @@ static int ltr_setup_irq(struct ltr_data *ltr)
 	ret = 0;
 	return ret;
 }
+#endif
 
 static void ltr558_init_events (struct work_struct *work)
 {
@@ -942,8 +947,8 @@ static int ltr_i2c_remove(struct i2c_client *client)
 	sysfs_remove_group(&ltr->proximity_input_dev->dev.kobj,
 			   &proximity_attribute_group);
 	input_unregister_device(ltr->proximity_input_dev);
-	if (0 != ls_sensor_info.int_number)
-		input_free_int(&(ls_sensor_info.input_type), ltr);
+	//if (0 != ls_sensor_info.int_number)
+		//input_free_int(&(ls_sensor_info.input_type), ltr);
 	if (ltr->power_state) {
 		if (ltr->power_state & LIGHT_ENABLED)
 			ltr_light_disable(ltr);

@@ -35,25 +35,11 @@
 
 #include "i2c-sunxi.h"
 
-enum {
-	DBG_ERR  = 1U << 0,
-	DBG_INFO = 1U << 1
-};
-static u32 gs_debug_mask = 1;
-#define dprintk(level, fmt, arg...)	\
-	do { \
-		if (unlikely(gs_debug_mask & level)) { \
-			printk("%s()%d - ", __func__, __LINE__); \
-			printk(fmt, ##arg); \
-		} \
-	} while (0)
-	
-module_param_named(debug_mask, gs_debug_mask, int, S_IRUGO|S_IWUSR);
-
-#define I2C_EXIT()  			dprintk(DBG_INFO, "%s \n", "Exit")
-#define I2C_ENTER() 			dprintk(DBG_INFO, "%s \n", "Enter ...")
-#define I2C_DBG(fmt, arg...)	dprintk(DBG_INFO, fmt, ##arg)
-#define I2C_ERR(fmt, arg...)	dprintk(DBG_ERR, fmt, ##arg)
+/* For debug */
+#define I2C_EXIT()  		pr_debug("%s()%d - %s \n", __func__, __LINE__, "Exit")
+#define I2C_ENTER() 		pr_debug("%s()%d - %s \n", __func__, __LINE__, "Enter ...")
+#define I2C_DBG(fmt, arg...)	pr_debug("%s()%d - "fmt, __func__, __LINE__, ##arg)
+#define I2C_ERR(fmt, arg...)	pr_warn("%s()%d - "fmt, __func__, __LINE__, ##arg)
 
 #ifndef CONFIG_SUNXI_I2C_PRINT_TRANSFER_INFO
 static int bus_transfer_dbg = -1;
@@ -102,8 +88,7 @@ struct sunxi_i2c {
 
 	void __iomem	 	*base_addr;
 
-	struct pinctrl		 *pctrl;
-	struct pinctrl_state *pctrl_state;
+	struct pinctrl		*pctrl;
 };
 
 /* clear the interrupt flag */
@@ -339,7 +324,7 @@ static void twi_chan_cfg(struct sunxi_i2c_platform_data *pdata)
 		sprintf(twi_para, "twi%d", i);
 		type = script_get_item(twi_para, "twi_used", &item);
 		if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-			I2C_ERR("[twi%d] fetch twi_used from sysconfig failed\n", i);
+			I2C_ERR("[twi%d] has no twi_used!\n", i);
 			continue;
 		}
 		if (item.val)
@@ -347,7 +332,7 @@ static void twi_chan_cfg(struct sunxi_i2c_platform_data *pdata)
 
 		type = script_get_item(twi_para, "twi_regulator", &item);
 		if (SCIRPT_ITEM_VALUE_TYPE_STR != type) {
-			I2C_ERR("[twi%d] fetch twi_regulator from sysconfig failed\n", i);
+			I2C_ERR("[twi%d] has no twi_regulator.\n", i);
 			continue;
 		}
 		strncpy(pdata[i].regulator_id, item.str, 16);
@@ -359,10 +344,26 @@ static int twi_chan_is_enable(int _ch)
 	return twi_used_mask & SUNXI_TWI_CHAN_MASK(_ch);
 }
 
-static int twi_request_gpio(struct sunxi_i2c *i2c)
+static int twi_select_gpio_state(struct pinctrl *pctrl, char *name, u32 no)
 {
 	int ret = 0;
+	struct pinctrl_state *pctrl_state = NULL;
 
+	pctrl_state = pinctrl_lookup_state(pctrl, name);
+	if (IS_ERR(pctrl_state)) {
+		I2C_ERR("TWI%d pinctrl_lookup_state(%s) failed! return %p \n", no, name, pctrl_state);
+		return -1;
+	}
+
+	ret = pinctrl_select_state(pctrl, pctrl_state);
+	if (ret < 0)
+		I2C_ERR("TWI%d pinctrl_select_state(%s) failed! return %d \n", no, name, ret);
+
+	return ret;
+}
+
+static int twi_request_gpio(struct sunxi_i2c *i2c)
+{
 	I2C_DBG("Pinctrl init %d ... [%s]\n", i2c->bus_num, i2c->adap.dev.parent->init_name);
 
 	if (!twi_chan_is_enable(i2c->bus_num))
@@ -374,17 +375,7 @@ static int twi_request_gpio(struct sunxi_i2c *i2c)
 		return -1;
 	}
 
-	i2c->pctrl_state = pinctrl_lookup_state(i2c->pctrl, PINCTRL_STATE_DEFAULT);
-	if (IS_ERR(i2c->pctrl_state)) {
-		I2C_ERR("TWI%d pinctrl_lookup_state() failed! return %p \n", i2c->bus_num, i2c->pctrl_state);
-		return -1;
-	}
-
-	ret = pinctrl_select_state(i2c->pctrl, i2c->pctrl_state);
-	if (ret < 0)
-		I2C_ERR("TWI%d pinctrl_select_state() failed! return %d \n", i2c->bus_num, ret);
-	
-	return ret;
+	return twi_select_gpio_state(i2c->pctrl, PINCTRL_STATE_DEFAULT, i2c->bus_num);
 }
 
 static void twi_release_gpio(struct sunxi_i2c *i2c)
@@ -1241,6 +1232,7 @@ static int sunxi_i2c_suspend(struct device *dev)
 		return -1;
 	}
 
+	twi_select_gpio_state(i2c->pctrl, PINCTRL_STATE_SUSPEND, i2c->bus_num);
 	twi_regulator_disable(dev->platform_data);
 
 	I2C_DBG("[i2c%d] suspend okay.. \n", i2c->bus_num);
@@ -1257,6 +1249,7 @@ static int sunxi_i2c_resume(struct device *dev)
 	i2c->suspended = 0;
 
 	twi_regulator_enable(dev->platform_data);
+	twi_select_gpio_state(i2c->pctrl, PINCTRL_STATE_DEFAULT, i2c->bus_num);
 
 	if (sunxi_i2c_clk_init(i2c)) {
 		I2C_ERR("[i2c%d] resume failed.. \n", i2c->bus_num);
@@ -1422,10 +1415,10 @@ void sunxi_i2c_test(void)
 	
 	ret = i2c_register_board_info(CONFIG_TWI_CHAN_NUM, eeprom_i2c_board_info, ARRAY_SIZE(eeprom_i2c_board_info));
 	if (ret < 0) {
-		printk("%s()%d - EEPROM init failed!\n", __func__, __LINE__);		
+		pr_warn("%s()%d - EEPROM init failed!\n", __func__, __LINE__);
 	}
 	else{
-		printk("%s()%d - EEPROM init successed!\n", __func__, __LINE__);		
+		pr_info("%s()%d - EEPROM init successed!\n", __func__, __LINE__);
 	}
 }
 #endif
@@ -1434,8 +1427,6 @@ static int __init sunxi_i2c_adap_init(void)
 {
 	int i;
 	int ret = 0;
-
-	I2C_ERR("[%s %s]Sunxi I2C init ... \n", __DATE__, __TIME__);
 
 #if (defined(CONFIG_I2C_SUNXI_TEST) || defined(CONFIG_I2C_SUNXI_TEST_MODULE))
 	sunxi_i2c_test();

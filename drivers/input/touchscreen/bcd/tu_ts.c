@@ -78,7 +78,9 @@ struct tu_data{
 	struct mutex lock;
 	
 	struct work_struct work;
+#ifdef CONFIG_HAS_EARLYSUSPEND
 	struct early_suspend early_suspend;
+#endif
 	struct workqueue_struct *tu_wq;
 
 	int fw_ver;

@@ -698,6 +698,18 @@ config USB_SUNXI_OHCI2
 	help
 	    SoftWinner SUNXI USB OHCI2.
 
+config USB_SUNXI_EHCI3
+    tristate "SoftWinner SUNXI USB EHCI3"
+	depends on USB_SUNXI_HCI
+	help
+	    SoftWinner SUNXI USB EHCI3.
+
+config USB_SUNXI_OHCI3
+    tristate "SoftWinner SUNXI USB OHCI3"
+	depends on USB_SUNXI_HCI
+	help
+	    SoftWinner SUNXI USB OHCI3.
+
 config USB_SUNXI_HSIC
     tristate "SoftWinner SUNXI USB HSIC"
 	depends on USB_SUNXI_HCI

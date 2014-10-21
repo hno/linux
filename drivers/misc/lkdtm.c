@@ -325,9 +325,10 @@ static void lkdtm_do_action(enum ctype which)
 		size_t len = 1024;
 		u32 *data = kmalloc(len, GFP_KERNEL);
 
-		kfree(data);
+		//kfree(data);
 		schedule();
 		memset(data, 0x78, len);
+		kfree(data);
 		break;
 	}
 	case CT_SOFTLOCKUP:

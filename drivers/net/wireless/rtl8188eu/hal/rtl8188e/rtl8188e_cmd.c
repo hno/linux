@@ -19,9 +19,17 @@
  ******************************************************************************/
 #define _RTL8188E_CMD_C_
 
+#include <drv_conf.h>
+#include <osdep_service.h>
 #include <drv_types.h>
+#include <recv_osdep.h>
+#include <cmd_osdep.h>
+#include <mlme_osdep.h>
+#include <rtw_byteorder.h>
+#include <circ_buf.h>
+#include <rtw_ioctl_set.h>
+
 #include <rtl8188e_hal.h>
-#include "hal_com_h2c.h"
 
 #define CONFIG_H2C_EF
 
@@ -30,10 +38,11 @@
 #define RTL88E_MESSAGE_BOX_SIZE		4
 #define RTL88E_EX_MESSAGE_BOX_SIZE	4
 
+
 static u8 _is_fw_read_cmd_down(_adapter* padapter, u8 msgbox_num)
 {
 	u8	read_down = _FALSE;
-	int	retry_cnts = 100;
+	int 	retry_cnts = 100;
 
 	u8 valid;
 
@@ -66,11 +75,12 @@ static u8 _is_fw_read_cmd_down(_adapter* padapter, u8 msgbox_num)
 ******************************************/
 static s32 FillH2CCmd_88E(PADAPTER padapter, u8 ElementID, u32 CmdLen, u8 *pCmdBuffer)
 {
-	struct dvobj_priv *dvobj =  adapter_to_dvobj(padapter);
-	HAL_DATA_TYPE *pHalData = GET_HAL_DATA(padapter);
+	u8 bcmd_down = _FALSE;
+	s32 retry_cnts = 100;
 	u8 h2c_box_num;
 	u32	msgbox_addr;
 	u32 msgbox_ex_addr;
+	HAL_DATA_TYPE *pHalData = GET_HAL_DATA(padapter);
 	u8 cmd_idx,ext_cmd_len;
 	u32	h2c_cmd = 0;
 	u32	h2c_cmd_ex = 0;
@@ -87,7 +97,7 @@ _func_enter_;
 		return ret;
 	}
 
-	_enter_critical_mutex(&(dvobj->h2c_fwcmd_mutex), NULL);
+	_enter_critical_mutex(&(adapter_to_dvobj(padapter)->h2c_fwcmd_mutex), NULL);
 
 	if (!pCmdBuffer) {
 		goto exit;
@@ -139,20 +149,21 @@ _func_enter_;
 		h2c_cmd = le32_to_cpu( h2c_cmd );
 		rtw_write32(padapter,msgbox_addr, h2c_cmd);
 		#endif
-		
+
+		bcmd_down = _TRUE;
 
 	//	DBG_8192C("MSG_BOX:%d,CmdLen(%d), reg:0x%x =>h2c_cmd:0x%x, reg:0x%x =>h2c_cmd_ex:0x%x ..\n"
 	//	 	,pHalData->LastHMEBoxNum ,CmdLen,msgbox_addr,h2c_cmd,msgbox_ex_addr,h2c_cmd_ex);
 
 		pHalData->LastHMEBoxNum = (h2c_box_num+1) % RTL88E_MAX_H2C_BOX_NUMS;
 
-	}while(0);
+	}while((!bcmd_down) && (retry_cnts--));
 
 	ret = _SUCCESS;
 
 exit:
 
-	_exit_critical_mutex(&(dvobj->h2c_fwcmd_mutex), NULL);
+	_exit_critical_mutex(&(adapter_to_dvobj(padapter)->h2c_fwcmd_mutex), NULL);	
 
 _func_exit_;
 
@@ -240,23 +251,42 @@ _func_exit_;
 //bitmap[28:31]= Rate Adaptive id
 //arg[0:4] = macid
 //arg[5] = Short GI
-void rtl8188e_Add_RateATid(PADAPTER pAdapter, u32 bitmap, u8* arg, u8 rssi_level)
+void rtl8188e_Add_RateATid(PADAPTER pAdapter, u32 bitmap, u8 arg, u8 rssi_level)
 {
 	HAL_DATA_TYPE	*pHalData = GET_HAL_DATA(pAdapter);
+	//struct dm_priv	*pdmpriv = &pHalData->dmpriv;
+
 	u8 macid, init_rate, raid, shortGIrate=_FALSE;
 
-	macid = arg[0];
-	raid = arg[1];
-	shortGIrate = arg[2];
-	init_rate = arg[3];
+#ifdef CONFIG_CONCURRENT_MODE
+	if(rtw_buddy_adapter_up(pAdapter) && pAdapter->adapter_type > PRIMARY_ADAPTER)	
+		pHalData = GET_HAL_DATA(pAdapter->pbuddy_adapter);				
+#endif //CONFIG_CONCURRENT_MODE
 
+	macid = arg&0x1f;
+
+#ifdef CONFIG_ODM_REFRESH_RAMASK
+	raid = (bitmap>>28) & 0x0f;
 	bitmap &=0x0fffffff;	
 	
 	if(rssi_level != DM_RATR_STA_INIT)
 		bitmap = ODM_Get_Rate_Bitmap(&pHalData->odmpriv, macid, bitmap, rssi_level);		
+	
+	bitmap |= ((raid<<28)&0xf0000000);
+#endif //CONFIG_ODM_REFRESH_RAMASK
+		
+
+	init_rate = get_highest_rate_idx(bitmap&0x0fffffff)&0x3f;
+
+	shortGIrate = (arg&BIT(5)) ? _TRUE:_FALSE;
 
 	if (shortGIrate==_TRUE)
 		init_rate |= BIT(6);
+	
+
+	//rtw_write8(pAdapter, (REG_INIDATA_RATE_SEL+macid), (u8)init_rate);
+	
+	raid = (bitmap>>28) & 0x0f;
 
 	bitmap &= 0x0fffffff;
 	
@@ -279,14 +309,12 @@ void rtl8188e_Add_RateATid(PADAPTER pAdapter, u32 bitmap, u8* arg, u8 rssi_level
 void rtl8188e_set_FwPwrMode_cmd(PADAPTER padapter, u8 Mode)
 {
 	SETPWRMODE_PARM H2CSetPwrMode;
-	struct pwrctrl_priv *pwrpriv = adapter_to_pwrctl(padapter);
+	struct pwrctrl_priv *pwrpriv = &padapter->pwrctrlpriv;
 	u8	RLBM = 0; // 0:Min, 1:Max , 2:User define
 _func_enter_;
 
 	DBG_871X("%s: Mode=%d SmartPS=%d UAPSD=%d\n", __FUNCTION__,
 			Mode, pwrpriv->smart_ps, padapter->registrypriv.uapsd_enable);
-
-	H2CSetPwrMode.AwakeInterval = 2;	//DTIM = 1
 
 	switch(Mode)
 	{
@@ -302,7 +330,6 @@ _func_enter_;
 			break;
 		case PS_MODE_DTIM:
 			RLBM = 2;
-			H2CSetPwrMode.AwakeInterval = 3; //DTIM = 2
 			H2CSetPwrMode.Mode = 1;
 			break;
 		case PS_MODE_UAPSD_WMM:
@@ -316,6 +343,8 @@ _func_enter_;
 	//H2CSetPwrMode.Mode = Mode;
 
 	H2CSetPwrMode.SmartPS_RLBM = (((pwrpriv->smart_ps<<4)&0xf0) | (RLBM & 0x0f));
+
+	H2CSetPwrMode.AwakeInterval = 1;
 
 	H2CSetPwrMode.bAllQueueUAPSD = padapter->registrypriv.uapsd_enable;
 
@@ -339,29 +368,11 @@ void rtl8188e_set_FwMediaStatus_cmd(PADAPTER padapter, u16 mstatus_rpt )
 {
 	u8 opmode,macid;
 	u16 mst_rpt = cpu_to_le16 (mstatus_rpt);
-	u32 reg_macid_no_link = REG_MACID_NO_LINK_0;
 	opmode = (u8) mst_rpt;
 	macid = (u8)(mst_rpt >> 8)  ;
+	
 	DBG_871X("### %s: MStatus=%x MACID=%d \n", __FUNCTION__,opmode,macid);
-	FillH2CCmd_88E(padapter, H2C_COM_MEDIA_STATUS_RPT, sizeof(mst_rpt), (u8 *)&mst_rpt);	
-
-	if(macid > 31){
-		macid = macid-32;
-		reg_macid_no_link = REG_MACID_NO_LINK_1;
-	}
-	
-	//Delete select macid (MACID 0~63) from queue list.
-	if(opmode == 1)// 1:connect
-	{
-		rtw_write32(padapter,reg_macid_no_link, (rtw_read32(padapter,reg_macid_no_link) & (~BIT(macid))));
-	}
-	else//0: disconnect
-	{
-		rtw_write32(padapter,reg_macid_no_link, (rtw_read32(padapter,reg_macid_no_link)|BIT(macid)));
-	}
-	
-	
-	
+	FillH2CCmd_88E(padapter, H2C_COM_MEDIA_STATUS_RPT, sizeof(mst_rpt), (u8 *)&mst_rpt);
 }
 
 void ConstructBeacon(_adapter *padapter, u8 *pframe, u32 *pLength)
@@ -569,180 +580,6 @@ void ConstructNullFunctionData(
 	*pLength = pktlen;
 }
 
-#ifdef CONFIG_WOWLAN
-//
-// Description:
-//	Construct the ARP response packet to support ARP offload.
-//
-static void ConstructARPResponse(
-	PADAPTER padapter,
-	u8			*pframe,
-	u32			*pLength,
-	u8			*pIPAddress
-	)
-{
-	struct rtw_ieee80211_hdr	*pwlanhdr;
-	struct mlme_priv		*pmlmepriv = &padapter->mlmepriv;
-	struct wlan_network		*cur_network = &pmlmepriv->cur_network;
-	struct mlme_ext_priv	*pmlmeext = &(padapter->mlmeextpriv);
-	struct mlme_ext_info	*pmlmeinfo = &(pmlmeext->mlmext_info);
-	struct security_priv 	*psecuritypriv = &padapter->securitypriv;
-	static u8				ARPLLCHeader[8] = {0xAA, 0xAA, 0x03, 0x00, 0x00, 0x00, 0x08, 0x06};
-
-	u16		*fctrl;
-	u32		pktlen;
-	u8		*pARPRspPkt = pframe;
-	//for TKIP Cal MIC
-	u8		*payload = pframe;
-	u8		EncryptionHeadOverhead = 0;
-
-	pwlanhdr = (struct rtw_ieee80211_hdr*)pframe;
-
-	fctrl = &pwlanhdr->frame_ctl;
-	*(fctrl) = 0;
-
-	//-------------------------------------------------------------------------
-	// MAC Header.
-	//-------------------------------------------------------------------------
-	SetFrameType(fctrl, WIFI_DATA);
-	//SetFrameSubType(fctrl, 0);
-	SetToDs(fctrl);
-	_rtw_memcpy(pwlanhdr->addr1, get_my_bssid(&(pmlmeinfo->network)), ETH_ALEN);
-	_rtw_memcpy(pwlanhdr->addr2, myid(&(padapter->eeprompriv)), ETH_ALEN);
-	_rtw_memcpy(pwlanhdr->addr3, get_my_bssid(&(pmlmeinfo->network)), ETH_ALEN);
-
-	SetSeqNum(pwlanhdr, 0);
-	SetDuration(pwlanhdr, 0);
-	//SET_80211_HDR_FRAME_CONTROL(pARPRspPkt, 0);
-	//SET_80211_HDR_TYPE_AND_SUBTYPE(pARPRspPkt, Type_Data);
-	//SET_80211_HDR_TO_DS(pARPRspPkt, 1);
-	//SET_80211_HDR_ADDRESS1(pARPRspPkt, pMgntInfo->Bssid);
-	//SET_80211_HDR_ADDRESS2(pARPRspPkt, Adapter->CurrentAddress);
-	//SET_80211_HDR_ADDRESS3(pARPRspPkt, pMgntInfo->Bssid);
-
-	//SET_80211_HDR_DURATION(pARPRspPkt, 0);
-	//SET_80211_HDR_FRAGMENT_SEQUENCE(pARPRspPkt, 0);
-#ifdef CONFIG_WAPI_SUPPORT
-	*pLength = sMacHdrLng;
-#else
-	*pLength = 24;
-#endif
-
-
-//YJ,del,120503
-#if 0
-	//-------------------------------------------------------------------------
-	// Qos Header: leave space for it if necessary.
-	//-------------------------------------------------------------------------
-	if(pStaQos->CurrentQosMode > QOS_DISABLE)
-	{
-		SET_80211_HDR_QOS_EN(pARPRspPkt, 1);
-		PlatformZeroMemory(&(Buffer[*pLength]), sQoSCtlLng);
-		*pLength += sQoSCtlLng;
-	}
-#endif
-	//-------------------------------------------------------------------------
-	// Security Header: leave space for it if necessary.
-	//-------------------------------------------------------------------------
-
-	switch (psecuritypriv->dot11PrivacyAlgrthm)
-	{
-		case _WEP40_:
-		case _WEP104_:
-			EncryptionHeadOverhead = 4;
-			break;
-		case _TKIP_:
-			EncryptionHeadOverhead = 8;
-			break;
-		case _AES_:
-			EncryptionHeadOverhead = 8;
-			break;
-#ifdef CONFIG_WAPI_SUPPORT
-		case _SMS4_:
-			EncryptionHeadOverhead = 18;
-			break;
-#endif
-		default:
-			EncryptionHeadOverhead = 0;
-	}
-
-	if(EncryptionHeadOverhead > 0)
-	{
-		_rtw_memset(&(pframe[*pLength]), 0,EncryptionHeadOverhead);
-	       	*pLength += EncryptionHeadOverhead;
-		//SET_80211_HDR_WEP(pARPRspPkt, 1);  //Suggested by CCW.
-		SetPrivacy(fctrl);
-	}
-
-	//-------------------------------------------------------------------------
-	// Frame Body.
-	//-------------------------------------------------------------------------
-	pARPRspPkt =  (u8*)(pframe+ *pLength);
-	// LLC header
-	_rtw_memcpy(pARPRspPkt, ARPLLCHeader, 8);
-	*pLength += 8;
-
-	// ARP element
-	pARPRspPkt += 8;
-	SET_ARP_PKT_HW(pARPRspPkt, 0x0100);
-	SET_ARP_PKT_PROTOCOL(pARPRspPkt, 0x0008);	// IP protocol
-	SET_ARP_PKT_HW_ADDR_LEN(pARPRspPkt, 6);
-	SET_ARP_PKT_PROTOCOL_ADDR_LEN(pARPRspPkt, 4);
-	SET_ARP_PKT_OPERATION(pARPRspPkt, 0x0200); // ARP response
-	SET_ARP_PKT_SENDER_MAC_ADDR(pARPRspPkt, myid(&(padapter->eeprompriv)));
-	SET_ARP_PKT_SENDER_IP_ADDR(pARPRspPkt, pIPAddress);
-	#ifdef CONFIG_ARP_KEEP_ALIVE
-	if (rtw_gw_addr_query(padapter)==0) {
-		SET_ARP_PKT_TARGET_MAC_ADDR(pARPRspPkt, pmlmepriv->gw_mac_addr);
-		SET_ARP_PKT_TARGET_IP_ADDR(pARPRspPkt, pmlmepriv->gw_ip);
-	}
-	else
-#endif
-	{
-		SET_ARP_PKT_TARGET_MAC_ADDR(pARPRspPkt, get_my_bssid(&(pmlmeinfo->network)));
-		SET_ARP_PKT_TARGET_IP_ADDR(pARPRspPkt, pIPAddress);
-		DBG_871X("%s Target Mac Addr:" MAC_FMT "\n", __FUNCTION__, MAC_ARG(get_my_bssid(&(pmlmeinfo->network))));
-		DBG_871X("%s Target IP Addr" IP_FMT "\n", __FUNCTION__, IP_ARG(pIPAddress));
-	}
-	*pLength += 28;
-	if (psecuritypriv->dot11PrivacyAlgrthm == _TKIP_)
-	{
-		u8	mic[8];
-		struct mic_data	micdata;
-		struct sta_info	*psta = NULL;
-		u8	priority[4]={0x0,0x0,0x0,0x0};
-		u8	null_key[16]={0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0,0x0};
-
-		DBG_871X("%s(): Add MIC\n",__FUNCTION__);
-
-		psta = rtw_get_stainfo(&padapter->stapriv, get_my_bssid(&(pmlmeinfo->network)));
-		if (psta != NULL) {
-			if(_rtw_memcmp(&psta->dot11tkiptxmickey.skey[0],null_key, 16)==_TRUE){
-				DBG_871X("%s(): STA dot11tkiptxmickey==0\n",__FUNCTION__);
-			}
-			//start to calculate the mic code
-			rtw_secmicsetkey(&micdata, &psta->dot11tkiptxmickey.skey[0]);
-		}
-
-		rtw_secmicappend(&micdata, pwlanhdr->addr3, 6);  //DA
-
-		rtw_secmicappend(&micdata, pwlanhdr->addr2, 6); //SA
-
-		priority[0]=0;
-		rtw_secmicappend(&micdata, &priority[0], 4);
-
-		rtw_secmicappend(&micdata, payload, 36); //payload length = 8 + 28
-
-		rtw_secgetmic(&micdata,&(mic[0]));
-
-		pARPRspPkt += 28;
-		_rtw_memcpy(pARPRspPkt, &(mic[0]),8);
-
-		*pLength += 8;
-	}
-}
-#endif
-
 void ConstructProbeRsp(_adapter *padapter, u8 *pframe, u32 *pLength, u8 *StaAddr, BOOLEAN bHideSSID)
 {
 	struct rtw_ieee80211_hdr	*pwlanhdr;
@@ -783,29 +620,6 @@ void ConstructProbeRsp(_adapter *padapter, u8 *pframe, u32 *pLength, u8 *StaAddr
 	*pLength = pktlen;
 }
 
-void rtl8188e_set_FwRsvdPage_cmd(PADAPTER padapter, PRSVDPAGE_LOC rsvdpageloc)
-{
-    u8 u1H2CRsvdPageParm[H2C_RSVDPAGE_LOC_LEN]={0};
-    u8 u1H2CAoacRsvdPageParm[H2C_AOAC_RSVDPAGE_LOC_LEN]={0};
-
-    //DBG_871X("8188RsvdPageLoc: PsPoll=%d Null=%d QoSNull=%d\n", 
-	//	rsvdpageloc->LocPsPoll, rsvdpageloc->LocNullData, rsvdpageloc->LocQosNull);
-
-    SET_H2CCMD_RSVDPAGE_LOC_PSPOLL(u1H2CRsvdPageParm, rsvdpageloc->LocPsPoll);
-    SET_H2CCMD_RSVDPAGE_LOC_NULL_DATA(u1H2CRsvdPageParm, rsvdpageloc->LocNullData);
-    SET_H2CCMD_RSVDPAGE_LOC_QOS_NULL_DATA(u1H2CRsvdPageParm, rsvdpageloc->LocQosNull);
-    
-    FillH2CCmd_88E(padapter, H2C_COM_RSVD_PAGE, H2C_RSVDPAGE_LOC_LEN, u1H2CRsvdPageParm);
-
-#ifdef CONFIG_WOWLAN    
-    //DBG_871X("8188E_AOACRsvdPageLoc: RWC=%d ArpRsp=%d\n", rsvdpageloc->LocRemoteCtrlInfo, rsvdpageloc->LocArpRsp);
-    SET_H2CCMD_AOAC_RSVDPAGE_LOC_REMOTE_WAKE_CTRL_INFO(u1H2CAoacRsvdPageParm, rsvdpageloc->LocRemoteCtrlInfo);
-    SET_H2CCMD_AOAC_RSVDPAGE_LOC_ARP_RSP(u1H2CAoacRsvdPageParm, rsvdpageloc->LocArpRsp);
-
-    FillH2CCmd_88E(padapter, H2C_COM_AOAC_RSVD_PAGE, H2C_AOAC_RSVDPAGE_LOC_LEN, u1H2CAoacRsvdPageParm);
-#endif
-}
-
 // To check if reserved page content is destroyed by beacon beacuse beacon is too large.
 // 2010.06.23. Added by tynli.
 VOID
@@ -839,7 +653,7 @@ CheckFwRsvdPageContent(
 static void SetFwRsvdPagePkt(PADAPTER padapter, BOOLEAN bDLFinished)
 {
 	PHAL_DATA_TYPE pHalData;
-	struct xmit_frame	*pcmdframe;
+	struct xmit_frame	*pmgntframe;
 	struct pkt_attrib	*pattrib;
 	struct xmit_priv	*pxmitpriv;
 	struct mlme_ext_priv	*pmlmeext;
@@ -847,33 +661,18 @@ static void SetFwRsvdPagePkt(PADAPTER padapter, BOOLEAN bDLFinished)
 	u32	BeaconLength, ProbeRspLength, PSPollLength;
 	u32	NullDataLength, QosNullLength, BTQosNullLength;
 	u8	*ReservedPagePacket;
-	u8	RsvdPageNum = 0;
 	u8	PageNum, PageNeed, TxDescLen;
-	u16	BufIndex, PageSize = 128;
-	u32	TotalPacketLen, MaxRsvdPageBufSize=0;
+	u16	BufIndex;
+	u32	TotalPacketLen;
 	RSVDPAGE_LOC	RsvdPageLoc;
-#ifdef CONFIG_WOWLAN
-	u32	ARPLegnth = 0;
-	struct security_priv *psecuritypriv = &padapter->securitypriv; //added by xx
-	u8 currentip[4];
-	u8 cur_dot11txpn[8];
-#endif
 
-	DBG_871X(FUNC_ADPT_FMT"\n", FUNC_ADPT_ARG(padapter));
 
-#ifdef CONFIG_WOWLAN
-	RsvdPageNum = BCNQ_PAGE_NUM_88E + WOWLAN_PAGE_NUM_88E;
-#else
-	RsvdPageNum = BCNQ_PAGE_NUM_88E;
-#endif
-	printk("RsvdPageNum: %d\n", RsvdPageNum);
+	DBG_871X("%s\n", __FUNCTION__);
 
-	MaxRsvdPageBufSize = RsvdPageNum*PageSize;
-
-	ReservedPagePacket = (u8*)rtw_zmalloc(MaxRsvdPageBufSize);
-
+	ReservedPagePacket = (u8*)rtw_zmalloc(1000);
 	if (ReservedPagePacket == NULL) {
 		DBG_871X("%s: alloc ReservedPagePacket fail!\n", __FUNCTION__);
+		return;
 	}
 
 	pHalData = GET_HAL_DATA(padapter);
@@ -897,7 +696,7 @@ static void SetFwRsvdPagePkt(PADAPTER padapter, BOOLEAN bDLFinished)
 	PageNum += PageNeed;
 	pHalData->FwRsvdPageStartOffset = PageNum;
 
-	BufIndex += PageNeed * PageSize;
+	BufIndex += PageNeed*128;
 
 	//3 (2) ps-poll *1 page
 	RsvdPageLoc.LocPsPoll = PageNum;
@@ -907,7 +706,7 @@ static void SetFwRsvdPagePkt(PADAPTER padapter, BOOLEAN bDLFinished)
 	PageNeed = (u8)PageNum_128(TxDescLen + PSPollLength);
 	PageNum += PageNeed;
 
-	BufIndex += PageNeed * PageSize;
+	BufIndex += PageNeed*128;
 
 	//3 (3) null data * 1 page
 	RsvdPageLoc.LocNullData = PageNum;
@@ -922,12 +721,27 @@ static void SetFwRsvdPagePkt(PADAPTER padapter, BOOLEAN bDLFinished)
 	PageNeed = (u8)PageNum_128(TxDescLen + NullDataLength);
 	PageNum += PageNeed;
 
-	BufIndex += PageNeed * PageSize;
+	BufIndex += PageNeed*128;
+
+	//3 (4) probe response * 1page
+	RsvdPageLoc.LocProbeRsp = PageNum;
+	ConstructProbeRsp(
+		padapter,
+		&ReservedPagePacket[BufIndex],
+		&ProbeRspLength,
+		get_my_bssid(&pmlmeinfo->network),
+		_FALSE);
+	rtl8188e_fill_fake_txdesc(padapter, &ReservedPagePacket[BufIndex-TxDescLen], ProbeRspLength, _FALSE, _FALSE);
+
+	PageNeed = (u8)PageNum_128(TxDescLen + ProbeRspLength);
+	PageNum += PageNeed;
+
+	BufIndex += PageNeed*128;
 
 	//3 (5) Qos null data
 	RsvdPageLoc.LocQosNull = PageNum;
 	ConstructNullFunctionData(
-		padapter,
+		padapter, 
 		&ReservedPagePacket[BufIndex],
 		&QosNullLength,
 		get_my_bssid(&pmlmeinfo->network),
@@ -937,9 +751,10 @@ static void SetFwRsvdPagePkt(PADAPTER padapter, BOOLEAN bDLFinished)
 	PageNeed = (u8)PageNum_128(TxDescLen + QosNullLength);
 	PageNum += PageNeed;
 
-	BufIndex += PageNeed * PageSize;
-
+	TotalPacketLen = BufIndex + QosNullLength;
 /*
+	BufIndex += PageNeed*128;
+
 	//3 (6) BT Qos null data
 	RsvdPageLoc.LocBTQosNull = PageNum;
 	ConstructNullFunctionData(
@@ -953,66 +768,32 @@ static void SetFwRsvdPagePkt(PADAPTER padapter, BOOLEAN bDLFinished)
 	TotalPacketLen = BufIndex + BTQosNullLength;
 */
 
-#ifdef CONFIG_WOWLAN
-	//3(7) ARP
-	rtw_get_current_ip_address(padapter, currentip);
-	RsvdPageLoc.LocArpRsp = PageNum;
-	ConstructARPResponse(
-		padapter,
-		&ReservedPagePacket[BufIndex],
-		&ARPLegnth,
-		currentip
-		);
-	rtl8188e_fill_fake_txdesc(padapter, &ReservedPagePacket[BufIndex-TxDescLen], ARPLegnth, _FALSE, _FALSE);
-
-	PageNeed = (u8)PageNum_128(TxDescLen + ARPLegnth);
-	PageNum += PageNeed;
-
-	BufIndex += PageNeed * PageSize;
-
-	//3(8) sec IV
-	rtw_get_sec_iv(padapter, cur_dot11txpn, get_my_bssid(&pmlmeinfo->network));
-	RsvdPageLoc.LocRemoteCtrlInfo = PageNum;
-	_rtw_memcpy(ReservedPagePacket+BufIndex-TxDescLen, cur_dot11txpn, 8);
-
-	TotalPacketLen = BufIndex-TxDescLen + sizeof (union pn48); //IV len
-#else
-	TotalPacketLen = BufIndex + QosNullLength;
-#endif
-
-	pcmdframe = alloc_mgtxmitframe(pxmitpriv);
-	if (pcmdframe == NULL)
+	pmgntframe = alloc_mgtxmitframe(pxmitpriv);
+	if (pmgntframe == NULL)
 		goto exit;
 
 	// update attribute
-	pattrib = &pcmdframe->attrib;
+	pattrib = &pmgntframe->attrib;
 	update_mgntframe_attrib(padapter, pattrib);
 	pattrib->qsel = 0x10;
 	pattrib->pktlen = pattrib->last_txcmdsz = TotalPacketLen - TXDESC_OFFSET;
+	_rtw_memcpy(pmgntframe->buf_addr, ReservedPagePacket, TotalPacketLen);
 
-	if (TotalPacketLen < MaxRsvdPageBufSize)
-		_rtw_memcpy(pcmdframe->buf_addr, ReservedPagePacket, TotalPacketLen);
-	else
-		DBG_871X("%s: memory copy fail at Line:%d\n", __FUNCTION__, __LINE__);
+	rtw_hal_mgnt_xmit(padapter, pmgntframe);
 
-	rtw_hal_mgnt_xmit(padapter, pcmdframe);
+	DBG_871X("%s: Set RSVD page location to Fw\n", __FUNCTION__);
+	FillH2CCmd_88E(padapter, H2C_COM_RSVD_PAGE, sizeof(RsvdPageLoc), (u8*)&RsvdPageLoc);
 
-	DBG_871X("%s: Set RSVD page location to Fw ,TotalPacketLen(%d)\n", __FUNCTION__,TotalPacketLen);
-	rtl8188e_set_FwRsvdPage_cmd(padapter, &RsvdPageLoc);
 exit:
-	rtw_mfree(ReservedPagePacket, MaxRsvdPageBufSize);
+	rtw_mfree(ReservedPagePacket, 1000);
 }
 
 void rtl8188e_set_FwJoinBssReport_cmd(PADAPTER padapter, u8 mstatus)
 {
-	JOINBSSRPT_PARM_88E	JoinBssRptParm;
+	JOINBSSRPT_PARM	JoinBssRptParm;
 	HAL_DATA_TYPE	*pHalData = GET_HAL_DATA(padapter);
 	struct mlme_ext_priv	*pmlmeext = &(padapter->mlmeextpriv);
 	struct mlme_ext_info	*pmlmeinfo = &(pmlmeext->mlmext_info);
-#ifdef CONFIG_WOWLAN
-	struct mlme_priv	*pmlmepriv = &padapter->mlmepriv;
-	struct sta_info *psta = NULL;
-#endif
 	BOOLEAN		bSendBeacon=_FALSE;
 	BOOLEAN		bcn_valid = _FALSE;
 	u8	DLBcnCount=0;
@@ -1036,7 +817,7 @@ _func_enter_;
 		//Set REG_CR bit 8. DMA beacon by SW.
 		pHalData->RegCR_1 |= BIT0;
 		rtw_write8(padapter,  REG_CR+1, pHalData->RegCR_1);
-
+		
 		// Disable Hw protection for a time which revserd for Hw sending beacon.
 		// Fix download reserved page packet fail that access collision with the protection time.
 		// 2010.05.11. Added by tynli.
@@ -1044,7 +825,7 @@ _func_enter_;
 		//SetBcnCtrlReg(padapter, BIT4, 0);
 		rtw_write8(padapter, REG_BCN_CTRL, rtw_read8(padapter, REG_BCN_CTRL)&(~BIT(3)));
 		rtw_write8(padapter, REG_BCN_CTRL, rtw_read8(padapter, REG_BCN_CTRL)|BIT(4));
-
+			
 		if(pHalData->RegFwHwTxQCtrl&BIT6)
 		{
 			DBG_871X("HalDownloadRSVDPage(): There is an Adapter is sending beacon.\n");
@@ -1080,14 +861,9 @@ _func_enter_;
 		{
 		}
 		else if(!bcn_valid)
-			DBG_871X(ADPT_FMT": 1 DL RSVD page failed! DLBcnCount:%u, poll:%u\n",
-				ADPT_ARG(padapter) ,DLBcnCount, poll);
-		else {
-			struct pwrctrl_priv *pwrctl = adapter_to_pwrctl(padapter);
-			pwrctl->fw_psmode_iface_id = padapter->iface_id;
-			DBG_871X(ADPT_FMT": 1 DL RSVD page success! DLBcnCount:%u, poll:%u\n",
-				ADPT_ARG(padapter), DLBcnCount, poll);
-		}
+			DBG_871X("%s: 1 Download RSVD page failed! DLBcnCount:%u, poll:%u\n", __FUNCTION__ ,DLBcnCount, poll);
+		else
+			DBG_871X("%s: 1 Download RSVD success! DLBcnCount:%u, poll:%u\n", __FUNCTION__, DLBcnCount, poll);
 		//
 		// We just can send the reserved page twice during the time that Tx thread is stopped (e.g. pnpsetpower)
 		// becuase we need to free the Tx BCN Desc which is used by the first reserved page packet.
@@ -1164,14 +940,9 @@ _func_enter_;
 		}
 	}
 #ifdef CONFIG_WOWLAN
-	if (adapter_to_pwrctl(padapter)->wowlan_mode){
+	if (padapter->pwrctrlpriv.wowlan_mode){
 		JoinBssRptParm.OpMode = mstatus;
-		psta = rtw_get_stainfo(&padapter->stapriv, get_bssid(pmlmepriv));
-		if (psta != NULL) {
-			JoinBssRptParm.MacID = psta->mac_id;
-		} else {
-			JoinBssRptParm.MacID = 0;
-		}
+		JoinBssRptParm.MacID = 0;
 		FillH2CCmd_88E(padapter, H2C_COM_MEDIA_STATUS_RPT, sizeof(JoinBssRptParm), (u8 *)&JoinBssRptParm);
 		DBG_871X_LEVEL(_drv_info_, "%s opmode:%d MacId:%d\n", __func__, JoinBssRptParm.OpMode, JoinBssRptParm.MacID);
 	} else {
@@ -1185,9 +956,9 @@ _func_exit_;
 void rtl8188e_set_p2p_ps_offload_cmd(_adapter* padapter, u8 p2p_ps_state)
 {
 	HAL_DATA_TYPE	*pHalData = GET_HAL_DATA(padapter);
-	struct pwrctrl_priv		*pwrpriv = adapter_to_pwrctl(padapter);
+	struct pwrctrl_priv		*pwrpriv = &padapter->pwrctrlpriv;
 	struct wifidirect_info	*pwdinfo = &( padapter->wdinfo );
-	struct P2P_PS_Offload_t	*p2p_ps_offload = (struct P2P_PS_Offload_t	*)(&pHalData->p2p_ps_offload);
+	struct P2P_PS_Offload_t	*p2p_ps_offload = &pHalData->p2p_ps_offload;
 	u8	i;
 
 _func_enter_;
@@ -1322,62 +1093,14 @@ int reset_tsf(PADAPTER Adapter, u8 reset_port )
 #endif	// CONFIG_TSF_RESET_OFFLOAD
 
 #ifdef CONFIG_WOWLAN
-#ifdef CONFIG_GPIO_WAKEUP
-void rtl8188es_set_output_gpio(_adapter* padapter, u8 index, u8 outputval)
-{
-	if ( index <= 7 ) {
-		/* config GPIO mode */
-		rtw_write8(padapter, REG_GPIO_PIN_CTRL + 3, rtw_read8(padapter, REG_GPIO_PIN_CTRL + 3) & ~BIT(index) );
-
-		/* config GPIO Sel */
-		/* 0: input */
-		/* 1: output */
-		rtw_write8(padapter, REG_GPIO_PIN_CTRL + 2, rtw_read8(padapter, REG_GPIO_PIN_CTRL + 2) | BIT(index));
-
-		/* set output value */
-		if ( outputval ) {
-			rtw_write8(padapter, REG_GPIO_PIN_CTRL + 1, rtw_read8(padapter, REG_GPIO_PIN_CTRL + 1) | BIT(index));
-		} else {
-			rtw_write8(padapter, REG_GPIO_PIN_CTRL + 1, rtw_read8(padapter, REG_GPIO_PIN_CTRL + 1) & ~BIT(index));
-		}
-	} else {
-		/* 88C Series: */
-		/* index: 11~8 transform to 3~0 */
-		/* 8723 Series: */
-		/* index: 12~8 transform to 4~0 */  
-		index -= 8;
-
-		/* config GPIO mode */
-		rtw_write8(padapter, REG_GPIO_PIN_CTRL_2 + 3, rtw_read8(padapter, REG_GPIO_PIN_CTRL_2 + 3) & ~BIT(index) );
-
-		/* config GPIO Sel */
-		/* 0: input */
-		/* 1: output */
-		rtw_write8(padapter, REG_GPIO_PIN_CTRL_2 + 2, rtw_read8(padapter, REG_GPIO_PIN_CTRL_2 + 2) | BIT(index));
-
-		/* set output value */
-		if ( outputval ) {
-			rtw_write8(padapter, REG_GPIO_PIN_CTRL_2 + 1, rtw_read8(padapter, REG_GPIO_PIN_CTRL_2 + 1) | BIT(index));
-		} else {
-			rtw_write8(padapter, REG_GPIO_PIN_CTRL_2 + 1, rtw_read8(padapter, REG_GPIO_PIN_CTRL_2 + 1) & ~BIT(index));
-		}
-	}
-}
-#endif //CONFIG_GPIO_WAKEUP
-
 void rtl8188es_set_wowlan_cmd(_adapter* padapter, u8 enable)
 {
 	u8		res=_SUCCESS;
 	u32		test=0;
 	struct recv_priv	*precvpriv = &padapter->recvpriv;
 	SETWOWLAN_PARM		pwowlan_parm;
-	SETAOAC_GLOBAL_INFO     paoac_global_info_parm;
-	struct pwrctrl_priv	*pwrpriv = adapter_to_pwrctl(padapter);
-	struct security_priv *psecpriv = &padapter->securitypriv;
-#ifdef CONFIG_GPIO_WAKEUP
-	u8		gpio_wake_pin = 7;
-	u8		gpio_high_active = 0;	//default low active
-#endif
+	SETAOAC_GLOBAL_INFO	paoac_global_info_parm;
+	struct pwrctrl_priv	*pwrpriv=&padapter->pwrctrlpriv;
 
 _func_enter_;
 		DBG_871X_LEVEL(_drv_always_, "+%s+\n", __func__);
@@ -1392,8 +1115,7 @@ _func_enter_;
 
 			pwowlan_parm.mode |=FW_WOWLAN_FUN_EN;
 			pwrpriv->wowlan_magic =_TRUE;
-			if (psecpriv->dot11PrivacyAlgrthm == _WEP40_ || psecpriv->dot11PrivacyAlgrthm == _WEP104_)
-				pwrpriv->wowlan_unicast =_TRUE;
+			pwrpriv->wowlan_unicast =_TRUE;
 
 			if(pwrpriv->wowlan_pattern ==_TRUE){
 				pwowlan_parm.mode |= FW_WOWLAN_PATTERN_MATCH;
@@ -1408,6 +1130,14 @@ _func_enter_;
 				DBG_871X_LEVEL(_drv_info_, "%s 4.pwowlan_parm.mode=0x%x \n",__FUNCTION__,pwowlan_parm.mode );
 			}
 
+			if(!(padapter->pwrctrlpriv.wowlan_wake_reason & FWDecisionDisconnect))
+				rtl8188e_set_FwJoinBssReport_cmd(padapter, 1);
+			else
+				DBG_871X_LEVEL(_drv_always_, "%s, disconnected, no FwJoinBssReport\n",__FUNCTION__);	
+			rtw_msleep_os(2);
+
+			//WOWLAN_GPIO_ACTIVE means GPIO high active
+			//pwowlan_parm.mode |=FW_WOWLAN_GPIO_ACTIVE;
 			pwowlan_parm.mode |=FW_WOWLAN_REKEY_WAKEUP;
 			pwowlan_parm.mode |=FW_WOWLAN_DEAUTH_WAKEUP;
 
@@ -1417,17 +1147,8 @@ _func_enter_;
 #endif //CONFIG_USB_HCI
 
 #ifdef CONFIG_SDIO_HCI
-			pwowlan_parm.gpio_index = 0x80;
+			pwowlan_parm.gpio_index=0x80;
 #endif //CONFIG_SDIO_HCI
-
-#ifdef CONFIG_GPIO_WAKEUP
-			pwowlan_parm.gpio_index = gpio_wake_pin;
-
-			//WOWLAN_GPIO_ACTIVE means GPIO high active
-			//pwowlan_parm.mode |=FW_WOWLAN_GPIO_ACTIVE;
-			if (gpio_high_active)
-				pwowlan_parm.mode |=FW_WOWLAN_GPIO_ACTIVE;
-#endif //CONFIG_GPIO_WAKEUP
 
 			DBG_871X_LEVEL(_drv_info_, "%s 5.pwowlan_parm.mode=0x%x \n",__FUNCTION__,pwowlan_parm.mode);
 			DBG_871X_LEVEL(_drv_info_, "%s 6.pwowlan_parm.index=0x%x \n",__FUNCTION__,pwowlan_parm.gpio_index);
@@ -1442,35 +1163,26 @@ _func_enter_;
 			FillH2CCmd_88E(padapter, H2C_COM_DISCNT_DECISION, 3, (u8 *)&pwowlan_parm);
 
 			//keep alive period = 10 * 10 BCN interval
-			pwowlan_parm.mode = FW_WOWLAN_KEEP_ALIVE_EN | FW_ADOPT_USER | FW_WOWLAN_KEEP_ALIVE_PKT_TYPE;
-			pwowlan_parm.gpio_index = 5;
+			pwowlan_parm.mode =1;
+			pwowlan_parm.gpio_index=10;
 			res = FillH2CCmd_88E(padapter, H2C_COM_KEEP_ALIVE, 2, (u8 *)&pwowlan_parm);
 
 			rtw_msleep_os(2);
 			//Configure STA security information for GTK rekey wakeup event.
-			paoac_global_info_parm.pairwiseEncAlg =
-					padapter->securitypriv.dot11PrivacyAlgrthm;
-			paoac_global_info_parm.groupEncAlg =
-					padapter->securitypriv.dot118021XGrpPrivacy;
-			FillH2CCmd_88E(padapter, H2C_COM_AOAC_GLOBAL_INFO, 2, (u8 *)&paoac_global_info_parm);
+			paoac_global_info_parm.pairwiseEncAlg=
+						padapter->securitypriv.dot11PrivacyAlgrthm;
+			paoac_global_info_parm.groupEncAlg=
+						padapter->securitypriv.dot118021XGrpPrivacy;
+			res = FillH2CCmd_88E(padapter, H2C_COM_AOAC_GLOBAL_INFO, 2, (u8 *)&paoac_global_info_parm);
 
 			rtw_msleep_os(2);
 			//enable Remote wake ctrl
-			pwowlan_parm.mode = FW_REMOTE_WAKE_CTRL_EN | FW_WOW_FW_UNICAST_EN | FW_ARP_EN;
-			if (psecpriv->dot11PrivacyAlgrthm == _AES_ || psecpriv->dot11PrivacyAlgrthm == _NO_PRIVACY_)
-			{
-				pwowlan_parm.gpio_index=0;
-			} else {
-				pwowlan_parm.gpio_index=1;
-			}
+			pwowlan_parm.mode = 1;
+			pwowlan_parm.gpio_index=0;
 			pwowlan_parm.gpio_duration=0;
-
 			res = FillH2CCmd_88E(padapter, H2C_COM_REMOTE_WAKE_CTRL, 3, (u8 *)&pwowlan_parm);
 		} else {
 			pwrpriv->wowlan_magic =_FALSE;
-#ifdef CONFIG_GPIO_WAKEUP
-			rtl8188es_set_output_gpio(padapter, gpio_wake_pin, !gpio_high_active);
-#endif //CONFIG_GPIO_WAKEUP
 			res = FillH2CCmd_88E(padapter, H2C_COM_WWLAN, 2, (u8 *)&pwowlan_parm);
 			rtw_msleep_os(2);
 			res = FillH2CCmd_88E(padapter, H2C_COM_REMOTE_WAKE_CTRL, 3, (u8 *)&pwowlan_parm);

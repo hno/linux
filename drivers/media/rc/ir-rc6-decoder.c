@@ -279,7 +279,7 @@ static int __init ir_rc6_decode_init(void)
 {
 	ir_raw_handler_register(&rc6_handler);
 
-	printk(KERN_INFO "IR RC6 protocol handler initialized\n");
+	pr_debug("IR RC6 protocol handler initialized\n");
 	return 0;
 }
 

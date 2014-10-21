@@ -18,11 +18,11 @@
 /*Codec Register*/
 #define baseaddr                               SUNXI_AUDIO_VBASE
 #define CODEC_BASSADDRESS         (0x01c22c00)
-#define SUNXI_DA_CTL                (0x00)
-#define SUNXI_DA_FAT0                  (0x04)
-#define SUNXI_DA_FAT1               (0x08)
-#define SUNXI_DA_TXFIFO                                (0x0c)
-#define SUNXI_DA_RXFIFO                                (0x10)
+#define SUNXI_DA_CTL                			(0x00)
+#define SUNXI_DA_FAT0                  			(0x04)
+#define SUNXI_DA_FAT1               			(0x08)
+#define SUNXI_DA_TXFIFO                         (0x0c)
+#define SUNXI_DA_RXFIFO                         (0x10)
 #define SUNXI_DA_FCTL                          (0x14)
 #define SUNXI_DA_FSTA                          (0x18)
 #define SUNXI_DA_INT                           (0x1c)
@@ -134,7 +134,7 @@
 *      I2S_AP Control Reg
 *      DA_CTL:codecbase+0x00
 */
-#define DA_CTL                                 (8)
+#define SDO_EN                                 (8)
 #define ASS                                            (6)
 #define MS                                             (5)
 #define PCM                                            (4)

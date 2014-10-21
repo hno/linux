@@ -20,7 +20,7 @@ __s32 mem_ccu_save(struct ccm_state *ccm_reg)
 	ccm_reg->ccm_reg = (__ccmu_reg_list_t *)IO_ADDRESS(AW_CCM_BASE);
 	i = 1;
 	while(i < 11){
-		if(0 != i || 4 != i || 5 != i){
+		if(0 != i && 4 != i && 5 != i){
 			//donot need care pll1 & pll5 & pll6, it is dangerous to 
 			//write the reg after enable the pllx.
 			ccm_reg->ccm_reg_backup.PllxBias[i]	= ccm_reg->ccm_reg->PllxBias[i];
@@ -128,7 +128,7 @@ __s32 mem_ccu_restore(struct ccm_state *ccm_reg)
 {
 	i = 1;
 	while(i < 11){
-		if(0 != i || 4 != i || 5 != i){
+		if(0 != i && 4 != i && 5 != i){
 			//donot need care pll1 & pll5 & pll6, it is dangerous to 
 			//write the reg after enable the pllx.
 			ccm_reg->ccm_reg->PllxBias[i]	= ccm_reg->ccm_reg_backup.PllxBias[i];
@@ -257,7 +257,7 @@ __s32 mem_ccu_save(struct ccm_state *ccm_reg)
 	ccm_reg->ccm_reg = (__ccmu_reg_list_t *)IO_ADDRESS(AW_CCM_BASE);
 	i = 1;
 	while(i < 11){
-		if(0 != i || 4 != i || 5 != i || 6 != i){
+		if(0 != i && 4 != i && 5 != i && 6 != i){
 			//donot need care pll1 & pll5 & pll6, it is dangerous to 
 			//write the reg after enable the pllx.
 			//pll7 bias ctrl does not exist.
@@ -343,7 +343,7 @@ __s32 mem_ccu_restore(struct ccm_state *ccm_reg)
 {
 	i = 1;
 	while(i < 11){
-		if(0 != i || 4 != i || 5 != i || 6 != i){
+		if(0 != i && 4 != i && 5 != i && 6 != i){
 			//donot need care pll1 & pll5 & pll6, it is dangerous to 
 			//write the reg after enable the pllx.
 			//pll7 bias ctrl does not exist.
@@ -641,7 +641,6 @@ __s32 mem_ccu_restore(struct ccm_state *ccm_reg)
 #endif
 
 #if defined(CONFIG_ARCH_SUN8IW6P1)
-static int i = 0;
 /*
 *********************************************************************************************************
 *                                       MEM CCU INITIALISE
@@ -656,26 +655,20 @@ static int i = 0;
 __s32 mem_ccu_save(struct ccm_state *ccm_reg)
 {
 	ccm_reg->ccm_reg = (__ccmu_reg_list_t *)IO_ADDRESS(AW_CCM_BASE);
-	i = 1;
-	while(i < 12){
-		if(0 != i || 4 != i || 5 != i || 6 != i || 8 != i){
-			//donot need care pll1(cpu_c0:0x220) & pll5(ddr:0x230) & pll6(periph1:0x234) & cpu_c1(0x238), it is dangerous to 
-			//write the reg after enable the pllx.
-			//pll9(0x240) bias ctrl does not exist.
-			ccm_reg->ccm_reg_backup.PllxBias[i]	= ccm_reg->ccm_reg->PllxBias[i];
-		}
-		i++;
-	}
 	
-	//ccm_reg->ccm_reg_backup.PllC1Tun	= ccm_reg->ccm_reg->PllC1Tun;
-	//ccm_reg->ccm_reg_backup.Pll5Tun	= ccm_reg->ccm_reg->Pll5Tun;
-	//ccm_reg->ccm_reg_backup.MipiPllTun	= ccm_reg->ccm_reg->MipiPllTun;
+	//bias:
+	ccm_reg->ccm_reg_backup.PllAudioBias      	= ccm_reg->ccm_reg->PllAudioBias;
+	ccm_reg->ccm_reg_backup.PllGpuBias      	= ccm_reg->ccm_reg->PllGpuBias;
+	ccm_reg->ccm_reg_backup.PllHsicBias      	= ccm_reg->ccm_reg->PllHsicBias;
+	ccm_reg->ccm_reg_backup.PllDeBias		= ccm_reg->ccm_reg->PllDeBias;
+	ccm_reg->ccm_reg_backup.PllVideo1Bias      	= ccm_reg->ccm_reg->PllVideo1Bias;
+	
+	//tune&pattern:
+	ccm_reg->ccm_reg_backup.PllAudioReg0Pattern		= ccm_reg->ccm_reg->PllAudioReg0Pattern;
+	ccm_reg->ccm_reg_backup.PllAudioReg1Pattern		= ccm_reg->ccm_reg->PllAudioReg1Pattern;
 
-	//ccm_reg->ccm_reg_backup.PllC1Ctl      	= ccm_reg->ccm_reg->PllC1Ctl;
+	//cfg:
 	ccm_reg->ccm_reg_backup.Pll2Ctl      	= ccm_reg->ccm_reg->Pll2Ctl;
-	ccm_reg->ccm_reg_backup.Pll3Ctl      	= ccm_reg->ccm_reg->Pll3Ctl;
-	ccm_reg->ccm_reg_backup.Pll4Ctl      	= ccm_reg->ccm_reg->Pll4Ctl;
-	//ccm_reg->ccm_reg_backup.Pll6Ctl      	= ccm_reg->ccm_reg->Pll6Ctl;
 	ccm_reg->ccm_reg_backup.Pll8Ctl      	= ccm_reg->ccm_reg->Pll8Ctl;
 	ccm_reg->ccm_reg_backup.Pll9Ctl      	= ccm_reg->ccm_reg->Pll9Ctl;
 	ccm_reg->ccm_reg_backup.Pll10Ctl      	= ccm_reg->ccm_reg->Pll10Ctl;
@@ -695,7 +688,7 @@ __s32 mem_ccu_save(struct ccm_state *ccm_reg)
 	ccm_reg->ccm_reg_backup.Apb1Gate     	= ccm_reg->ccm_reg->Apb1Gate;
 	ccm_reg->ccm_reg_backup.Apb2Gate    	= ccm_reg->ccm_reg->Apb2Gate;
 	
-	//	ccm_reg->ccm_reg_backup.Cci400Clk	= ccm_reg->ccm_reg->Cci400Clk;
+	ccm_reg->ccm_reg_backup.Cci400Clk	= ccm_reg->ccm_reg->Cci400Clk;
 	ccm_reg->ccm_reg_backup.Nand0		= ccm_reg->ccm_reg->Nand0;
 
 	ccm_reg->ccm_reg_backup.Sd0	    	= ccm_reg->ccm_reg->Sd0;
@@ -755,26 +748,19 @@ __s32 mem_ccu_save(struct ccm_state *ccm_reg)
 
 __s32 mem_ccu_restore(struct ccm_state *ccm_reg)
 {
-	i = 1;
-	while(i < 12){
-		if(0 != i || 4 != i || 5 != i || 6 != i || 8 != i){
-			//donot need care pll1(cpu_c0:0x220) & pll5(ddr:0x230) & pll6(periph1:0x234) & cpu_c1(0x238), it is dangerous to 
-			//write the reg after enable the pllx.
-			//pll9(0x240) bias ctrl does not exist.
-			ccm_reg->ccm_reg->PllxBias[i]	= ccm_reg->ccm_reg_backup.PllxBias[i];
-		}
-		i++;
-	}
+	//bias:
+	ccm_reg->ccm_reg->PllAudioBias     	= ccm_reg->ccm_reg_backup.PllAudioBias;
+	ccm_reg->ccm_reg->PllGpuBias      	= ccm_reg->ccm_reg_backup.PllGpuBias;
+	ccm_reg->ccm_reg->PllHsicBias      	= ccm_reg->ccm_reg_backup.PllHsicBias;
+	ccm_reg->ccm_reg->PllDeBias					= ccm_reg->ccm_reg_backup.PllDeBias;
+	ccm_reg->ccm_reg->PllVideo1Bias     = ccm_reg->ccm_reg_backup.PllVideo1Bias;
 	
-	//ccm_reg->ccm_reg->PllC1Tun	= ccm_reg->ccm_reg_backup.PllC1Tun;
-	//ccm_reg->ccm_reg->Pll5Tun		= ccm_reg->ccm_reg_backup.Pll5Tun;
-	//ccm_reg->ccm_reg->MipiPllTun	= ccm_reg->ccm_reg_backup.MipiPllTun;
-
-	//ccm_reg->ccm_reg->PllC1Ctl     	= ccm_reg->ccm_reg_backup.PllC1Ctl;
+	//tune&pattern:
+	ccm_reg->ccm_reg->PllAudioReg0Pattern		= ccm_reg->ccm_reg_backup.PllAudioReg0Pattern;
+	ccm_reg->ccm_reg->PllAudioReg1Pattern		= ccm_reg->ccm_reg_backup.PllAudioReg1Pattern;
+	
+	//cfg
 	ccm_reg->ccm_reg->Pll2Ctl      	= ccm_reg->ccm_reg_backup.Pll2Ctl;
-	ccm_reg->ccm_reg->Pll3Ctl      	= ccm_reg->ccm_reg_backup.Pll3Ctl;
-	ccm_reg->ccm_reg->Pll4Ctl      	= ccm_reg->ccm_reg_backup.Pll4Ctl;
-	//ccm_reg->ccm_reg->Pll6Ctl      	= ccm_reg->ccm_reg_backup.Pll6Ctl;
 	ccm_reg->ccm_reg->Pll8Ctl      	= ccm_reg->ccm_reg_backup.Pll8Ctl;
 	ccm_reg->ccm_reg->Pll9Ctl     	= ccm_reg->ccm_reg_backup.Pll9Ctl;
 	ccm_reg->ccm_reg->Pll10Ctl    	= ccm_reg->ccm_reg_backup.Pll10Ctl;
@@ -800,8 +786,9 @@ __s32 mem_ccu_restore(struct ccm_state *ccm_reg)
 	ccm_reg->ccm_reg->Apb1Reset	= ccm_reg->ccm_reg_backup.Apb1Reset;
 	ccm_reg->ccm_reg->Apb2Reset	= ccm_reg->ccm_reg_backup.Apb2Reset;
 
-	//cci can not restore by cpu0, it is reseted by vdd_reset de_assert. 
-	//ccm_reg->ccm_reg->Cci400Clk	= (~0x3000000)&ccm_reg->ccm_reg_backup.Cci400Clk;
+	save_mem_status(CLK_RESUME_START | 0x7);
+	ccm_reg->ccm_reg->Cci400Clk	= (~0x3000000)&ccm_reg->ccm_reg_backup.Cci400Clk;
+	delay_us(10);
 	ccm_reg->ccm_reg->Nand0		= ccm_reg->ccm_reg_backup.Nand0;
 
 	ccm_reg->ccm_reg->Sd0	    	= ccm_reg->ccm_reg_backup.Sd0;
@@ -853,6 +840,10 @@ __s32 mem_ccu_restore(struct ccm_state *ccm_reg)
 	ccm_reg->ccm_reg->AhbGate1     	= ccm_reg->ccm_reg_backup.AhbGate1;
 	ccm_reg->ccm_reg->Apb1Gate     	= ccm_reg->ccm_reg_backup.Apb1Gate;
 	ccm_reg->ccm_reg->Apb2Gate     	= ccm_reg->ccm_reg_backup.Apb2Gate;
+	//config src.
+	save_mem_status(CLK_RESUME_START | 0x8);
+	ccm_reg->ccm_reg->Cci400Clk	= ccm_reg->ccm_reg_backup.Cci400Clk; 
+	delay_us(10);
 
 	return 0;
 }

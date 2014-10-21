@@ -19,6 +19,7 @@
 #include <linux/mfd/axp-mfd-22.h>
 #include <linux/mfd/axp-mfd-19.h>
 #include <linux/mfd/axp-mfd-15.h>
+#include <linux/mfd/axp-mfd-20.h>
 
 #define AXP_MFD_ATTR(_name)				\
 {							\
@@ -113,9 +114,6 @@ typedef enum AW_CHARGE_TYPE
 	CHARGE_USB_30,
 	CHARGE_MAX
 } aw_charge_type;
-extern int axp_usbcur(aw_charge_type type);
-extern int axp_usbvol(aw_charge_type type);
-
 
 /* NOTE: the functions below are not intended for use outside
  * of the AXP sub-device drivers
@@ -133,4 +131,17 @@ extern int axp_clr_bits_sync(struct device *dev, int reg, uint8_t bit_mask);
 extern struct axp_dev *axp_dev_lookup(int type);
 int axp_register_mfd(struct axp_dev *dev);
 void axp_unregister_mfd(struct axp_dev *dev);
+extern void axp_reg_debug(int reg, int len, uint8_t *val);
+
+/* NOTE: the functions below are used for outside
+ * of the AXP drivers
+ */
+extern int axp_usbcur(aw_charge_type type);
+extern int axp_usbvol(aw_charge_type type);
+extern int axp_usb_det(void);
+extern int axp_powerkey_get(void);
+extern void axp_powerkey_set(int value);
+extern unsigned long axp_read_power_sply(void);
+extern int axp_read_bat_cap(void);
+extern int axp_read_ac_chg(void);
 #endif

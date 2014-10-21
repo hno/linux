@@ -16,8 +16,10 @@
 #define _SWITCH_HEADSET_H
 #include <mach/platform.h>
 /*Codec Register*/
+
 #define baseaddr				SUNXI_AUDIO_VBASE
 
+#ifdef CONFIG_ARCH_SUN8IW5
 #define ADDA_PR_CFG_REG     	  (SUNXI_R_PRCM_VBASE+0x1c0)
 
 #define VIR_HMIC_BASSADDRESS      (SUNXI_R_PRCM_VBASE)
@@ -25,6 +27,13 @@
 #define SUNXI_HMIC_ENABLE          (0x1c4)
 #define SUNXI_HMIC_CTL 	           (0x1c8)
 #define SUNXI_HMIC_DATA	           (0x1cc)
+#else/*CONFIG_ARCH_SUN8IW8*/
+#define ADDA_PR_CFG_REG     	  (SUNXI_AUDIO_VBASE+0x400)
+#define VIR_HMIC_BASSADDRESS      (SUNXI_AUDIO_VBASE)
+//#define SUNXI_HMIC_ENABLE          (0x1c4)
+#define SUNXI_HMIC_CTL 	           (0x50)
+#define SUNXI_HMIC_DATA	           (0x54)
+#endif
 
 #define HP_VOLC					  (0x00)
 #define LOMIXSC					  (0x01)
@@ -71,8 +80,11 @@
 *	0x0B MIC1G_MICBIAS_CTRL
 */
 #define HMICBIASEN		 (7)
+#ifdef CONFIG_ARCH_SUN8IW5
 #define HMICBIAS_MODE	 (5)
-
+#else/*CONFIG_ARCH_SUN8IW8*/
+#define HMICADCEN	 (5)
+#endif
 /*0xE*/
 #define PA_ANTI_POP_EN		(0)
 /*

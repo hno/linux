@@ -29,6 +29,10 @@ enum IOCTL_CMD {
 	IOCTL_WRITE_REG,
 	
 	IOCTL_SET_VOL = 0x400,
+
+#if defined CONFIG_ARCH_SUN8IW8P1
+	IOCTL_WAIT_JPEG_DEC = 0x500,
+#endif
 };
 
 struct cedarv_env_infomation{

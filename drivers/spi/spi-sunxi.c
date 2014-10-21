@@ -48,26 +48,12 @@
 
 #include "spi-sunxi.h"
 
-enum {
-	DBG_ERR  = 1U << 0,
-	DBG_INFO = 1U << 1
-};
-static u32 gs_debug_mask = 1;
-#define dprintk(level, fmt, arg...)	\
-	do { \
-		if (unlikely(gs_debug_mask & level)) { \
-			printk("%s()%d - ", __func__, __LINE__); \
-			printk(fmt, ##arg); \
-		} \
-	} while (0)
-	
-module_param_named(debug_mask, gs_debug_mask, int, S_IRUGO|S_IWUSR);
-
-#define SPI_EXIT()  			dprintk(DBG_INFO, "%s \n", "Exit")
-#define SPI_ENTER() 			dprintk(DBG_INFO, "%s \n", "Enter ...")
-#define SPI_DBG(fmt, arg...)	dprintk(DBG_INFO, fmt, ##arg)
-#define SPI_INF(fmt, arg...)	dprintk(DBG_INFO, fmt, ##arg)
-#define SPI_ERR(fmt, arg...)	dprintk(DBG_ERR, fmt, ##arg)
+/* For debug */
+#define SPI_EXIT()  		pr_debug("%s()%d - %s \n", __func__, __LINE__, "Exit")
+#define SPI_ENTER() 		pr_debug("%s()%d - %s \n", __func__, __LINE__, "Enter ...")
+#define SPI_DBG(fmt, arg...)	pr_debug("%s()%d - "fmt, __func__, __LINE__, ##arg)
+#define SPI_INF(fmt, arg...)	pr_debug("%s()%d - "fmt, __func__, __LINE__, ##arg)
+#define SPI_ERR(fmt, arg...)	pr_warn("%s()%d - "fmt, __func__, __LINE__, ##arg)
 
 #define SUNXI_SPI_OK   0
 #define SUNXI_SPI_FAIL -1
@@ -150,7 +136,6 @@ struct sunxi_spi {
 	int cs_bitmap;/* cs0- 0x1; cs1-0x2, cs0&cs1-0x3. */
 
 	struct pinctrl		 *pctrl;
-	struct pinctrl_state *pctrl_state;
 };
 
 static int spi_used_mask = 0;
@@ -525,7 +510,7 @@ static void sunxi_spi_dma_cb_tx(void *data)
 static int sunxi_spi_dmg_sg_cnt(void *addr, int len)
 {
 	int npages = 0;
-	void *bufp = addr;
+	char *bufp = (char *)addr;
 	int mapbytes = 0;
 	int bytesleft = len;
 
@@ -1357,7 +1342,7 @@ static void sunxi_spi_chan_cfg(struct sunxi_spi_platform_data *pdata)
         sprintf(spi_para, SUNXI_SPI_DEV_NAME"%d", i);
 		type = script_get_item(spi_para, "spi_used", &item);
 		if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-			SPI_ERR("[spi-%d] fetch spi_used from sysconfig failed\n", i);
+			SPI_ERR("[spi-%d] has no spi_used!\n", i);
 			continue;
 		}
 		if (item.val)
@@ -1365,7 +1350,7 @@ static void sunxi_spi_chan_cfg(struct sunxi_spi_platform_data *pdata)
 
 		type = script_get_item(spi_para, "spi_regulator", &item);
 		if (SCIRPT_ITEM_VALUE_TYPE_STR != type) {
-			SPI_ERR("[spi-%d] fetch spi_regulator from sysconfig failed\n", i);
+			SPI_ERR("[spi-%d] has no spi_regulator.\n", i);
 			continue;
 		}
 		strncpy(pdata[i].regulator_id, item.str, 16);
@@ -1377,13 +1362,30 @@ static int sunxi_spi_chan_is_enable(int _ch)
 	return spi_used_mask & SUNXI_SPI_CHAN_MASK(_ch);
 }
 
-static int sunxi_spi_request_gpio(struct sunxi_spi *sspi)
+static int sunxi_spi_select_gpio_state(struct pinctrl *pctrl, char *name, u32 no)
 {
 	int ret = 0;
+	struct pinctrl_state *pctrl_state = NULL;
+
+	pctrl_state = pinctrl_lookup_state(pctrl, name);
+	if (IS_ERR(pctrl_state)) {
+		SPI_ERR("SPI%d pinctrl_lookup_state(%s) failed! return %p \n", no, name, pctrl_state);
+		return -1;
+	}
+
+	ret = pinctrl_select_state(pctrl, pctrl_state);
+	if (ret < 0)
+		SPI_ERR("SPI%d pinctrl_select_state(%s) failed! return %d \n", no, name, ret);
+
+	return ret;
+}
+
+static int sunxi_spi_request_gpio(struct sunxi_spi *sspi)
+{
 	int bus_no = sspi->pdev->id;
 
 	if (sspi->pctrl != NULL)
-		return 0;
+		return sunxi_spi_select_gpio_state(sspi->pctrl, PINCTRL_STATE_DEFAULT, bus_no);
 
 	if (!sunxi_spi_chan_is_enable(bus_no))
 		return -1;
@@ -1396,17 +1398,7 @@ static int sunxi_spi_request_gpio(struct sunxi_spi *sspi)
 		return -1;
 	}
 
-	sspi->pctrl_state = pinctrl_lookup_state(sspi->pctrl, PINCTRL_STATE_DEFAULT);
-	if (IS_ERR(sspi->pctrl_state)) {
-		SPI_ERR("SPI%d pinctrl_lookup_state() failed! return %p \n", bus_no, sspi->pctrl_state);
-		return -1;
-	}
-
-	ret = pinctrl_select_state(sspi->pctrl, sspi->pctrl_state);
-	if (ret < 0)
-		SPI_ERR("SPI%d pinctrl_select_state() failed! return %d \n", bus_no, ret);
-	
-	return ret;
+	return sunxi_spi_select_gpio_state(sspi->pctrl, PINCTRL_STATE_DEFAULT, bus_no);
 }
 
 static void sunxi_spi_release_gpio(struct sunxi_spi *sspi)
@@ -1511,7 +1503,7 @@ static int sunxi_spi_clk_exit(struct sunxi_spi *sspi)
 static int sunxi_spi_hw_init(struct sunxi_spi *sspi, struct sunxi_spi_platform_data *pdata)
 {
 	void __iomem *base_addr = sspi->base_addr;
-	unsigned long sclk_freq = 0;
+	int sclk_freq = 0;
 
 	if (spi_regulator_request(pdata) < 0) {
 		SPI_ERR("[spi-%d] request regulator failed!\n", sspi->master->bus_num);
@@ -1766,6 +1758,7 @@ static int sunxi_spi_suspend(struct device *dev)
 	spi_disable_bus(sspi->base_addr);
 	sunxi_spi_clk_exit(sspi);
 
+	sunxi_spi_select_gpio_state(sspi->pctrl, PINCTRL_STATE_SUSPEND, master->bus_num);
 	spi_regulator_disable(dev->platform_data);
 
 	SPI_INF("[spi-%d]: suspend okay.. \n", master->bus_num);
@@ -2044,8 +2037,6 @@ fail:
 static int __init sunxi_spi_init(void)
 {
     int i, ret = 0;
-
-	SPI_ERR("[%s %s]Sunxi SPI init ... \n", __DATE__, __TIME__);
 
     sunxi_spi_device_scan();
     sunxi_spi_chan_cfg(sunxi_spi_pdata);

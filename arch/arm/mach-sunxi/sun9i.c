@@ -43,9 +43,10 @@
 /* plat memory info, maybe from boot, so we need bkup for future use */
 unsigned int mem_start = PLAT_PHYS_OFFSET;
 unsigned int mem_size = PLAT_MEM_SIZE;
-#ifdef CONFIG_DRAMFREQ_RESERVE_MEM
+#ifdef CONFIG_DRAM_TRAINING_RESERVE_MEM
 phys_addr_t dramfreq_mem_size = 0;
 #endif
+static unsigned int sys_config_size = SYS_CONFIG_MEMSIZE;
 
 #if defined(CONFIG_SENSORS_INA219)
 static struct i2c_board_info i2c_ina219_devs[] __initdata = {
@@ -156,9 +157,9 @@ static struct map_desc sun9i_io_desc[] __initdata = {
 static void __init sun9i_fixup(struct tag *tags, char **from,
 			       struct meminfo *meminfo)
 {
-    phys_addr_t dram_size_from_boot=0;
 #ifdef CONFIG_EVB_PLATFORM
 	struct tag *t;
+    phys_addr_t dram_size_from_boot=0;
 
 	for (t = tags; t->hdr.size; t = tag_next(t)) {
 		if (t->hdr.tag == ATAG_MEM && t->u.mem.size) {
@@ -179,12 +180,7 @@ static void __init sun9i_fixup(struct tag *tags, char **from,
 					__func__,
 					t->u.mem.start,
 					t->u.mem.size >> 20);
-#if defined(CONFIG_ION) || defined(CONFIG_ION_MODULE)
-            ion_mem.start = t->u.mem.start + t->u.mem.size - ion_mem.size;
-            mem_start = t->u.mem.start;
-            mem_size = t->u.mem.size;
-#endif
-#ifdef CONFIG_DRAMFREQ_RESERVE_MEM
+#ifdef CONFIG_DRAM_TRAINING_RESERVE_MEM
 			dramfreq_mem_size = t->u.mem.size;
 #endif
 			return;
@@ -195,13 +191,11 @@ static void __init sun9i_fixup(struct tag *tags, char **from,
     dram_size_from_boot = dram_size_from_boot?dram_size_from_boot:PLAT_MEM_SIZE;
 	meminfo->bank[0].start = (phys_addr_t)PLAT_PHYS_OFFSET;
 	meminfo->bank[0].size =  dram_size_from_boot;
-#ifdef CONFIG_DRAMFREQ_RESERVE_MEM
+#ifdef CONFIG_DRAM_TRAINING_RESERVE_MEM
     dramfreq_mem_size = dram_size_from_boot;
 #endif
 	meminfo->nr_banks = 1;
-#if defined(CONFIG_ION) || defined(CONFIG_ION_MODULE)
-    ion_mem.start = PLAT_PHYS_OFFSET + PLAT_MEM_SIZE - ion_mem.size;
-#endif
+
 #ifdef CONFIG_ARM_LPAE
 	early_printk("nr_banks: %d, bank.start: 0x%llx, bank.size: 0x%llx\n",
 			meminfo->nr_banks, meminfo->bank[0].start,
@@ -216,25 +210,38 @@ static void __init sun9i_fixup(struct tag *tags, char **from,
 void __init sun9i_reserve(void)
 {
 	/* add any reserve memory to here */
-#ifdef CONFIG_DRAMFREQ_RESERVE_MEM
+#ifdef CONFIG_DRAM_TRAINING_RESERVE_MEM
 	memblock_reserve(PLAT_PHYS_OFFSET, SZ_4K);
 	memblock_reserve(PLAT_PHYS_OFFSET + (dramfreq_mem_size >> 1), SZ_4K);
 #endif
 	/* reserve for sys_config */
-	memblock_reserve(SYS_CONFIG_MEMBASE, SYS_CONFIG_MEMSIZE);
+	memblock_reserve(SYS_CONFIG_MEMBASE, sys_config_size);
 
 	/* reserve for standby */
 	memblock_reserve(SUPER_STANDBY_MEM_BASE, SUPER_STANDBY_MEM_SIZE);
-
 #if defined(CONFIG_ION) || defined(CONFIG_ION_MODULE)
 	/* fix "page fault when ION_IOC_SYNC" bug in mali driver */
 	//memblock_remove(ion_mem.start, ion_mem.size);
 	memblock_reserve(ion_mem.start, ion_mem.size);
-    pr_debug("[%s %d]: ION memory reserve: [0x%016x - 0x%016x]\n",
-            __func__,__LINE__, ion_mem.start, ion_mem.size);
 #endif
 }
 
+static int __init config_size_init(char *str)
+{
+	int config_size;
+
+	if (get_option(&str, &config_size)) {
+		if ((config_size >= SZ_32K) && (config_size <= SZ_512K))
+			sys_config_size = ALIGN(config_size, PAGE_SIZE);
+		return 0;
+	}
+
+	printk("get config_size error\n");
+	return -EINVAL;
+
+	return 0;
+}
+early_param("config_size", config_size_init);
 
 extern void __init sunxi_init_clocks(void);
 #ifdef CONFIG_ARM_ARCH_TIMER
@@ -303,10 +310,14 @@ static void __init sun9i_dev_init(void)
 #endif
 }
 
+extern void __init sunxi_firmware_init(void);
 void __init sun9i_init_early(void)
 {
 #ifdef CONFIG_SUNXI_CONSISTENT_DMA_SIZE
 	init_consistent_dma_size(CONFIG_SUNXI_CONSISTENT_DMA_SIZE << 20);
+#endif
+#ifdef CONFIG_SUNXI_TRUSTZONE
+ 	sunxi_firmware_init();
 #endif
 }
 

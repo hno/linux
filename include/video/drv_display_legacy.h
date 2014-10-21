@@ -543,7 +543,7 @@ typedef struct
 
 		__u32           cur_buffer_id;  //no need to care about it
 		__u32           capture_request;
-		__u32           scaler_id;
+		__s32           scaler_id;
 		__u32           got_frame;
 }__disp_capture_screen_para_t;
 

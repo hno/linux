@@ -20,12 +20,15 @@ typedef struct
 	__u8    channel_num;
 	__u8	data_raw;
 	__u8    sample_bit;
+	__u8    ca;     /* channel allocation */
 }hdmi_audio_t;
 
 typedef struct
 {
     __s32 (*hdmi_audio_enable)(__u8 mode, __u8 channel);
     __s32 (*hdmi_set_audio_para)(hdmi_audio_t * audio_para);
+    __s32 (*hdmi_is_playback)(void);
 }__audio_hdmi_func;
 
+void audio_set_hdmi_func(__audio_hdmi_func *hdmi_func);
 #endif

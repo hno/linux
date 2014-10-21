@@ -30,6 +30,7 @@
 #include <asm/signal.h>
 #include <linux/ion_sunxi.h>
 #include <linux/clk/sunxi.h>
+#include <linux/dma-mapping.h>
 #include "fd_priv.h"
 #include "fd_lib.h"
 #include "sun_fd.h" 
@@ -43,6 +44,8 @@
 #ifdef CONFIG_ES
 #include <linux/earlysuspend.h>
 #endif
+
+//#define USE_DMA_ALLOC
 
 //#define AW_IRQ_FD (AW_IRQ_GIC_START + 126) //temp add
 #define CLK_AHB_FD "ahb_fd" //temp add
@@ -87,11 +90,15 @@ static int vpu_clk_status = 0;
 static unsigned long pll11clk_rate = 300000000;
 static DECLARE_WAIT_QUEUE_HEAD(wait_fd);
 static spinlock_t fd_spin_lock;
+static int file_open_flag = 0;
+static int suspend_stop_for_file = 0;
 //struct workqueue_struct *p_fd_queue;
 static struct mutex sus_mutex;
+static struct mutex close_sus_mutex;
 static int stop = 1;
 static int fd_run_flag = 0;
-static int suspend_stop = 1;
+static int close_need_disable = 0;
+static int suspend_stop = 0;
 #ifdef CONFIG_ES
 	static struct early_suspend fd_early_suspend;
 #endif
@@ -330,10 +337,21 @@ static long fddev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	    }
 	   //Base Mode           
 	   case IOCTL_BASE_RUN        :
+	   		
 	   	  if(copy_from_user(devp->ptr_od_dev,(void __user*)arg,base_get_dev_size_sl()))
 	   	  	return -1;
-	   	  base_run(devp->iomap_addrs,devp->mem_addr,devp->ptr_od_dev);
 	   	  
+	   	  
+	   	  mutex_lock(&sus_mutex);
+	 	 		if(suspend_stop == 1)
+				{
+					mutex_unlock(&sus_mutex);
+					
+					break;
+				}
+	 	 		fd_run_flag = 1;
+	 	 		mutex_unlock(&sus_mutex);
+	   	  base_run(devp->iomap_addrs,devp->mem_addr,devp->ptr_od_dev);
 	   		break;
 	   case IOCTL_BASE_GET_RTL    :
 	   	  base_get_rtl(devp->iomap_addrs,devp->mem_addr,(void __user*)arg,1);
@@ -350,6 +368,15 @@ static long fddev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         	devp->fd_irq_value = 1;
         spin_unlock_irqrestore(&fd_spin_lock, flags);
         
+        mutex_lock(&sus_mutex);
+	 	 		if(suspend_stop == 1)
+				{
+					devp->fd_irq_value = 0;
+					fd_run_flag = 0;
+					mutex_unlock(&sus_mutex);
+					return devp->fd_irq_value;
+				}
+	 	 		mutex_unlock(&sus_mutex);
         wait_event_interruptible_timeout(wait_fd, devp->fd_irq_flag, fd_timeout*HZ);            
 	      devp->fd_irq_flag = 0;
 	      
@@ -369,7 +396,9 @@ static long fddev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	      	fd_timeout++;
 	      	msleep(2);
 	      }	
-	     
+	     	mutex_lock(&sus_mutex);
+	 	 		fd_run_flag = 0;
+	 	 		mutex_unlock(&sus_mutex);
 	      /*����1����ʾ�жϷ��أ�����0����ʾtimeout����*/
 			  return devp->fd_irq_value;
 	   		break;
@@ -377,11 +406,11 @@ static long fddev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	   	  base_load_ftr(devp->mem_addr,(void __user*)arg,FTR_FILE_SIZE,0);
 	   	  base_load_ftr(devp->mem_addr,(void __user*)arg + FTR_FILE_SIZE,FTR_FILE_SIZE,1);
 	   	  base_load_ftr(devp->mem_addr,(void __user*)arg + 2*FTR_FILE_SIZE,FTR_FILE_SIZE,2);
-	   	  base_load_ftr(devp->mem_addr,(void __user*)arg + 3*FTR_FILE_SIZE,FTR_FILE_SIZE,3);
-	   	  base_load_ftr(devp->mem_addr,(void __user*)arg + 4*FTR_FILE_SIZE,FTR_FILE_SIZE,4);
-	   	  base_load_ftr(devp->mem_addr,(void __user*)arg + 5*FTR_FILE_SIZE,FTR_FILE_SIZE,5);
-	   	  base_load_ftr(devp->mem_addr,(void __user*)arg + 6*FTR_FILE_SIZE,FTR_FILE_SIZE,6);
-	   	  base_load_ftr(devp->mem_addr,(void __user*)arg + 7*FTR_FILE_SIZE,FTR_FILE_SIZE,7);
+	   	  //base_load_ftr(devp->mem_addr,(void __user*)arg + 3*FTR_FILE_SIZE,FTR_FILE_SIZE,3);
+	   	  //base_load_ftr(devp->mem_addr,(void __user*)arg + 4*FTR_FILE_SIZE,FTR_FILE_SIZE,4);
+	   	  //base_load_ftr(devp->mem_addr,(void __user*)arg + 5*FTR_FILE_SIZE,FTR_FILE_SIZE,5);
+	   	 // base_load_ftr(devp->mem_addr,(void __user*)arg + 6*FTR_FILE_SIZE,FTR_FILE_SIZE,6);
+	   	  //base_load_ftr(devp->mem_addr,(void __user*)arg + 7*FTR_FILE_SIZE,FTR_FILE_SIZE,7);
 	   		break;
 
 	   //FD Video Mode       
@@ -756,6 +785,15 @@ static long fddev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	 	  	}
 //	 	  	printk("----------fddev_ioctl:IOCTL_FD_S_RUN  2\n");
 
+				mutex_lock(&sus_mutex);
+	 	 		if(suspend_stop == 1)
+				{
+					mutex_unlock(&sus_mutex);
+					break;
+				}
+	 	 		fd_run_flag = 1;
+	 	 		mutex_unlock(&sus_mutex);
+	 	 		
      	  fds_run(devp->ptr_fds_dev,(void __user*)arg);
      	  break;
      case IOCTL_FD_S_GET_RTL    :
@@ -789,6 +827,16 @@ static long fddev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         	 devp->fd_irq_value = 1;
           spin_unlock_irqrestore(&fd_spin_lock, flags);
         
+       		mutex_lock(&sus_mutex);
+	 	 			if(suspend_stop == 1)
+					{
+						devp->fd_irq_value = 0;
+						fd_run_flag = 0;
+						mutex_unlock(&sus_mutex);
+						return devp->fd_irq_value;
+					}
+	 	 			mutex_unlock(&sus_mutex); 	
+       
           wait_event_interruptible_timeout(wait_fd, devp->fd_irq_flag, fd_timeout*HZ);            
 	        devp->fd_irq_flag = 0;
 	        fd_timeout = 0;
@@ -810,7 +858,9 @@ static long fddev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	        	msleep(20);
 	        }	
 	        /*����1����ʾ�жϷ��أ�����0����ʾtimeout����*/
-	     
+	     		mutex_lock(&sus_mutex);
+	 	 			fd_run_flag = 0;
+	 	 			mutex_unlock(&sus_mutex);
 		      return devp->fd_irq_value;
      	  break;
      case IOCTL_FD_S_LOAD_FD_FTR:
@@ -866,43 +916,81 @@ void wake_up_fdv(void)
 static int fddev_open(struct inode *inode, struct file *filp)
 {
 	
-	unsigned long flags;
+	//unsigned long flags;
 	struct fd_dev *devp;
-//	printk(KERN_ALERT"-----------fddev_open 0\n"); 
+	printk("=============fddev_open: 0\n");
+
+	 
+   mutex_lock(&close_sus_mutex); 	
+	 if(suspend_stop_for_file == 1)
+	 {
+	 	  mutex_unlock(&close_sus_mutex);
+	 	  printk("=============fddev_open: alearly sus\n");
+	 	  return -EBUSY;
+	 }
+	 file_open_flag = 1;
+	 mutex_unlock(&close_sus_mutex);
+	 
 	devp = container_of(inode->i_cdev, struct fd_dev, cdev);
 	
-	spin_lock_irqsave(&fd_spin_lock, flags);
+	spin_lock(&fd_spin_lock);
 	if(stop == 1)
 	   stop = 0;
 	else
 	{
-		 spin_unlock_irqrestore(&fd_spin_lock, flags);
+		 spin_unlock(&fd_spin_lock);
+		 mutex_lock(&close_sus_mutex);
+		 file_open_flag = 0;
+		 mutex_unlock(&close_sus_mutex);
 		 return -EBUSY;
   }
-  suspend_stop = 0;
-	spin_unlock_irqrestore(&fd_spin_lock, flags);
+
+	spin_unlock(&fd_spin_lock);
 	
 	filp->private_data = devp;
 	nonseekable_open(inode, filp);	 
 
   //setup_timer(&fd_devp->fd_engine_timer, fd_engine_for_events, (unsigned long)fd_devp);
 //	printk(KERN_ALERT"-----------fddev_open 1\n"); 
+	close_need_disable = 0;
+	printk("=============fddev_open: 1\n");
 	return 0;
 }	
 
 static int fddev_release(struct inode *inode, struct file *filp)
 {
-	unsigned long flags;
-	struct fd_dev *devp;
+//	unsigned long flags;
 
+	struct fd_dev *devp;
+	int ret;
+	printk("=============fddev_release:over 0\n");
 	//del_timer_sync(&fd_devp->fd_engine_timer);
+	mutex_lock(&close_sus_mutex);
+  if(close_need_disable == 1)
+  {	
+	   sunxi_periph_reset_assert(fd_moduleclk);
+	   
+	   ret = disable_fd_hw_clk();
+	   if (ret < 0) {
+	   	printk("Warring: fd clk disable somewhere error!\n");
+	   	goto __end;
+	   }
+	   if(vpu_clk_status == 1)
+	   {
+	   		clk_disable_unprepare(vpu_power_gating);
+	   		vpu_clk_status = 0;
+	   }
+  }
+__end:
+  close_need_disable = 0;
+	mutex_unlock(&close_sus_mutex);
 
 	devp = container_of(inode->i_cdev, struct fd_dev, cdev);
 	
-	spin_lock_irqsave(&fd_spin_lock, flags);
+	spin_lock(&fd_spin_lock);
 	stop = 1; 
-	suspend_stop = 1;
-	spin_unlock_irqrestore(&fd_spin_lock, flags);
+	//suspend_stop = 1;
+	spin_unlock(&fd_spin_lock);
 	
 	if(devp->mode_idx == FDS_MODE)
 	{
@@ -917,7 +1005,10 @@ static int fddev_release(struct inode *inode, struct file *filp)
 	}
 	
 	devp->mode_idx = -1;
-//	printk("=============fddev_release:over\n");
+	mutex_lock(&close_sus_mutex);
+	file_open_flag = 0;
+	mutex_unlock(&close_sus_mutex);
+	printk("=============fddev_release:over 1\n");
 	return 0;
 }
 
@@ -930,20 +1021,74 @@ static int fddev_mmap(struct file *filp, struct vm_area_struct *vma)
 static int snd_sw_fd_suspend(struct platform_device *pdev,pm_message_t state)
 {	
 	int ret = 0;
-
+	int count = 0;
+	//unsigned long flags;
 	printk("[fd] standby suspend\n");
-	sunxi_periph_reset_assert(fd_moduleclk);
-	standby_clk_status = clk_status;
-	ret = disable_fd_hw_clk();
-	if (ret < 0) {
-		printk("Warring: fd clk disable somewhere error!\n");
-		return -EFAULT;
-	}
-	if(vpu_clk_status == 1)
+	do
 	{
-			clk_disable_unprepare(vpu_power_gating);
-			vpu_clk_status = 0;
-	}
+		mutex_lock(&close_sus_mutex);
+		if(file_open_flag == 1)
+		{
+			mutex_unlock(&close_sus_mutex);
+			count++;
+			msleep(10);
+		 	if(count > 150)
+		 		break;
+		}
+		else
+		{
+			suspend_stop_for_file = 1;
+			mutex_unlock(&close_sus_mutex);
+			break;
+		}
+  }while(1);
+	
+	printk("[fd] standby suspend  = %d\n",count);
+	if(count < 150)
+	{
+	   count = 0;
+	   while(1)
+	   { 
+	   	 mutex_lock(&sus_mutex);
+	   	
+	   	 if(fd_run_flag != 1)
+	   	 {
+	   	 	  suspend_stop = 1;
+	   	 	  mutex_unlock(&sus_mutex);
+	   	 	  break;
+	   	 }
+	   	 mutex_unlock(&sus_mutex);
+	   	 msleep(10);
+	   	 count++;
+	   	 if(count > 100)
+	   	 	break;
+	   }
+	   
+	   msleep(2);
+	   sunxi_periph_reset_assert(fd_moduleclk);
+	   msleep(2);
+	   standby_clk_status = clk_status;
+     
+	   ret = disable_fd_hw_clk();
+	   if (ret < 0) {
+	   	printk("Warring: fd clk disable somewhere error!\n");
+	   	return -EFAULT;
+	   }
+	   
+	   if(vpu_clk_status == 1)
+	   {
+	   		clk_disable_unprepare(vpu_power_gating);
+	   		vpu_clk_status = 0;
+	   }
+  }
+  else
+  {
+  	standby_clk_status = clk_status;
+  	mutex_lock(&close_sus_mutex);
+  	close_need_disable = 1;
+  	mutex_unlock(&close_sus_mutex);
+  }
+	printk("[fd] standby suspend  end %d\n",count);
 	return ret;
 }
 
@@ -952,7 +1097,7 @@ static int snd_sw_fd_resume(struct platform_device *pdev)
 	int ret = 0;
 	
 	printk("[fd] standby resume\n");
-	
+	close_need_disable = 0;
 	if(vpu_clk_status == 0)
 	{
 		clk_prepare_enable(vpu_power_gating);
@@ -967,6 +1112,13 @@ static int snd_sw_fd_resume(struct platform_device *pdev)
 		}
 		sunxi_periph_reset_deassert(fd_moduleclk);
 	}
+	mutex_lock(&sus_mutex);
+	suspend_stop = 0;
+	mutex_unlock(&sus_mutex);
+	
+	mutex_lock(&close_sus_mutex);
+	suspend_stop_for_file = 0;
+	mutex_unlock(&close_sus_mutex);
 	return 0;
 }
 #endif
@@ -1034,35 +1186,71 @@ static void early_suspend_fd(struct early_suspend *h)
 	//unsigned long flags;
 	printk("[fd] early standby suspend\n");
 	
-	while(1)
+	do
 	{
-		 mutex_lock(&sus_mutex);
-		 if(fd_run_flag != 1)
-		 {
-		 	  suspend_stop = 1;
-		 	  mutex_unlock(&sus_mutex);
-		 	  break;
-		 }
-		 mutex_unlock(&sus_mutex);
-		 msleep(10);
-		 count++;
-		 if(count > 20)
-		 	break;
-	}
-	msleep(2);
-	sunxi_periph_reset_assert(fd_moduleclk);
+		mutex_lock(&close_sus_mutex);
+		if(file_open_flag == 1)
+		{
+			mutex_unlock(&close_sus_mutex);
+			count++;
+			msleep(10);
+		 	if(count > 150)
+		 		break;
+		}
+		else
+		{
+			suspend_stop_for_file = 1;
+			mutex_unlock(&close_sus_mutex);
+			break;
+		}
+  }while(1);
 
-	standby_clk_status = clk_status;
-	ret = disable_fd_hw_clk();
-	if (ret < 0) {
-		printk("Warring: fd clk disable somewhere error!\n");
-		return;
-	}
-	if(vpu_clk_status == 1)
+	printk("[fd] early standby suspend  = %d\n",count);
+	if(count < 150)
 	{
-			clk_disable_unprepare(vpu_power_gating);
-			vpu_clk_status = 0;
-	}
+	   count = 0;
+	   while(1)
+	   { 
+	   	 mutex_lock(&sus_mutex);
+	   	
+	   	 if(fd_run_flag != 1)
+	   	 {
+	   	 	  suspend_stop = 1;
+	   	 	  mutex_unlock(&sus_mutex);
+	   	 	  break;
+	   	 }
+	   	 mutex_unlock(&sus_mutex);
+	   	 msleep(10);
+	   	 count++;
+	   	 if(count > 100)
+	   	 	break;
+	   }
+	   
+	   msleep(2);
+	   sunxi_periph_reset_assert(fd_moduleclk);
+	   msleep(2);
+	   standby_clk_status = clk_status;
+     
+	   ret = disable_fd_hw_clk();
+	   if (ret < 0) {
+	   	printk("Warring: fd clk disable somewhere error!\n");
+	   	return;
+	   }
+	   
+	   if(vpu_clk_status == 1)
+	   {
+	   		clk_disable_unprepare(vpu_power_gating);
+	   		vpu_clk_status = 0;
+	   }
+  }
+  else
+  {
+  	standby_clk_status = clk_status;
+  	
+  	mutex_lock(&close_sus_mutex);
+  	close_need_disable = 1;
+  	mutex_unlock(&close_sus_mutex);
+  }
 	printk("[fd] early standby suspend  end %d\n",count);
 	return;
 }
@@ -1072,10 +1260,14 @@ static void late_resume_fd(struct early_suspend *h)
 	int ret = 0;
 //	unsigned long flags;
 	printk("[fd] early standby resume\n");
-	
+	close_need_disable = 0;
 	mutex_lock(&sus_mutex);
 	suspend_stop = 0;
 	mutex_unlock(&sus_mutex);
+	
+	mutex_lock(&close_sus_mutex);
+	suspend_stop_for_file = 0;
+	mutex_unlock(&close_sus_mutex);
 	
 	if(vpu_clk_status == 0)
 	{
@@ -1208,6 +1400,75 @@ void close_clk(void)
 	}
 }
 
+#ifdef USE_DMA_ALLOC
+void free_fd_mem(void)
+{
+	if (fd_devp->mem_addr.mem_ld0_addr) {
+		dma_free_coherent(NULL, FTR_FILE_SIZE, fd_devp->mem_addr.mem_ld0_addr, (dma_addr_t)fd_devp->phy_mem_addr.phy_mem_ld0_addr);
+		fd_devp->mem_addr.mem_ld0_addr = NULL;
+	}
+	if (fd_devp->mem_addr.mem_ld1_addr) {
+		dma_free_coherent(NULL, FTR_FILE_SIZE, fd_devp->mem_addr.mem_ld1_addr, (dma_addr_t)fd_devp->phy_mem_addr.phy_mem_ld1_addr);
+		fd_devp->mem_addr.mem_ld1_addr = NULL;
+	}
+	if (fd_devp->mem_addr.mem_ld2_addr) {
+		dma_free_coherent(NULL, FTR_FILE_SIZE, fd_devp->mem_addr.mem_ld2_addr, (dma_addr_t)fd_devp->phy_mem_addr.phy_mem_ld2_addr);
+		fd_devp->mem_addr.mem_ld2_addr = NULL;
+	}
+	if (fd_devp->mem_addr.mem_ld3_addr) {
+		dma_free_coherent(NULL, FTR_FILE_SIZE, fd_devp->mem_addr.mem_ld3_addr, (dma_addr_t)fd_devp->phy_mem_addr.phy_mem_ld3_addr);
+		fd_devp->mem_addr.mem_ld3_addr = NULL;
+	}
+	if (fd_devp->mem_addr.mem_ld4_addr) {
+		dma_free_coherent(NULL, FTR_FILE_SIZE, fd_devp->mem_addr.mem_ld4_addr, (dma_addr_t)fd_devp->phy_mem_addr.phy_mem_ld4_addr);
+		fd_devp->mem_addr.mem_ld4_addr = NULL;
+	}
+	if (fd_devp->mem_addr.mem_ld5_addr) {
+		dma_free_coherent(NULL, FTR_FILE_SIZE, fd_devp->mem_addr.mem_ld5_addr, (dma_addr_t)fd_devp->phy_mem_addr.phy_mem_ld5_addr);
+		fd_devp->mem_addr.mem_ld5_addr = NULL;
+	}
+	if (fd_devp->mem_addr.mem_ld6_addr) {
+		dma_free_coherent(NULL, FTR_FILE_SIZE, fd_devp->mem_addr.mem_ld6_addr, (dma_addr_t)fd_devp->phy_mem_addr.phy_mem_ld6_addr);
+		fd_devp->mem_addr.mem_ld6_addr = NULL;
+	}
+}
+
+void free_dev_mem(void)
+{
+	if (fd_devp->mem_addr.mem_rtl_addr) {
+		dma_free_coherent(NULL, fd_devp->phy_mem_addr.phy_mem_rtl_size, fd_devp->mem_addr.mem_rtl_addr,
+			(dma_addr_t)fd_devp->phy_mem_addr.phy_mem_rtl_addr);
+		fd_devp->mem_addr.mem_rtl_addr = NULL;
+	}
+	if (fd_devp->mem_addr.mem_ftr_cfg_addr) {
+		dma_free_coherent(NULL, fd_devp->phy_mem_addr.phy_mem_ftr_cfg_size, fd_devp->mem_addr.mem_ftr_cfg_addr,
+			(dma_addr_t)fd_devp->phy_mem_addr.phy_mem_ftr_cfg_addr);
+		fd_devp->mem_addr.mem_ftr_cfg_addr = NULL;
+	}
+	if (fd_devp->mem_addr.mem_scale_img_addr) {
+		dma_free_coherent(NULL, fd_devp->phy_mem_addr.phy_mem_scale_img_size, fd_devp->mem_addr.mem_scale_img_addr,
+			(dma_addr_t)fd_devp->phy_mem_addr.phy_mem_scale_img_addr);
+		fd_devp->mem_addr.mem_scale_img_addr = NULL;
+	}
+	if (fd_devp->mem_addr.mem_tmpbuf_addr) {
+		dma_free_coherent(NULL, fd_devp->phy_mem_addr.phy_mem_tmpbuf_size, fd_devp->mem_addr.mem_tmpbuf_addr,
+			(dma_addr_t)fd_devp->phy_mem_addr.phy_mem_tmpbuf_addr);
+		fd_devp->mem_addr.mem_tmpbuf_addr = NULL;
+	}
+	if (fd_devp->mem_addr.mem_roi_addr) {
+		dma_free_coherent(NULL, fd_devp->phy_mem_addr.phy_mem_roi_size, fd_devp->mem_addr.mem_roi_addr,
+			(dma_addr_t)fd_devp->phy_mem_addr.phy_mem_roi_addr);
+		fd_devp->mem_addr.mem_roi_addr = NULL;
+	}
+	if (fd_devp->mem_addr.mem_sys_flag_addr) {
+		dma_free_coherent(NULL, fd_devp->phy_mem_addr.phy_mem_sys_flag_size, fd_devp->mem_addr.mem_sys_flag_addr,
+			(dma_addr_t)fd_devp->phy_mem_addr.phy_mem_sys_flag_addr);
+		fd_devp->mem_addr.mem_sys_flag_addr = NULL;
+	}
+
+}
+
+#endif
 
 static int request_fd_resource(void)
 {
@@ -1261,7 +1522,22 @@ static int request_fd_resource(void)
 
    	/*--------������Ӧ��Դ-----------*/
 	//�����ļ���Դ��16byte���룬ÿ��200KByte����Ҫ����ion
-
+#ifdef USE_DMA_ALLOC
+	fd_devp->mem_addr.mem_ld0_addr = dma_alloc_coherent(NULL, FTR_FILE_SIZE, (dma_addr_t*)&fd_devp->phy_mem_addr.phy_mem_ld0_addr, GFP_KERNEL);
+	fd_devp->mem_addr.mem_ld1_addr = dma_alloc_coherent(NULL, FTR_FILE_SIZE, (dma_addr_t*)&fd_devp->phy_mem_addr.phy_mem_ld1_addr, GFP_KERNEL);
+	fd_devp->mem_addr.mem_ld2_addr = dma_alloc_coherent(NULL, FTR_FILE_SIZE, (dma_addr_t*)&fd_devp->phy_mem_addr.phy_mem_ld2_addr, GFP_KERNEL);
+	fd_devp->mem_addr.mem_ld3_addr = dma_alloc_coherent(NULL, FTR_FILE_SIZE, (dma_addr_t*)&fd_devp->phy_mem_addr.phy_mem_ld3_addr, GFP_KERNEL);
+	fd_devp->mem_addr.mem_ld4_addr = dma_alloc_coherent(NULL, FTR_FILE_SIZE, (dma_addr_t*)&fd_devp->phy_mem_addr.phy_mem_ld4_addr, GFP_KERNEL);
+	fd_devp->mem_addr.mem_ld5_addr = dma_alloc_coherent(NULL, FTR_FILE_SIZE, (dma_addr_t*)&fd_devp->phy_mem_addr.phy_mem_ld5_addr, GFP_KERNEL);
+	fd_devp->mem_addr.mem_ld6_addr = dma_alloc_coherent(NULL, FTR_FILE_SIZE, (dma_addr_t*)&fd_devp->phy_mem_addr.phy_mem_ld6_addr, GFP_KERNEL);
+	fd_devp->mem_addr.mem_ld7_addr = dma_alloc_coherent(NULL, FTR_FILE_SIZE, (dma_addr_t*)&fd_devp->phy_mem_addr.phy_mem_ld7_addr, GFP_KERNEL);
+	if (!fd_devp->mem_addr.mem_ld0_addr || !fd_devp->mem_addr.mem_ld1_addr || !fd_devp->mem_addr.mem_ld2_addr || !fd_devp->mem_addr.mem_ld3_addr
+		|| !fd_devp->mem_addr.mem_ld4_addr || !fd_devp->mem_addr.mem_ld5_addr || !fd_devp->mem_addr.mem_ld6_addr) {
+		free_fd_mem();
+		printk("%s %d: err, alloc fail\n", __func__, __LINE__);
+		return -1;
+	}
+#else
 	fd_devp->phy_mem_addr.phy_mem_ld0_addr = sunxi_mem_alloc(FTR_FILE_SIZE);
 	fd_devp->phy_mem_addr.phy_mem_ld1_addr = sunxi_mem_alloc(FTR_FILE_SIZE);
 	fd_devp->phy_mem_addr.phy_mem_ld2_addr = sunxi_mem_alloc(FTR_FILE_SIZE);
@@ -1270,6 +1546,7 @@ static int request_fd_resource(void)
 	fd_devp->phy_mem_addr.phy_mem_ld5_addr = sunxi_mem_alloc(FTR_FILE_SIZE);
 	fd_devp->phy_mem_addr.phy_mem_ld6_addr = sunxi_mem_alloc(FTR_FILE_SIZE);
 	fd_devp->phy_mem_addr.phy_mem_ld7_addr = sunxi_mem_alloc(FTR_FILE_SIZE);
+#endif
 	        
 	fd_devp->phy_mem_addr.phy_mem_ld0_size = FTR_FILE_SIZE;
 	fd_devp->phy_mem_addr.phy_mem_ld1_size = FTR_FILE_SIZE;
@@ -1321,6 +1598,7 @@ static int request_fd_resource(void)
 		return -1;
 	}
 	
+#ifndef USE_DMA_ALLOC
 	fd_devp->mem_addr.mem_ld0_addr = sunxi_map_kernel(fd_devp->phy_mem_addr.phy_mem_ld0_addr, FTR_FILE_SIZE);
 	fd_devp->mem_addr.mem_ld1_addr = sunxi_map_kernel(fd_devp->phy_mem_addr.phy_mem_ld1_addr, FTR_FILE_SIZE);
 	fd_devp->mem_addr.mem_ld2_addr = sunxi_map_kernel(fd_devp->phy_mem_addr.phy_mem_ld2_addr, FTR_FILE_SIZE);
@@ -1329,6 +1607,7 @@ static int request_fd_resource(void)
 	fd_devp->mem_addr.mem_ld5_addr = sunxi_map_kernel(fd_devp->phy_mem_addr.phy_mem_ld5_addr, FTR_FILE_SIZE);
 	fd_devp->mem_addr.mem_ld6_addr = sunxi_map_kernel(fd_devp->phy_mem_addr.phy_mem_ld6_addr, FTR_FILE_SIZE);
 	fd_devp->mem_addr.mem_ld7_addr = sunxi_map_kernel(fd_devp->phy_mem_addr.phy_mem_ld7_addr, FTR_FILE_SIZE);
+#endif
 	
 	if(fd_devp->mem_addr.mem_ld0_addr == NULL)
 	{
@@ -1371,7 +1650,32 @@ static int request_fd_resource(void)
 		return -1;
 	}
 	
-	
+#ifdef USE_DMA_ALLOC
+	fd_devp->mem_addr.mem_rtl_addr = dma_alloc_coherent(NULL, RTL_BUFFER_SIZE, (dma_addr_t*)&fd_devp->phy_mem_addr.phy_mem_rtl_addr, GFP_KERNEL);
+	fd_devp->phy_mem_addr.phy_mem_rtl_size = RTL_BUFFER_SIZE;
+	fd_devp->mem_addr.mem_ftr_cfg_addr  = dma_alloc_coherent(NULL, FTR_CFG__BUFFER_SIZE, (dma_addr_t*)&fd_devp->phy_mem_addr.phy_mem_ftr_cfg_addr, GFP_KERNEL);
+	fd_devp->phy_mem_addr.phy_mem_ftr_cfg_size = FTR_CFG__BUFFER_SIZE;
+	fd_devp->mem_addr.mem_scale_img_addr = dma_alloc_coherent(NULL, SCALE_IMG_BUFFER_SIZE, (dma_addr_t*)&fd_devp->phy_mem_addr.phy_mem_scale_img_addr, GFP_KERNEL);
+	fd_devp->phy_mem_addr.phy_mem_scale_img_size = SCALE_IMG_BUFFER_SIZE; 
+	fd_devp->mem_addr.mem_tmpbuf_addr = dma_alloc_coherent(NULL, TMP_BUFFER_SIZE, (dma_addr_t*)&fd_devp->phy_mem_addr.phy_mem_tmpbuf_addr, GFP_KERNEL);
+	if (!fd_devp->mem_addr.mem_tmpbuf_addr) {
+		fd_devp->mem_addr.mem_tmpbuf_addr = dma_alloc_coherent(NULL, HALF_TMP_BUFFER_SIZE, (dma_addr_t*)&fd_devp->phy_mem_addr.phy_mem_tmpbuf_addr, GFP_KERNEL);
+		fd_devp->phy_mem_addr.phy_mem_tmpbuf_size = HALF_TMP_BUFFER_SIZE;
+	} else {
+		fd_devp->phy_mem_addr.phy_mem_tmpbuf_size = TMP_BUFFER_SIZE;
+	}
+	fd_devp->mem_addr.mem_roi_addr = dma_alloc_coherent(NULL, ROI_CFG_BUFFER_SIZE, (dma_addr_t*)&fd_devp->phy_mem_addr.phy_mem_roi_addr, GFP_KERNEL);
+	fd_devp->phy_mem_addr.phy_mem_roi_size = ROI_CFG_BUFFER_SIZE;
+	fd_devp->mem_addr.mem_sys_flag_addr = dma_alloc_coherent(NULL, SYS_FLAG_BUFFER_SIZE, (dma_addr_t*)&fd_devp->phy_mem_addr.phy_mem_sys_flag_addr, GFP_KERNEL);
+	fd_devp->phy_mem_addr.phy_mem_sys_flag_size = SYS_FLAG_BUFFER_SIZE;
+	if (!fd_devp->mem_addr.mem_rtl_addr || !fd_devp->mem_addr.mem_ftr_cfg_addr || !fd_devp->mem_addr.mem_scale_img_addr
+		|| !fd_devp->mem_addr.mem_tmpbuf_addr || !fd_devp->mem_addr.mem_roi_addr || !fd_devp->mem_addr.mem_sys_flag_addr) {
+		free_fd_mem();
+		free_dev_mem();
+		printk("%s %d: err, alloc fail\n", __func__, __LINE__);
+		return -1;
+	}
+#else
 	//����ݴ�Buffer,6KByte,8Byte����
 	//fd_devp->mem_addr.mem_rtl_addr = kmalloc(6*1024, GFP_KERNEL);
 	fd_devp->phy_mem_addr.phy_mem_rtl_addr = sunxi_mem_alloc(RTL_BUFFER_SIZE);
@@ -1479,6 +1783,7 @@ static int request_fd_resource(void)
 		return -1;
 	}
 	fd_devp->phy_mem_addr.phy_mem_sys_flag_size = SYS_FLAG_BUFFER_SIZE;
+#endif
 	
 	//�������ģʽ���豸�Ľṹ��ռ䡣
 	
@@ -1505,6 +1810,8 @@ static int request_fd_resource(void)
 	fd_devp->mem_addr.mem_ld7_size      = 	fd_devp->phy_mem_addr.phy_mem_ld7_size;      
 	//------------------------------------------------------//
 	mutex_init(&sus_mutex);
+	mutex_init(&close_sus_mutex);
+	
 	init_hw_para_sl(fd_devp->iomap_addrs,fd_devp->mem_addr,fd_devp->phy_mem_addr);
 	return 0;
 }
@@ -1524,7 +1831,10 @@ static void release_fd_resource(void)
 		iounmap((void __iomem *)(fd_devp->iomap_addrs.regs_ccmu));
 	
 	  //�����ļ���Դ��16byte���룬ÿ��200KByte����Ҫ����ion
-    
+#ifdef USE_DMA_ALLOC
+	free_fd_mem();
+	free_dev_mem();
+#else
 	  sunxi_unmap_kernel(fd_devp->mem_addr.mem_ld0_addr);
 	  sunxi_unmap_kernel(fd_devp->mem_addr.mem_ld1_addr);
 	  sunxi_unmap_kernel(fd_devp->mem_addr.mem_ld2_addr);
@@ -1557,6 +1867,7 @@ static void release_fd_resource(void)
 	  sunxi_mem_free(fd_devp->phy_mem_addr.phy_mem_tmpbuf_addr,fd_devp->phy_mem_addr.phy_mem_tmpbuf_size);
 	  sunxi_mem_free(fd_devp->phy_mem_addr.phy_mem_roi_addr,fd_devp->phy_mem_addr.phy_mem_roi_size);
 	  sunxi_mem_free(fd_devp->phy_mem_addr.phy_mem_sys_flag_addr,fd_devp->phy_mem_addr.phy_mem_sys_flag_size);
+#endif
 	}
 	
 	unregister_chrdev_region(dev, 1);	
@@ -1575,6 +1886,7 @@ static void release_fd_resource(void)
 	   	kfree(fd_devp);
 	}
 	mutex_destroy(&sus_mutex);
+	mutex_destroy(&close_sus_mutex);
 }
 
 
@@ -1711,7 +2023,7 @@ static int __init sun_fd_init(void)
 	if((platform_device_register(&sw_device_fd))<0)
 		return err;
 		
-	printk("sun fd version 0.5 \n");
+	printk("sun fd version 1.0 10\n");
 	if((err = platform_driver_register(&sw_fd_driver)) < 0)
 		return err;
 

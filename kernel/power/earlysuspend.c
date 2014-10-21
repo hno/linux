@@ -22,6 +22,7 @@
 #include <linux/workqueue.h>
 
 #include "power.h"
+#include <linux/delay.h>
 
 static struct kobject *earlysuspend_kobj;
 
@@ -32,6 +33,8 @@ enum {
 };
 static int debug_mask = DEBUG_USER_STATE;
 module_param_named(debug_mask, debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP);
+static int debug_mask_delay_ms = 0;
+module_param_named(debug_mask_delay_ms, debug_mask_delay_ms, int, S_IRUGO | S_IWUSR | S_IWGRP);
 
 extern struct wake_lock sync_wake_lock;
 extern struct workqueue_struct *sync_work_queue;
@@ -148,6 +151,10 @@ static void early_suspend(struct work_struct *work)
 					usecs = 1;
 				pr_info("early_suspend: %pf complete after %ld.%03ld msecs\n",
 					pos->suspend, usecs / USEC_PER_MSEC, usecs % USEC_PER_MSEC);
+				if(debug_mask_delay_ms > 0){
+				    printk("sleep %d ms for debug. \n", debug_mask_delay_ms);
+				    msleep(debug_mask_delay_ms);
+				}
 			}
 		}
 	}
@@ -218,6 +225,10 @@ static void late_resume(struct work_struct *work)
 					usecs = 1;
 				pr_info("late_resume: %pf complete after %ld.%03ld msecs\n",
 					pos->resume, usecs / USEC_PER_MSEC, usecs % USEC_PER_MSEC);
+				if(debug_mask_delay_ms > 0){
+				    printk("sleep %d ms for debug. \n", debug_mask_delay_ms);
+				    msleep(debug_mask_delay_ms);
+				}
 			}
 	
 		}

@@ -175,70 +175,100 @@ static struct snd_soc_card snd_soc_sunxi_sndi2s1 = {
 	.num_links 	= 1,
 };
 
-static struct platform_device *sunxi_sndi2s1_device;
-
-static int __init sunxi_sndi2s1_init(void)
+static int __devinit sunxi_sndi2s1_dev_probe(struct platform_device *pdev)
 {
 	int ret = 0;
 	script_item_u val;
 	script_item_value_type_e  type;
+	struct snd_soc_card *card = &snd_soc_sunxi_sndi2s1;
 
 	type = script_get_item("i2s1", "i2s1_used", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[I2S1] type err!\n");
+        pr_err("[I2S1] type err!\n");
     }
 	i2s1_used = val.val;
 	type = script_get_item("i2s1", "i2s1_select", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[I2S1] i2s1_select type err!\n");
+        pr_err("[I2S1] i2s1_select type err!\n");
     }
 	i2s1_pcm_select = val.val;
 	
 	type = script_get_item("i2s1", "i2s1_master", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[I2S1] i2s1_master type err!\n");
+        pr_err("[I2S1] i2s1_master type err!\n");
     }
 	i2s1_master = val.val;
 	
 	type = script_get_item("i2s1", "audio_format", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[I2S1] audio_format type err!\n");
+        pr_err("[I2S1] audio_format type err!\n");
     }
 	audio_format = val.val;
 
 	type = script_get_item("i2s1", "signal_inversion", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[I2S1] signal_inversion type err!\n");
+        pr_err("[I2S1] signal_inversion type err!\n");
     }
 	signal_inversion = val.val;
 
-    if (i2s1_used) {
-		sunxi_sndi2s1_device = platform_device_alloc("soc-audio", 3);
-		if(!sunxi_sndi2s1_device)
-			return -ENOMEM;
-		platform_set_drvdata(sunxi_sndi2s1_device, &snd_soc_sunxi_sndi2s1);
-		ret = platform_device_add(sunxi_sndi2s1_device);
+	if (i2s1_used) {
+		card->dev = &pdev->dev;
+		ret = snd_soc_register_card(card);
 		if (ret) {
-			platform_device_put(sunxi_sndi2s1_device);
+			dev_err(&pdev->dev, "snd_soc_register_card() failed: %d\n", ret);
 		}
-	}else{
-		printk("[I2S1]sunxi_sndi2s1 cannot find any using configuration for controllers, return directly!\n");
+	} else {
+		pr_err("[i2s1]sunxi_sndi2s1_dev_probe cannot find any using configuration for controllers, return directly!\n");
         return 0;
 	}
 	return ret;
 }
 
-static void __exit sunxi_sndi2s1_exit(void)
+static int __devexit sunxi_sndi2s1_dev_remove(struct platform_device *pdev)
 {
-	if(i2s1_used) {
-		i2s1_used = 0;
-		platform_device_unregister(sunxi_sndi2s1_device);
+	struct snd_soc_card *card = platform_get_drvdata(pdev);
+
+	if (i2s1_used) {
+		snd_soc_unregister_card(card);
 	}
+	return 0;
 }
 
-module_init(sunxi_sndi2s1_init);
-module_exit(sunxi_sndi2s1_exit);
+/*data relating*/
+static struct platform_device sunxi_i2s1_device = {
+	.name 	= "sndi2s1",
+	.id 	= PLATFORM_DEVID_NONE,
+};
 
+/*method relating*/
+static struct platform_driver sunxi_i2s1_driver = {
+	.probe = sunxi_sndi2s1_dev_probe,
+	.remove = __exit_p(sunxi_sndi2s1_dev_remove),
+	.driver = {
+		.name = "sndi2s1",
+		.owner = THIS_MODULE,
+		.pm = &snd_soc_pm_ops,
+	},
+};
+
+static int __init sunxi_sndi2s1_init(void)
+{
+	int err = 0;
+	if((err = platform_device_register(&sunxi_i2s1_device)) < 0)
+		return err;
+
+	if ((err = platform_driver_register(&sunxi_i2s1_driver)) < 0)
+		return err;	
+
+	return 0;
+}
+module_init(sunxi_sndi2s1_init);
+
+static void __exit sunxi_sndi2s1_exit(void)
+{
+	platform_driver_unregister(&sunxi_i2s1_driver);
+}
+module_exit(sunxi_sndi2s1_exit);
 MODULE_AUTHOR("huangxin");
 MODULE_DESCRIPTION("SUNXI_sndi2s1 ALSA SoC audio driver");
 MODULE_LICENSE("GPL");

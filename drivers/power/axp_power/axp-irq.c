@@ -1,7 +1,7 @@
 /*
- * Battery charger driver for X-POWERS AXP28X
+ * Battery charger driver for AW-POWERS
  *
- * Copyright (C) 2014 X-POWERS Ltd.
+ * Copyright (C) 2014 ALLWINNERTECH.
  *  Ming Li <liming@allwinnertech.com>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -14,7 +14,7 @@
 #ifdef CONFIG_AW_AXP81X
 #include "axp81x/axp81x-sply.h"
 #include "axp81x/axp81x-common.h"
-const struct axp_config_info *axp_config = &axp81x_config;
+static const struct axp_config_info *axp_config = &axp81x_config;
 static const uint64_t AXP_NOTIFIER_ON = AXP81X_NOTIFIER_ON;
 static int Total_Cap = 0;
 static int Bat_Cap_Buffer[AXP_VOL_MAX];
@@ -59,8 +59,6 @@ static void axp_change(struct axp_charger *charger)
 	axp_charger_update_state(charger);
 	axp_charger_update(charger, axp_config);
 	power_supply_changed(&charger->batt);
-	power_supply_changed(&charger->ac);
-	power_supply_changed(&charger->usb);
 }
 
 static void axp_presslong(struct axp_charger *charger)
@@ -141,11 +139,22 @@ static int axp_battery_event(struct notifier_block *nb, unsigned long event,
 			axp_change(charger);
 		if(event & (AXP_IRQ_ACOV|AXP_IRQ_USBOV|AXP_IRQ_CHAOV|AXP_IRQ_CHAST))
 			axp_change(charger);
-		if(event & (AXP_IRQ_ACRE|AXP_IRQ_USBRE|AXP_IRQ_ACIN|AXP_IRQ_USBIN))
+		if(event & (AXP_IRQ_ACIN|AXP_IRQ_USBIN)) {
 #ifdef CONFIG_HAS_WAKELOCK
 			wake_lock_timeout(&axp_wakeup_lock, msecs_to_jiffies(2000));
 #endif
+			axp_usbac_checkst(charger);
 			axp_change(charger);
+			axp_usbac_in(charger);
+		}
+		if(event & (AXP_IRQ_ACRE|AXP_IRQ_USBRE)) {
+#ifdef CONFIG_HAS_WAKELOCK
+			wake_lock_timeout(&axp_wakeup_lock, msecs_to_jiffies(2000));
+#endif
+			axp_usbac_checkst(charger);
+			axp_change(charger);
+			axp_usbac_out(charger);
+		}
 		if(event & AXP_IRQ_PEK_LONGTIME)
 			axp_presslong(charger);
 		if(event & AXP_IRQ_PEK_SHORTTIME)

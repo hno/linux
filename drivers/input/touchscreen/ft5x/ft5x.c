@@ -1471,7 +1471,10 @@ static void ft5x_resume_events (struct work_struct *work)
 		}
 #endif
         }
+
+#ifdef CONFIG_HAS_EARLYSUSPEND
 standby_with_power_on:
+#endif
 	ret = input_set_int_enable(&(config_info.input_type), 1);
 	if (ret < 0)
 		dprintk(DEBUG_SUSPEND,"%s irq disable failed\n", __func__);

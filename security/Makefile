@@ -25,6 +25,10 @@ obj-$(CONFIG_SECURITY_APPARMOR)		+= apparmor/built-in.o
 obj-$(CONFIG_SECURITY_YAMA)		+= yama/built-in.o
 obj-$(CONFIG_CGROUP_DEVICE)		+= device_cgroup.o
 
+obj-$(CONFIG_TRUSTED_LITTLE_KERNEL)	+= te_driver/
+obj-$(CONFIG_TE_TEST)	                += te_test/
+obj-$(CONFIG_TE_SST)             	+= te_sec_storage/
+
 # Object integrity file lists
 subdir-$(CONFIG_INTEGRITY)		+= integrity
 obj-$(CONFIG_INTEGRITY)			+= integrity/built-in.o

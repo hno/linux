@@ -83,6 +83,7 @@ static bool codec_digital_btphonein_en 	= false;
 static bool codec_digital_bb_bt_clk_format = false;
 
 static bool codec_system_bt_capture_en = false;
+static bool codec_analog_bb_capture_mic = false;
 static int codec_speaker_headset_earpiece_en=0;
 
 static int pa_vol 						= 0;
@@ -95,7 +96,10 @@ static int headphone_direct_used 		= 0;
 static int phone_headset_mic_vol 		= 0;
 static int aif2_used 				= 0;
 static int aif3_used 				= 0;
-
+static int dac_vol_ctrl_spk			=0x9e9e;
+static int dac_vol_ctrl_headphone			=0xa0a0;
+static int agc_used 		= 0;
+static int drc_used 		= 0;
 static struct label reg_labels[]={
         LABEL(DAC_Digital_Part_Control),
         LABEL(DAC_FIFO_Control),
@@ -423,7 +427,7 @@ static void codec_resume_events(struct work_struct *work)
 	//by xzd
 	msleep(400);
 	codec_wr_prcm_control(MIC1G_MICBIAS_CTRL, 0x1, HMICBIASEN, 0x1);
-	printk("====codec_resume_events===\n");
+	pr_debug("====codec_resume_events===\n");
 }
 #endif
 static void get_audio_param(void)
@@ -433,42 +437,42 @@ static void get_audio_param(void)
 
 	type = script_get_item("audio0", "headphone_vol", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-		printk("[audiocodec] headphone_vol type err!\n");
+		pr_err("[audiocodec] headphone_vol type err!\n");
 	}  else {
 		headphone_vol = val.val;
 	}
 
 	type = script_get_item("audio0", "earpiece_vol", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-		printk("[audiocodec] earpiece_vol type err!\n");
+		pr_err("[audiocodec] earpiece_vol type err!\n");
 	}  else {
 		earpiece_vol = val.val;
 	}
 
 	type = script_get_item("audio0", "cap_vol", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-		printk("[audiocodec] cap_vol type err!\n");
+		pr_err("[audiocodec] cap_vol type err!\n");
 	}  else {
 		cap_vol = val.val;
 	}
 
 	type = script_get_item("audio0", "headset_mic_vol", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-		printk("[audiocodec] headset_mic_vol type err!\n");
+		pr_err("[audiocodec] headset_mic_vol type err!\n");
 	}  else {
 		phone_headset_mic_vol = val.val;
 	}
 
 	type = script_get_item("audio0", "main_mic_vol", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-		printk("[audiocodec] main_mic_vol type err!\n");
+		pr_err("[audiocodec] main_mic_vol type err!\n");
 	}  else {
 		phone_main_mic_vol = val.val;
 	}
 
 	type = script_get_item("audio0", "pa_double_used", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-		printk("[audiocodec] pa_double_used type err!\n");
+		pr_err("[audiocodec] pa_double_used type err!\n");
 	}  else {
 		pa_double_used = val.val;
 	}
@@ -476,27 +480,51 @@ static void get_audio_param(void)
 	if (!pa_double_used) {
 		type = script_get_item("audio0", "pa_single_vol", &val);
 		if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-			printk("[audiocodec] pa_single_vol type err!\n");
+			pr_err("[audiocodec] pa_single_vol type err!\n");
 		}  else {
 			pa_vol = val.val;
 		}
 	} else {
 		type = script_get_item("audio0", "pa_double_vol", &val);
 		if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-			printk("[audiocodec] pa_double_vol type err!\n");
+			pr_err("[audiocodec] pa_double_vol type err!\n");
 		}  else {
 			pa_vol = val.val;
 		}
 	}
 
+	type = script_get_item("audio0", "DAC_VOL_CTRL_SPK", &val);
+	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
+		pr_err("[audiocodec] DAC_VOL_CTRL_SPK type err!\n");
+	} else {
+		dac_vol_ctrl_spk = val.val;
+	}
+	type = script_get_item("audio0", "DAC_VOL_CTRL_HEADPHONE", &val);
+	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
+		pr_err("[audiocodec] DAC_VOL_CTRL_HEADPHONE type err!\n");
+	} else {
+		dac_vol_ctrl_headphone = val.val;
+	}
+
 	type = script_get_item("audio0", "headphone_direct_used", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-		printk("[audiocodec] headphone_direct_used type err!\n");
+		pr_err("[audiocodec] headphone_direct_used type err!\n");
 	} else {
 		headphone_direct_used = val.val;
 	}
-
-	printk("headphone_vol=0x%x, earpiece_vol=0x%x, cap_vol=0x%x, \
+	type = script_get_item("audio0", "agc_used", &val);
+	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
+		pr_err("[audiocodec] agc_used type err!\n");
+	} else {
+		agc_used = val.val;
+	}
+	type = script_get_item("audio0", "drc_used", &val);
+	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
+		pr_err("[audiocodec] drc_used type err!\n");
+	} else {
+		drc_used = val.val;
+	}
+	pr_debug("headphone_vol=0x%x, earpiece_vol=0x%x, cap_vol=0x%x, \
 		phone_headset_mic_vol=0x%x, phone_main_mic_vol=0x%x, \
 		pa_double_used=0x%x, pa_vol=0x%x \n" \
 		,headphone_vol, earpiece_vol, cap_vol,  \
@@ -517,10 +545,50 @@ static void codec_init(void)
 		codec_wr_prcm_control(PAEN_HP_CTRL, 0x3, HPCOM_FC, 0x0);
 		codec_wr_prcm_control(PAEN_HP_CTRL, 0x1, COMPTEN, 0x0);
 	}
+	if (drc_used){
+		codec_wr_control(0x48c, 0x7ff, 0, 0x1);
+//		codec_wr_control(0x48c, 0x7ff, 0, 0x0);
+		codec_wr_control(0x490, 0xffff, 0, 0x2baf);
+		//codec_wr_control(0x490, 0xffff, 0, 0x1fb6);
+		codec_wr_control(0x494, 0x7ff, 0, 0x1);
+		codec_wr_control(0x498, 0xffff, 0, 0x2baf);
+		codec_wr_control(0x49c, 0x7ff, 0, 0x0);
+		codec_wr_control(0x4a0, 0xffff, 0, 0x44a);
+		codec_wr_control(0x4a4, 0x7ff, 0, 0x0);
+		codec_wr_control(0x4a8, 0xffff, 0, 0x1e06);
+		//codec_wr_control(0x4ac, 0x7ff, 0, 0x27d);
+		codec_wr_control(0x4ac, 0x7ff, 0, 0x352);
+		//codec_wr_control(0x4b0, 0xffff, 0, 0xcf68);
+		codec_wr_control(0x4b0, 0xffff, 0, 0x6910);
+		codec_wr_control(0x4b4, 0x7ff, 0, 0x77a);
+		codec_wr_control(0x4b8, 0xffff, 0, 0xaaaa);
+		//codec_wr_control(0x4bc, 0x7ff, 0, 0x1fe);
+		codec_wr_control(0x4bc, 0x7ff, 0, 0x2de);
+		codec_wr_control(0x4c0, 0xffff, 0, 0xc982);
+
+		codec_wr_control(0x258, 0xffff, 0, 0x9f9f);
+	}
+	if (agc_used){
+		codec_wr_control(0x4d0, 0x3, 6, 0x3);
+
+		codec_wr_control(0x410, 0x3f, 8, 0x31);
+		codec_wr_control(0x410, 0xff, 0, 0x28);
+
+		codec_wr_control(0x414, 0x3f, 8, 0x31);
+		codec_wr_control(0x414, 0xff, 0, 0x28);
+
+		codec_wr_control(0x428, 0x7fff, 0, 0x24);
+		codec_wr_control(0x42c, 0x7fff, 0, 0x2);
+		codec_wr_control(0x430, 0x7fff, 0, 0x24);
+		codec_wr_control(0x434, 0x7fff, 0, 0x2);
+		codec_wr_control(0x438, 0x1f, 8, 0xf);
+		codec_wr_control(0x438, 0x1f, 0, 0xf);
+		codec_wr_control(0x44c, 0x7ff, 0, 0xfc);
+		codec_wr_control(0x450, 0xffff, 0, 0xabb3);
+	}
 	/*mute headphone pa*/
 	codec_wr_prcm_control(DAC_PA_SRC, 0x1, LHPPAMUTE, 0x0);
 	codec_wr_prcm_control(DAC_PA_SRC, 0x1, RHPPAMUTE, 0x0);
-
 }
 
 /*
@@ -532,7 +600,15 @@ static int codec_pa_play_open(void)
 
 	int i = 0;
 	int reg_val = 0;
-	codec_wr_prcm_control(HP_VOLC, 0x3f, HPVOL, 0);
+	if(codec_speakerout_en != 1) {
+		codec_wr_prcm_control(HP_VOLC, 0x3f, HPVOL, 0);
+	}
+	if (drc_used){
+		codec_wr_control(0x4d4, 0xffff, 0, 0x80);
+		codec_wr_control(0x210, 0x1, 6, 0x1);
+		codec_wr_control(0x214, 0x1, 6, 0x1);
+		codec_wr_control(0x480, 0x7, 0, 0x7);
+	}
 	/*enable AIF1 DAC Timeslot0  channel enable*/
 	codec_wr_control(SUNXI_AIF1_DACDAT_CTRL, 0x1, AIF1_DA0L_ENA, 0x1);
 	codec_wr_control(SUNXI_AIF1_DACDAT_CTRL, 0x1, AIF1_DA0R_ENA, 0x1);
@@ -546,6 +622,8 @@ static int codec_pa_play_open(void)
 	codec_wr_control(SUNXI_DAC_MXR_SRC, 0x1, DACL_MXR_SRC_AIF1DA0L, 0x1);
 	codec_wr_control(SUNXI_DAC_MXR_SRC, 0x1, DACR_MXR_SRC_AIF1DA0R, 0x1);
 
+	codec_wr_control(SUNXI_DAC_VOL_CTRL, 0xffff, 0, dac_vol_ctrl_spk);
+
 	/*enable dac digital*/
 	codec_wr_control(SUNXI_DAC_DIG_CTRL, 0x1, ENDA, 0x1);
 	codec_wr_prcm_control(HP_VOLC, 0x1, PA_CLK_GC, 0x0);
@@ -555,8 +633,10 @@ static int codec_pa_play_open(void)
 	codec_wr_prcm_control(DAC_PA_SRC, 0x1, DACAREN, 0x1);
 
 	if (!pa_double_used) {/*single speaker*/
+		//codec_wr_prcm_control(LOMIXSC, 0x1, LMIXMUTEDACL, 0x1);
+		//codec_wr_prcm_control(ROMIXSC, 0x1, LMIXMUTEDACR, 0x1);
 		codec_wr_prcm_control(ROMIXSC, 0x7f, RMIXMUTE, 0x0);
-		codec_wr_prcm_control(LOMIXSC, 0x7f, LMIXMUTE, 0x3);
+        codec_wr_prcm_control(LOMIXSC, 0x7f, LMIXMUTE, 0x3);
 
 		/*enable output mixer */
 		codec_wr_prcm_control(DAC_PA_SRC, 0x1, LMIXEN, 0x1);
@@ -603,7 +683,7 @@ static int codec_pa_play_open(void)
 	}
 
 	if(play_running == 1) {/*used for change the path*/
-		printk("%s,line:%d\n",__func__,__LINE__);
+		pr_debug("%s,line:%d\n",__func__,__LINE__);
 		reg_val = read_prcm_wvalue(HP_VOLC);
 		reg_val &= 0x3f;
 		if (!reg_val) {
@@ -640,8 +720,15 @@ static int codec_headphone_play_open(void)
 	/*mute headphone pa*/
 	codec_wr_prcm_control(DAC_PA_SRC, 0x1, LHPPAMUTE, 0x0);
 	codec_wr_prcm_control(DAC_PA_SRC, 0x1, RHPPAMUTE, 0x0);
-	codec_wr_prcm_control(HP_VOLC, 0x3f, HPVOL, 0);
-
+	if(codec_headphoneout_en != 1) {
+		codec_wr_prcm_control(HP_VOLC, 0x3f, HPVOL, 0);
+	}
+	if (drc_used){
+		codec_wr_control(0x4d4, 0xffff, 0, 0x0);
+		codec_wr_control(0x210, 0x1, 6, 0x0);
+		codec_wr_control(0x214, 0x1, 6, 0x0);
+		codec_wr_control(0x480, 0x7, 0, 0x0);
+	}
 	/*enable AIF1 DAC Timeslot0  channel enable*/
 	codec_wr_control(SUNXI_AIF1_DACDAT_CTRL, 0x1, AIF1_DA0L_ENA, 0x1);
 	codec_wr_control(SUNXI_AIF1_DACDAT_CTRL, 0x1, AIF1_DA0R_ENA, 0x1);
@@ -655,6 +742,7 @@ static int codec_headphone_play_open(void)
 	codec_wr_control(SUNXI_DAC_MXR_SRC, 0x1, DACL_MXR_SRC_AIF1DA0L, 0x1);
 	codec_wr_control(SUNXI_DAC_MXR_SRC, 0x1, DACR_MXR_SRC_AIF1DA0R, 0x1);
 
+	codec_wr_control(SUNXI_DAC_VOL_CTRL, 0xffff, 0, dac_vol_ctrl_headphone);
 	/*enable dac digital*/
 	codec_wr_control(SUNXI_DAC_DIG_CTRL, 0x1, ENDA, 0x1);
 	/*enable dac_l and dac_r*/
@@ -662,6 +750,8 @@ static int codec_headphone_play_open(void)
 	codec_wr_prcm_control(DAC_PA_SRC, 0x1, DACAREN, 0x1);
 
 	if(codec_headphoneout_en == 1) {
+		//codec_wr_prcm_control(ROMIXSC, 0x1, RMIXMUTEDACR, 0x1);
+		//codec_wr_prcm_control(LOMIXSC, 0x1, LMIXMUTEDACL, 0x1);
 		codec_wr_prcm_control(ROMIXSC, 0x7f, RMIXMUTE, 0x2);
 		codec_wr_prcm_control(LOMIXSC, 0x7f, LMIXMUTE, 0x2);
 
@@ -684,7 +774,7 @@ static int codec_headphone_play_open(void)
 	codec_wr_prcm_control(PAEN_HP_CTRL, 0x1, RTLNMUTE, 0x0);
 
 	if(play_running == 1) {/*used for change the path*/
-		printk("%s,line:%d\n",__func__,__LINE__);
+		pr_debug("%s,line:%d\n",__func__,__LINE__);
 		codec_wr_prcm_control(DAC_PA_SRC, 0x1, LHPPAMUTE, 0x1);
 		codec_wr_prcm_control(DAC_PA_SRC, 0x1, RHPPAMUTE, 0x1);
 		reg_val = read_prcm_wvalue(HP_VOLC);
@@ -771,7 +861,7 @@ static int codec_pa_and_headset_play_open(void)
 	codec_wr_control(SUNXI_AIF1_DACDAT_CTRL, 0x3, AIF1_DA0L_SRC, 0);
 	/*confige AIF1 DAC Timeslot0 right channel data source*/
 	codec_wr_control(SUNXI_AIF1_DACDAT_CTRL, 0x3, AIF1_DA0R_SRC, 0);
-
+	codec_wr_control(SUNXI_DAC_VOL_CTRL, 0xffff, 0, dac_vol_ctrl_spk);
 	/*confige dac digital mixer source */
 	codec_wr_control(SUNXI_DAC_MXR_SRC, 0xf, DACL_MXR_SRC, 0x8);
 	codec_wr_control(SUNXI_DAC_MXR_SRC, 0xf, DACR_MXR_SRC, 0x8);
@@ -882,6 +972,14 @@ static int codec_system_bt_buttonvoice_open(void)
 */
 static int codec_capture_open(void)
 {
+	if (agc_used) {
+		codec_wr_control(0x210, 0x1, 7, 0x1);
+		codec_wr_control(0x214, 0x1, 7, 0x1);
+		codec_wr_control(0x408, 0xf, 0, 0x6);
+		codec_wr_control(0x408, 0x7, 12, 0x7);
+		codec_wr_control(0x40c, 0xf, 0, 0x6);
+		codec_wr_control(0x40c, 0x7, 12, 0x7);
+	}
 	/*enable AIF1 adc Timeslot0  channel enable*/
 	codec_wr_control(SUNXI_AIF1_ADCDAT_CTRL, 0x1, AIF1_AD0L_ENA, 0x1);
 	codec_wr_control(SUNXI_AIF1_ADCDAT_CTRL, 0x1, AIF1_AD0R_ENA, 0x1);
@@ -954,7 +1052,7 @@ static int codec_set_spk_headset_earpiece(struct snd_kcontrol *kcontrol,
 	} else if (codec_speaker_headset_earpiece_en == 3) {
 		ret = codec_earpiece_play_open();
 	}else if(codec_speaker_headset_earpiece_en == 4) {
-		printk("%s,line:%d\n",__func__,__LINE__);
+		pr_debug("%s,line:%d\n",__func__,__LINE__);
 		ret = codec_system_btout_open();
 	}else if(codec_speaker_headset_earpiece_en == 5){
 		ret = codec_system_bt_buttonvoice_open();
@@ -975,10 +1073,15 @@ static int sndpcm_unmute(struct snd_soc_dai *dai, int mute)
 	if (current_running == 0) {/*play stream*/
 		int i = 0;
 		int reg_val = 0;
+		if(codec_analog_phonein_en){
+			msleep(10);
+			codec_wr_prcm_control(ROMIXSC, 0x1, RMIXMUTEDACL, 0x1);
+			codec_wr_prcm_control(LOMIXSC, 0x1, LMIXMUTEDACL, 0x1);
+		}
 		if(mute == 0) {
 			switch (codec_speaker_headset_earpiece_en) {
 			case 0:
-				printk("%s,line:%d\n",__func__,__LINE__);
+				pr_debug("%s,line:%d\n",__func__,__LINE__);
 				codec_wr_prcm_control(DAC_PA_SRC, 0x1, LHPPAMUTE, 0x1);
 				codec_wr_prcm_control(DAC_PA_SRC, 0x1, RHPPAMUTE, 0x1);
 				reg_val = read_prcm_wvalue(HP_VOLC);
@@ -995,7 +1098,7 @@ static int sndpcm_unmute(struct snd_soc_dai *dai, int mute)
 				}
 				break;
 			case 1:
-				printk("%s,line:%d\n",__func__,__LINE__);
+				pr_debug("%s,line:%d\n",__func__,__LINE__);
 				reg_val = read_prcm_wvalue(HP_VOLC);
 				reg_val &= 0x3f;
 				if (!reg_val) {
@@ -1013,7 +1116,7 @@ static int sndpcm_unmute(struct snd_soc_dai *dai, int mute)
 				msleep(62);
 				break;
 			case 2:
-				printk("%s,line:%d\n",__func__,__LINE__);
+				pr_debug("%s,line:%d\n",__func__,__LINE__);
 				if (!pa_double_used) {/*single speaker*/
 					codec_wr_prcm_control(DAC_PA_SRC, 0x1, LHPPAMUTE, 0x1);
 					codec_wr_prcm_control(DAC_PA_SRC, 0x1, RHPPAMUTE, 0x0);
@@ -1042,7 +1145,7 @@ static int sndpcm_unmute(struct snd_soc_dai *dai, int mute)
 				msleep(62);
 				break;
 			case 3:
-				printk("%s,line:%d\n",__func__,__LINE__);
+				pr_debug("%s,line:%d\n",__func__,__LINE__);
 				codec_wr_prcm_control(DAC_PA_SRC, 0x1, LHPPAMUTE, 0x1);
 				reg_val = read_prcm_wvalue(HP_VOLC);
 				reg_val &= 0x3f;
@@ -1183,7 +1286,7 @@ static void sndpcm_shutdown(struct snd_pcm_substream *substream,
 
 			/*diable clk parts*/
 			if (1 == cap_running ){
-				printk("[audio stream] capture is running!!!!\n");
+				pr_debug("[audio stream] capture is running!!!!\n");
 			}else{
 				/*disable aif1clk*/
 				codec_wr_control(SUNXI_SYSCLK_CTL ,  0x1, AIF1CLK_ENA, 0);
@@ -1205,11 +1308,18 @@ static void sndpcm_shutdown(struct snd_pcm_substream *substream,
 				/*reset module DAC*/
 				codec_wr_control(SUNXI_MOD_RST_CTL ,  0x1, DAC_DIGITAL_MOD_RST_CTL, 0x0);
 
-		}
 		/* I2S0 TX DISABLE */
 		codec_wr_control(SUNXI_DA_CTL ,  0x1, TXEN,0);
 		/*SDO ON*/
-		codec_wr_control(SUNXI_DA_CTL ,  0x1, DA_CTL, 0);
+		codec_wr_control(SUNXI_DA_CTL ,  0x1, SDO_EN, 0);
+
+		}
+		if (drc_used){
+			codec_wr_control(0x4d4, 0xffff, 0, 0x0);
+			codec_wr_control(0x210, 0x1, 6, 0x0);
+			codec_wr_control(0x214, 0x1, 6, 0x0);
+			codec_wr_control(0x480, 0x7, 0, 0x0);
+		}
 		play_running = 0;
 	}else{
 
@@ -1256,7 +1366,7 @@ static void sndpcm_shutdown(struct snd_pcm_substream *substream,
 				codec_wr_control(SUNXI_ADC_DIG_CTRL, 0x1, ENAD, 0);
 				/*diable clk parts*/
 				if (play_running == 1 ) {
-					printk("[audio stream]playback is running!!!!\n");
+					pr_debug("[audio stream]playback is running!!!!\n");
 				} else {
 					/*disable aif1clk*/
 					codec_wr_control(SUNXI_SYSCLK_CTL ,  0x1, AIF1CLK_ENA, 0);
@@ -1280,6 +1390,14 @@ static void sndpcm_shutdown(struct snd_pcm_substream *substream,
 			}
 		/* I2S0 RX DISABLE */
 		codec_wr_control(SUNXI_DA_CTL ,  0x1, RXEN, 0);
+		if (agc_used) {
+			codec_wr_control(0x210, 0x1, 7, 0x0);
+			codec_wr_control(0x214, 0x1, 7, 0x0);
+			codec_wr_control(0x408, 0xf, 0, 0x0);
+			codec_wr_control(0x408, 0x7, 12, 0x0);
+			codec_wr_control(0x40c, 0xf, 0, 0x0);
+			codec_wr_control(0x40c, 0x7, 12, 0x0);
+		}
 		cap_running = 0;
 	}
 
@@ -1461,7 +1579,7 @@ static int codec_voice_linein_capture_open(void)
 
 	/*aif1 adc left channel enable */
 	codec_wr_control(SUNXI_AIF1_ADCDAT_CTRL ,  0x1, AIF1_AD0L_ENA, 1);
-	printk("%s,line:%d,SUNXI_AIF3_DACDAT_CTRL:%x\n",__func__,__LINE__,codec_rdreg(SUNXI_AIF3_DACDAT_CTRL));
+	pr_debug("%s,line:%d,SUNXI_AIF3_DACDAT_CTRL:%x\n",__func__,__LINE__,codec_rdreg(SUNXI_AIF3_DACDAT_CTRL));
 
 	return 0;
 }
@@ -1522,36 +1640,39 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 			codec_wr_control(SUNXI_SYS_SR_CTRL ,  0xf, AIF2_FS, 0xa);
 			break;
 		default:
-			printk("AUDIO SAMPLE IS WRONG:There is no suitable sampling rate!!!\n");
+			pr_err("AUDIO SAMPLE IS WRONG:There is no suitable sampling rate!!!\n");
 			break;
 		}
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 		if (runtime->status->state == SNDRV_PCM_STATE_XRUN) {
-			printk("%s,-------playback: SNDRV_PCM_STATE_XRUN---------line:%d\n",__func__,__LINE__);
-			if (codec_speaker_headset_earpiece_en == 2) {
-				play_ret = codec_pa_and_headset_play_open();
-			} else if (codec_speaker_headset_earpiece_en == 1) {
-				play_ret = codec_pa_play_open();
-			} else if (codec_speaker_headset_earpiece_en == 3) {
-				play_ret = codec_earpiece_play_open();
-			} else if (codec_speaker_headset_earpiece_en == 0){
-				play_ret = codec_headphone_play_open();
-			}else if(codec_speaker_headset_earpiece_en == 4){
-				play_ret = codec_system_btout_open();
+			if (!(codec_analog_mainmic_en || codec_analog_headsetmic_en ||codec_digital_headsetmic_en ||
+					codec_digital_mainmic_en ||codec_analog_btmic_en || codec_digital_btmic_en)){
+				pr_err("%s,-------playback: SNDRV_PCM_STATE_XRUN---------line:%d\n",__func__,__LINE__);
+				if (codec_speaker_headset_earpiece_en == 2) {
+					play_ret = codec_pa_and_headset_play_open();
+				} else if (codec_speaker_headset_earpiece_en == 1) {
+					play_ret = codec_pa_play_open();
+				} else if (codec_speaker_headset_earpiece_en == 3) {
+					play_ret = codec_earpiece_play_open();
+				} else if (codec_speaker_headset_earpiece_en == 0){
+					play_ret = codec_headphone_play_open();
+				}else if(codec_speaker_headset_earpiece_en == 4){
+					play_ret = codec_system_btout_open();
+				}
+				play_running = 1;
 			}
-			play_running = 1;
 		}
 		//play_running = 1;
 		return play_ret;
 	} else {
 		if (runtime->status->state == SNDRV_PCM_STATE_XRUN) {
-			printk("%s,-------capture: SNDRV_PCM_STATE_XRUN---------line:%d\n",__func__,__LINE__);
+			pr_err("%s,-------capture: SNDRV_PCM_STATE_XRUN---------line:%d\n",__func__,__LINE__);
 		}
 
 		if (codec_voice_record_en && (codec_digital_mainmic_en ||codec_digital_headsetmic_en)) {
 			capture_ret = codec_digital_voice_mic_bb_capture_open();
 		} else if (codec_voice_record_en && codec_digital_btmic_en) {
-			printk("%s,line:%d\n",__func__,__LINE__);
+			pr_debug("%s,line:%d\n",__func__,__LINE__);
 			capture_ret = codec_digital_voice_bb_bt_capture_open();
 		} else if (codec_voice_record_en && codec_analog_btmic_en) {
 			capture_ret = codec_analog_voice_bb_bt_capture_open();
@@ -1560,7 +1681,7 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 		} else if (codec_lineinin_en && codec_lineincap_en) {
 			capture_ret = codec_voice_linein_capture_open();
 		} else if (codec_voice_record_en && codec_system_bt_capture_en) {
-			printk("%s,line:%d\n",__func__,__LINE__);
+			pr_debug("%s,line:%d\n",__func__,__LINE__);
 			capture_ret = codec_system_bt_capture_open();
 		} else if (!codec_voice_record_en) {
 			capture_ret = codec_capture_open();
@@ -1572,10 +1693,10 @@ static int sndpcm_perpare(struct snd_pcm_substream *substream,
 
 int sunxi_i2s_set_rate(int freq) {
 	if (clk_set_rate(codec_pll2clk, freq)) {
-		printk("set codec_pll2clk rate fail\n");
+		pr_err("set codec_pll2clk rate fail\n");
 	}
 	if (clk_set_rate(codec_moduleclk, freq)) {
-		printk("set codec_moduleclk rate fail\n");
+		pr_err("set codec_moduleclk rate fail\n");
 	}
 	return 0;
 }
@@ -1623,6 +1744,19 @@ static int codec_analog_set_phonein(struct snd_kcontrol *kcontrol,
 {
 	codec_analog_phonein_en = ucontrol->value.integer.value[0];
 	if (codec_analog_phonein_en) {
+		pr_debug("%s,line:%d\n",__func__,__LINE__);
+				/*enable AIF1 DAC Timeslot0  channel enable*/
+		codec_wr_control(SUNXI_AIF1_DACDAT_CTRL, 0x1, AIF1_DA0L_ENA, 0x1);
+		/*confige AIF1 DAC Timeslot0 left channel data source*/
+		codec_wr_control(SUNXI_AIF1_DACDAT_CTRL, 0x3, AIF1_DA0L_SRC, 0);
+		/*confige dac digital mixer source */
+		codec_wr_control(SUNXI_DAC_MXR_SRC, 0x1, DACL_MXR_SRC_AIF1DA0L, 0x1);
+			/*enable dac digital*/
+		codec_wr_control(SUNXI_DAC_DIG_CTRL, 0x1, ENDA, 0x1);
+		/*enable dac_l and dac_r*/
+		codec_wr_prcm_control(DAC_PA_SRC, 0x1, DACALEN, 0x1);
+		//codec_wr_prcm_control(ROMIXSC, 0x1, RMIXMUTEDACL, 0x1);
+		//codec_wr_prcm_control(LOMIXSC, 0x1, LMIXMUTEDACL, 0x1);
 		/*select PHONEP-PHONEN*/
 		codec_wr_prcm_control(LOMIXSC, 0x1, LMIXMUTEPHONEPN, 0x1);
 		codec_wr_prcm_control(ROMIXSC, 0x1, RMIXMUTEPHONEPN, 0x1);
@@ -1698,8 +1832,14 @@ static int codec_set_earpieceout(struct snd_kcontrol *kcontrol,
 		codec_wr_prcm_control(DAC_PA_SRC, 0x1, RHPPAMUTE, 0x0);
 		codec_wr_prcm_control(DAC_PA_SRC, 0x1, LHPIS, 0x0);
 		codec_wr_prcm_control(DAC_PA_SRC, 0x1, RHPIS, 0x0);
-
-		codec_wr_prcm_control(PAEN_HP_CTRL, 0x3, HPCOM_FC, 0x0);
+		if (headphone_direct_used) {
+			codec_wr_prcm_control(PAEN_HP_CTRL, 0x3, HPCOM_FC, 0x3);
+			codec_wr_prcm_control(PAEN_HP_CTRL, 0x1, COMPTEN, 0x1);
+		} else {
+			codec_wr_prcm_control(PAEN_HP_CTRL, 0x3, HPCOM_FC, 0x0);
+			codec_wr_prcm_control(PAEN_HP_CTRL, 0x1, COMPTEN, 0x0);
+		}
+		//codec_wr_prcm_control(PAEN_HP_CTRL, 0x3, HPCOM_FC, 0x0);
 		codec_wr_prcm_control(ADDA_APT2, 0x1, ZERO_CROSS_EN, 0x0);
 	}
 
@@ -1723,12 +1863,13 @@ static int codec_set_speakerout(struct snd_kcontrol *kcontrol,
 {
 	codec_speakerout_en = ucontrol->value.integer.value[0];
 	if (codec_speakerout_en) {
+		//gpio_set_value(item.gpio.gpio, 0);
 		/*close headphone and earpiece out routeway*/
-		codec_wr_prcm_control(DAC_PA_SRC, 0x1, LHPPAMUTE, 0x0);
-		codec_wr_prcm_control(DAC_PA_SRC, 0x1, RHPPAMUTE, 0x0);
+		//codec_wr_prcm_control(DAC_PA_SRC, 0x1, LHPPAMUTE, 0x0);
+		//codec_wr_prcm_control(DAC_PA_SRC, 0x1, RHPPAMUTE, 0x0);
 		//codec_wr_prcm_control(PAEN_HP_CTRL, 0x3, HPCOM_FC, 0x0);
 		codec_wr_prcm_control(ADDA_APT2, 0x1, ZERO_CROSS_EN, 0x0);
-		codec_wr_prcm_control(HP_VOLC, 0x3f, HPVOL, 0x17);
+		codec_wr_prcm_control(HP_VOLC, 0x3f, HPVOL, pa_vol);
 
 		codec_wr_prcm_control(DAC_PA_SRC, 0x1, LHPIS, 0x1);
 		codec_wr_prcm_control(DAC_PA_SRC, 0x1, RHPIS, 0x0);
@@ -1738,17 +1879,25 @@ static int codec_set_speakerout(struct snd_kcontrol *kcontrol,
 		codec_wr_prcm_control(DAC_PA_SRC, 0x1, LHPPAMUTE, 0x1);
 		codec_wr_prcm_control(DAC_PA_SRC, 0x1, RHPPAMUTE, 0x0);
 
+
+		if (headphone_direct_used) {
+			codec_wr_prcm_control(PAEN_HP_CTRL, 0x3, HPCOM_FC, 0x3);
+			codec_wr_prcm_control(PAEN_HP_CTRL, 0x1, COMPTEN, 0x1);
+		} else {
+			codec_wr_prcm_control(PAEN_HP_CTRL, 0x3, HPCOM_FC, 0x0);
+			codec_wr_prcm_control(PAEN_HP_CTRL, 0x1, COMPTEN, 0x0);
+		}
 		usleep_range(2000, 3000);
 		gpio_set_value(item.gpio.gpio, 1);
 		msleep(62);
 		codec_headphoneout_en = 0;
 		codec_earpieceout_en = 0;
 	} else {
-
+		gpio_set_value(item.gpio.gpio, 0);
 		codec_wr_prcm_control(DAC_PA_SRC, 0x1, LHPIS, 0x0);
 		codec_wr_prcm_control(DAC_PA_SRC, 0x1, RHPIS, 0x0);
 		codec_wr_prcm_control(DAC_PA_SRC, 0x1, LHPPAMUTE, 0);
-		gpio_set_value(item.gpio.gpio, 0);
+
 
 	}
 	return 0;
@@ -1924,6 +2073,7 @@ static int codec_set_endcall(struct snd_kcontrol *kcontrol,
 	int cur_vol =0;
 	int i =0;
 	gpio_set_value(item.gpio.gpio, 0);
+	msleep(50);
 	cur_vol = read_prcm_wvalue(HP_VOLC);
 	cur_vol &= 0x3f;
 
@@ -2258,14 +2408,14 @@ static int codec_set_digital_bb_clk_format(struct snd_kcontrol *kcontrol,
 		/*enable src clk*/
 		/*set pll2 :24576k*/
 		if (clk_set_rate(codec_pll2clk, 24576000)) {
-			printk("set codec_pll2clk rate fail\n");
+			pr_err("set codec_pll2clk rate fail\n");
 		}
 		/*enable pll2*4 for src*/
 		if ((!codec_srcclk)||(IS_ERR(codec_srcclk))) {
-			printk("try to get codec_srcclk failed!\n");
+			pr_err("try to get codec_srcclk failed!\n");
 		}
 		if (clk_prepare_enable(codec_srcclk)) {
-			printk("err:open codec_srcclk failed; \n");
+			pr_err("err:open codec_srcclk failed; \n");
 		}
 
 		/*enable aif2,system clk from aif2*/
@@ -2332,7 +2482,7 @@ static int codec_set_digital_bb_clk_format(struct snd_kcontrol *kcontrol,
 		codec_wr_control(SUNXI_AIF2_CLK_CTRL ,  0xffff, 0, 0x0);
 
 		if ((NULL == codec_srcclk)||(IS_ERR(codec_srcclk))) {
-			printk("codec_srcclk handle is invaled, just return\n");
+			pr_err("codec_srcclk handle is invaled, just return\n");
 		} else {
 			clk_disable_unprepare(codec_srcclk);
 		}
@@ -2355,17 +2505,17 @@ static int codec_set_bt_clk_format(struct snd_kcontrol *kcontrol,
 	codec_bt_clk_format	= ucontrol->value.integer.value[0];
 
 	if (codec_bt_clk_format) {
-		printk("%s,line:%d\n",__func__,__LINE__);
+		pr_debug("%s,line:%d\n",__func__,__LINE__);
 		/*enable src clk*/
 		if (clk_set_rate(codec_pll2clk, 24576000)) {
-			printk("err:set codec_pll2clk rate fail\n");
+			pr_err("err:set codec_pll2clk rate fail\n");
 		}
 
 		if ((!codec_srcclk)||(IS_ERR(codec_srcclk))) {
-			printk("err:try to get codec_srcclk failed!\n");
+			pr_err("err:try to get codec_srcclk failed!\n");
 		}
 		if (clk_prepare_enable(codec_srcclk)) {
-			printk("err:open codec_srcclk failed; \n");
+			pr_err("err:open codec_srcclk failed; \n");
 		}
 
 		/*enable aif2,system clk from aif2*/
@@ -2453,7 +2603,7 @@ static int codec_set_bt_clk_format(struct snd_kcontrol *kcontrol,
 		codec_wr_control(SUNXI_SYS_SR_CTRL ,  0x1, SRC1_ENA, 0x0);/*disable src1*/
 		codec_wr_control(SUNXI_SYS_SR_CTRL ,  0x1, SRC2_ENA, 0x0);/*disable src2*/
 		if ((NULL == codec_srcclk)||(IS_ERR(codec_srcclk))) {
-			printk("codec_srcclk handle is invaled, just return\n");
+			pr_err("codec_srcclk handle is invaled, just return\n");
 		} else {
 			clk_disable_unprepare(codec_srcclk);
 		}
@@ -2683,7 +2833,44 @@ static int codec_get_system_bt_capture_flag(struct snd_kcontrol *kcontrol,
 	  ucontrol->value.integer.value[0]=codec_system_bt_capture_en;
 	return 0;
 }
+static int codec_set_analog_bb_capture_mic(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	 codec_analog_bb_capture_mic =  ucontrol->value.integer.value[0];
+	 if (codec_analog_bb_capture_mic) {
+		codec_analog_voice_capture_open();
+	 } else {
+		/*enable aif1 adc left channel */
+		codec_wr_control(SUNXI_AIF1_ADCDAT_CTRL ,  0x1, AIF1_AD0L_ENA,0);
+		/*select mic source*/
+		codec_wr_prcm_control(LADCMIXSC, 0x1, LADCMIXMUTEMIC1BOOST, 0x0);
+		/*select mic2 source*/
+		codec_wr_prcm_control(LADCMIXSC, 0x1, LADCMIXMUTEMIC2BOOST, 0x0);
+		/*select phonein source*/
+		codec_wr_prcm_control(LADCMIXSC, 0x1, LADCMIXMUTEPHONEPN, 0x0);
+		/*enable adc analog*/
+		codec_wr_prcm_control(ADC_AP_EN, 0x1, ADCLEN, 0x0);
 
+		/*enable dac digital*/
+		codec_wr_control(SUNXI_ADC_DIG_CTRL ,  0x1, ENAD, 0);
+		codec_wr_control(SUNXI_ADC_DIG_CTRL ,  0x1, ENDM, 0);
+
+		/*select aif1 adc left channel mixer source */
+		codec_wr_control(SUNXI_AIF1_MXR_SRC ,  0x1, AIF1_AD0L_MXL_SRC_ADCL,0);
+
+		/*select aif1 adc left channel source */
+		codec_wr_control(SUNXI_AIF1_ADCDAT_CTRL ,  0x3, AIF1_AD0L_SRC,0);
+
+	 }
+	return 0;
+}
+
+static int codec_get_analog_bb_capture_mic(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	  ucontrol->value.integer.value[0]=codec_analog_bb_capture_mic;
+	return 0;
+}
 static const struct snd_kcontrol_new sunxi_codec_controls[] = {
 	/*volume ctl: headset ,speaker,earpiece*/
 	//CODEC_SINGLE("Master Playback Volume", HP_VOLC, 0, 0x3f, 0),
@@ -2742,7 +2929,7 @@ static const struct snd_kcontrol_new sunxi_codec_controls[] = {
 	SOC_SINGLE_BOOL_EXT("Audio bt button voice",	0, codec_get_bt_button_voice, codec_set_bt_button_voice),/*bt_bb_out*/
 	SOC_SINGLE_BOOL_EXT("Audio digital bb bt clk format", 0, codec_get_digital_bb_bt_clk_format, codec_set_digital_bb_bt_clk_format),/*set bt phonein for dbb*/
 	SOC_SINGLE_BOOL_EXT("Audio system bt capture flag", 0, codec_get_system_bt_capture_flag, codec_set_system_bt_capture_flag),/*set bt phonein for dbb*/
-
+	SOC_SINGLE_BOOL_EXT("Audio analog bb capture mic", 0, codec_get_analog_bb_capture_mic, codec_set_analog_bb_capture_mic),/*set bt phonein for dbb*/
 #if 1
 	CODEC_SINGLE_DIGITAL("aif3 loopback", SUNXI_AIF3_DACDAT_CTRL, AIF3_LOOP_ENA, 0x1, 0),/*test :1,default:0*/
 	CODEC_SINGLE_DIGITAL("aif2 loopback", SUNXI_AIF2_DACDAT_CTRL, AIF2_LOOP_EN, 0x1, 0),/*test:1,default:0*/
@@ -2815,10 +3002,10 @@ static int sndpcm_soc_probe(struct snd_soc_codec *codec)
 
 static int sndpcm_suspend(struct snd_soc_codec *codec)
 {
-	printk("[audio codec]:suspend start\n");
+	pr_debug("[audio codec]:suspend start\n");
 	/* check if called in talking standby */
 	if (check_scene_locked(SCENE_TALKING_STANDBY) == 0) {
-		printk("In talking standby, audio codec do not suspend!!\n");
+		pr_err("In talking standby, audio codec do not suspend!!\n");
 		return 0;
 	}
 	gpio_set_value(item.gpio.gpio, 0);
@@ -2852,22 +3039,22 @@ static int sndpcm_suspend(struct snd_soc_codec *codec)
 	codec_wr_prcm_control(ADDA_APT2, 0x1, ZERO_CROSS_EN, 0x0);
 	//codec_wr_prcm_control(LINEOUT_VOLC, 0x1f, LINEOUTVOL, 0x0);
 	if ((NULL == codec_moduleclk)||(IS_ERR(codec_moduleclk))) {
-		printk("codec_moduleclk handle is invaled, just return\n");
+		pr_err("codec_moduleclk handle is invaled, just return\n");
 	} else {
 		clk_disable_unprepare(codec_moduleclk);
 	}
-	printk("[audio codec]:suspend end\n");
+	pr_debug("[audio codec]:suspend end\n");
 	return 0;
 }
 
 static int sndpcm_resume(struct snd_soc_codec *codec)
 {
-	printk("[audio codec]:resume start\n");
+	pr_debug("[audio codec]:resume start\n");
 	if ((!codec_moduleclk)||(IS_ERR(codec_moduleclk))) {
-		printk("try to get codec_moduleclk failed!\n");
+		pr_err("try to get codec_moduleclk failed!\n");
 	}
 	if (clk_prepare_enable(codec_moduleclk)) {
-		printk("open codec_moduleclk failed; \n");
+		pr_err("open codec_moduleclk failed; \n");
 	}
 
 	if (headphone_direct_used) {
@@ -2877,7 +3064,46 @@ static int sndpcm_resume(struct snd_soc_codec *codec)
 		codec_wr_prcm_control(PAEN_HP_CTRL, 0x3, HPCOM_FC, 0x0);
 		codec_wr_prcm_control(PAEN_HP_CTRL, 0x1, COMPTEN, 0x0);
 	}
+	if (drc_used){
+		codec_wr_control(0x48c, 0x7ff, 0, 0x1);
+//		codec_wr_control(0x48c, 0x7ff, 0, 0x0);
+		codec_wr_control(0x490, 0xffff, 0, 0x2baf);
+		//codec_wr_control(0x490, 0xffff, 0, 0x1fb6);
+		codec_wr_control(0x494, 0x7ff, 0, 0x1);
+		codec_wr_control(0x498, 0xffff, 0, 0x2baf);
+		codec_wr_control(0x49c, 0x7ff, 0, 0x0);
+		codec_wr_control(0x4a0, 0xffff, 0, 0x44a);
+		codec_wr_control(0x4a4, 0x7ff, 0, 0x0);
+		codec_wr_control(0x4a8, 0xffff, 0, 0x1e06);
+		//codec_wr_control(0x4ac, 0x7ff, 0, 0x27d);
+		codec_wr_control(0x4ac, 0x7ff, 0, 0x352);
+		//codec_wr_control(0x4b0, 0xffff, 0, 0xcf68);
+		codec_wr_control(0x4b0, 0xffff, 0, 0x6910);
+		codec_wr_control(0x4b4, 0x7ff, 0, 0x77a);
+		codec_wr_control(0x4b8, 0xffff, 0, 0xaaaa);
+		//codec_wr_control(0x4bc, 0x7ff, 0, 0x1fe);
+		codec_wr_control(0x4bc, 0x7ff, 0, 0x2de);
+		codec_wr_control(0x4c0, 0xffff, 0, 0xc982);
+		codec_wr_control(0x258, 0xffff, 0, 0x9f9f);
+	}
+	if (agc_used){
+		codec_wr_control(0x4d0, 0x3, 6, 0x3);
 
+		codec_wr_control(0x410, 0x3f, 8, 0x31);
+		codec_wr_control(0x410, 0xff, 0, 0x28);
+
+		codec_wr_control(0x414, 0x3f, 8, 0x31);
+		codec_wr_control(0x414, 0xff, 0, 0x28);
+
+		codec_wr_control(0x428, 0x7fff, 0, 0x24);
+		codec_wr_control(0x42c, 0x7fff, 0, 0x2);
+		codec_wr_control(0x430, 0x7fff, 0, 0x24);
+		codec_wr_control(0x434, 0x7fff, 0, 0x2);
+		codec_wr_control(0x438, 0x1f, 8, 0xf);
+		codec_wr_control(0x438, 0x1f, 0, 0xf);
+		codec_wr_control(0x44c, 0x7ff, 0, 0xfc);
+		codec_wr_control(0x450, 0xffff, 0, 0xabb3);
+	}
 	/*process for normal standby*/
 	if (NORMAL_STANDBY == standby_type) {
 	/*process for super standby*/
@@ -2886,7 +3112,7 @@ static int sndpcm_resume(struct snd_soc_codec *codec)
 		* DRQ Requeest will be de-asserted.
 		*/
 	}
-	printk("[audio codec]:resume end\n");
+	pr_debug("[audio codec]:resume end\n");
 	return 0;
 }
 
@@ -3013,29 +3239,29 @@ static int __init sndpcm_codec_probe(struct platform_device *pdev)
 	/* codec_pll2clk */
 	codec_pll2clk = clk_get(NULL, "pll2");
 	if ((!codec_pll2clk)||(IS_ERR(codec_pll2clk))) {
-		printk("[ audio ] err:try to get codec_pll2clk failed!\n");
+		pr_err("[ audio ] err:try to get codec_pll2clk failed!\n");
 	}
 	if (clk_prepare_enable(codec_pll2clk)) {
-		printk("[ audio ] err:enable codec_pll2clk failed; \n");
+		pr_err("[ audio ] err:enable codec_pll2clk failed; \n");
 	}
 	/* codec_moduleclk */
 	codec_moduleclk = clk_get(NULL, "adda");
 	if ((!codec_moduleclk)||(IS_ERR(codec_moduleclk))) {
-		printk("[ audio ] err:try to get codec_moduleclk failed!\n");
+		pr_err("[ audio ] err:try to get codec_moduleclk failed!\n");
 	}
 	if (clk_set_parent(codec_moduleclk, codec_pll2clk)) {
-		printk("[ audio ] err:try to set parent of codec_moduleclk to codec_pll2clk failed!\n");
+		pr_err("[ audio ] err:try to set parent of codec_moduleclk to codec_pll2clk failed!\n");
 	}
 	if (clk_set_rate(codec_moduleclk, 24576000)) {
-		printk("[ audio ] err:set codec_moduleclk clock freq 24576000 failed!\n");
+		pr_err("[ audio ] err:set codec_moduleclk clock freq 24576000 failed!\n");
 	}
 	if (clk_prepare_enable(codec_moduleclk)) {
-		printk("[ audio ] err:open codec_moduleclk failed; \n");
+		pr_err("[ audio ] err:open codec_moduleclk failed; \n");
 	}
 	/*clk pll_audiox4 for audiocodec src*/
 	codec_srcclk = clk_get(NULL, "pll_audiox4");
 	if ((!codec_srcclk)||(IS_ERR(codec_srcclk))) {
-		printk("[ audio ] err:try to get codec_srcclk failed!\n");
+		pr_err("[ audio ] err:try to get codec_srcclk failed!\n");
 	}
 
 	codec_init();
@@ -3043,7 +3269,7 @@ static int __init sndpcm_codec_probe(struct platform_device *pdev)
 	/* check if hp_vcc_ldo exist, if exist enable it */
 	type = script_get_item("audio0", "audio_hp_ldo", &item);
 	if (SCIRPT_ITEM_VALUE_TYPE_STR != type) {
-		printk("script_get_item return type err, consider it no ldo\n");
+		pr_err("script_get_item return type err, consider it no ldo\n");
 	} else {
 		if (!strcmp(item.str, "none"))
 			hp_ldo = NULL;
@@ -3051,7 +3277,7 @@ static int __init sndpcm_codec_probe(struct platform_device *pdev)
 			hp_ldo_str = item.str;
 			hp_ldo = regulator_get(NULL, hp_ldo_str);
 			if (!hp_ldo) {
-				printk("get audio hp-vcc(%s) failed\n", hp_ldo_str);
+				pr_err("get audio hp-vcc(%s) failed\n", hp_ldo_str);
 				return -EFAULT;
 			}
 			regulator_set_voltage(hp_ldo, 3000000, 3000000);
@@ -3061,7 +3287,7 @@ static int __init sndpcm_codec_probe(struct platform_device *pdev)
 	/*get the default pa ctl(close)*/
 	type = script_get_item("audio0", "audio_pa_ctrl", &item);
 	if (SCIRPT_ITEM_VALUE_TYPE_PIO != type) {
-		printk("[ audio ] err:try to get audio_pa_ctrl failed!\n");
+		pr_err("[ audio ] err:try to get audio_pa_ctrl failed!\n");
 		return -EFAULT;
 	}
 	/**
@@ -3071,12 +3297,12 @@ static int __init sndpcm_codec_probe(struct platform_device *pdev)
 	*/
 	type = script_get_item("audio0", "aif2_used", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-		printk("[audiocodec] aif2_used type err!\n");
+		pr_err("[audiocodec] aif2_used type err!\n");
 	} else {
 		aif2_used = val.val;
 	}
 	if(aif2_used){
-		printk("[audiocodec]: aif2 initialize PB04 PB05 PB06 PB07!!\n");
+		pr_debug("[audiocodec]: aif2 initialize PB04 PB05 PB06 PB07!!\n");
 		#if 0
 		config_set = SUNXI_PINCFG_PACK(SUNXI_PINCFG_TYPE_FUNC,3);
 		pin_config_set(SUNXI_PINCTRL,"PB07",config_set);
@@ -3094,20 +3320,20 @@ static int __init sndpcm_codec_probe(struct platform_device *pdev)
 		reg_val &= 0xffff;
 		reg_val |= (0x3333<<16);
 		writel(reg_val, (void __iomem *)0xf1c20824);
-		//printk("%s,line:%d,reg_val:%x\n",__func__,__LINE__,readl((void __iomem *)0xf1c20824));
+		//pr_debug("%s,line:%d,reg_val:%x\n",__func__,__LINE__,readl((void __iomem *)0xf1c20824));
 	} else {
-		printk("[audiocodec] : aif2 not used!\n");
+		pr_err("[audiocodec] : aif2 not used!\n");
 	}
 
 	type = script_get_item("audio0", "aif3_used", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-		printk("[audiocodec] aif3_used type err!\n");
+		pr_err("[audiocodec] aif3_used type err!\n");
 	} else {
 		aif3_used = val.val;
 	}
 
 	if(aif3_used){
-		printk("[audiocodec}: aif3 initialize PG10 PG11 PG12 PG13!!\n");
+		pr_err("[audiocodec}: aif3 initialize PG10 PG11 PG12 PG13!!\n");
 		#if 0
 		config_set = SUNXI_PINCFG_PACK(SUNXI_PINCFG_TYPE_FUNC,3);
 		pin_config_set(SUNXI_PINCTRL,"PG13",config_set);
@@ -3125,15 +3351,15 @@ static int __init sndpcm_codec_probe(struct platform_device *pdev)
 		reg_val &= 0xff;
 		reg_val |= (0x3333<<8);
 		writel(reg_val, (void __iomem *)0xf1c208dc);
-		//printk("%s,line:%d,reg_val:%x\n",__func__,__LINE__,readl((void __iomem *)0xf1c208dc));
+		//pr_err("%s,line:%d,reg_val:%x\n",__func__,__LINE__,readl((void __iomem *)0xf1c208dc));
 
 	} else {
-		printk("[audiocodec] : aif3 not used!\n");
+		pr_err("[audiocodec] : aif3 not used!\n");
 	}
 	/*request gpio*/
 	req_status = gpio_request(item.gpio.gpio, NULL);
 	if (0 != req_status) {
-		printk("request gpio failed!\n");
+		pr_err("request gpio failed!\n");
 	}
 	gpio_direction_output(item.gpio.gpio, 1);
 
@@ -3145,7 +3371,7 @@ static int __init sndpcm_codec_probe(struct platform_device *pdev)
 
 	err=sysfs_create_group(&pdev->dev.kobj, &audio_debug_attr_group);
 	if (err){
-		printk("failed to create attr group\n");
+		pr_err("failed to create attr group\n");
 	}
 	return 0;
 }
@@ -3153,13 +3379,13 @@ static int __init sndpcm_codec_probe(struct platform_device *pdev)
 static int __exit sndpcm_codec_remove(struct platform_device *pdev)
 {
 	if ((NULL == codec_moduleclk)||(IS_ERR(codec_moduleclk))) {
-		printk("codec_moduleclk handle is invaled, just return\n");
+		pr_err("codec_moduleclk handle is invaled, just return\n");
 		return -EINVAL;
 	} else {
 		clk_disable_unprepare(codec_moduleclk);
 	}
 	if ((NULL == codec_pll2clk)||(IS_ERR(codec_pll2clk))) {
-		printk("codec_pll2clk handle is invaled, just return\n");
+		pr_err("codec_pll2clk handle is invaled, just return\n");
 		return -EINVAL;
 	} else {
 		clk_put(codec_pll2clk);
@@ -3180,7 +3406,7 @@ static int __exit sndpcm_codec_remove(struct platform_device *pdev)
 static void sunxi_codec_shutdown(struct platform_device *devptr)
 {
 	item.gpio.data = 0;
-	printk("%s,line:%d\n",__func__,__LINE__);
+	pr_debug("%s,line:%d\n",__func__,__LINE__);
 
 	codec_wr_prcm_control(ADDA_APT2, 0x1, ZERO_CROSS_EN, 0x0);
 
@@ -3197,7 +3423,7 @@ static void sunxi_codec_shutdown(struct platform_device *devptr)
 	gpio_set_value(item.gpio.gpio, 0);
 
 	if ((NULL == codec_moduleclk)||(IS_ERR(codec_moduleclk))) {
-		printk("codec_moduleclk handle is invaled, just return\n");
+		pr_err("codec_moduleclk handle is invaled, just return\n");
 	} else {
 		clk_disable_unprepare(codec_moduleclk);
 	}

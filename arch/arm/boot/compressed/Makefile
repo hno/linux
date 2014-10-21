@@ -3,6 +3,7 @@
 #
 # create a compressed vmlinuz image from the original vmlinux
 #
+GCOV_PROFILE := n
 
 OBJS		=
 

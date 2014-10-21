@@ -654,7 +654,7 @@ static void kionix_kj9_resume_events (struct work_struct *work)
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static void kionix_kj9_early_suspend(struct early_suspend *h)
 {
-	int result;
+	//int result;
 	dprintk(DEBUG_SUSPEND, "kionix_kj9 early suspend\n");
 
 	flush_workqueue(kionix_kj9_resume_wq);
@@ -672,7 +672,7 @@ static void kionix_kj9_early_suspend(struct early_suspend *h)
 
 static void kionix_kj9_late_resume(struct early_suspend *h)
 {
-	int result;
+	//int result;
 	dprintk(DEBUG_SUSPEND, "kionix_kj9 late resume\n");
 	
 	if (SUPER_STANDBY == standby_type)
@@ -683,7 +683,7 @@ static void kionix_kj9_late_resume(struct early_suspend *h)
 		kionix_kj9_data.suspend_indator = 0;
 //		result = i2c_smbus_write_byte_data(kionix_kj9_i2c_client,
 //			KIONIXKJ9_MODE, MK_KIONIXKJ9_MODE(0, 1, 0, 0, 0, 0, 1));
-		assert(result==0);
+		//assert(result==0);
 		mutex_unlock(&kionix_kj9_data.init_mutex);
 		kionix_kj9_idev->input->open(kionix_kj9_idev->input);
 	}

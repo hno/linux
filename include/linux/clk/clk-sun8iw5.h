@@ -4,6 +4,7 @@
  
 #define LOSC_CLK "losc"
 #define HOSC_CLK "hosc"
+#define CPUOSC_CLK "cpuosc"
 #define PLL_AUDIOX8_CLK "pll_audiox8"
 #define PLL_AUDIOX4_CLK "pll_audiox4"
 #define PLL_AUDIOX2_CLK "pll_audiox2"
@@ -72,8 +73,12 @@
 #define UART1_CLK "uart1"
 #define UART2_CLK "uart2"
 #define UART3_CLK "uart3"
-#define UART4_CLK "uart4"
 #define LOSC_OUT_CLK "losc_out"
+#define PLL_PERIPHCPUS_CLK "pll_periphcpus"
+#define CPURCPUS_CLK "cpurcpus"
+#define CPURAHBS_CLK "cpurahbs"
+#define CPURAPBS_CLK "cpurapbs"
+#define UART4_CLK "uart4"
  
  
 #endif

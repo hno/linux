@@ -34,11 +34,13 @@
 #ifdef CONFIG_ARCH_SUN8IW5
 #include "sun8iw5_sndcodec.h"
 #endif
-
+#ifdef CONFIG_ARCH_SUN8IW9
+#include "sun8iw9_sndcodec.h"
+#endif
 
 #define SUNXI_PCM_RATES (SNDRV_PCM_RATE_8000_192000 | SNDRV_PCM_RATE_KNOT)
 
-#ifdef CONFIG_ARCH_SUN8IW5
+#if defined CONFIG_ARCH_SUN8IW5 || defined CONFIG_ARCH_SUN8IW9
 static struct sunxi_dma_params sunxi_pcm_pcm_stereo_out = {
 	.name		= "audio_play",
 	.dma_addr	= CODEC_BASSADDRESS + SUNXI_DA_TXFIFO,//send data address
@@ -52,37 +54,31 @@ static struct sunxi_dma_params sunxi_pcm_pcm_stereo_in = {
 static void sunxi_snd_txctrl(struct snd_pcm_substream *substream, int on)
 {
 	/*clear TX counter*/
-	codec_wr_control(SUNXI_DA_TXCNT ,  0xffffffff, TX_CNT, 0);
+	codec_wr_control(SUNXI_DA_TXCNT, 0xffffffff, TX_CNT, 0);
 	/*flush TX FIFO*/
-	codec_wr_control(SUNXI_DA_FCTL ,  0x1, FTX, 1);
+	codec_wr_control(SUNXI_DA_FCTL, 0x1, FTX, 1);
 	if (on) {
 		/* enable DMA DRQ mode for play */
-		codec_wr_control(SUNXI_DA_INT ,  0x1, TX_DRQ, 1);
+		codec_wr_control(SUNXI_DA_INT, 0x1, TX_DRQ, 1);
 	} else {
 		/* DISBALE dma DRQ mode */
-		codec_wr_control(SUNXI_DA_INT ,  0x1, TX_DRQ, 0);
-
+		codec_wr_control(SUNXI_DA_INT, 0x1, TX_DRQ, 0);
 	}
-
 }
 
 static void sunxi_snd_rxctrl(struct snd_pcm_substream *substream, int on)
 {
 	/*clear RX counter*/
-	codec_wr_control(SUNXI_DA_RXCNT ,  0xffffffff, RX_CNT, 0);
+	codec_wr_control(SUNXI_DA_RXCNT, 0xffffffff, RX_CNT, 0);
 	/*flush RX FIFO*/
-	codec_wr_control(SUNXI_DA_FCTL ,  0x1, FRX, 1);
+	codec_wr_control(SUNXI_DA_FCTL, 0x1, FRX, 1);
 	if (on) {
 		/* enable DMA DRQ mode for record */
-		codec_wr_control(SUNXI_DA_INT ,  0x1, RX_DRQ, 1);
-
+		codec_wr_control(SUNXI_DA_INT, 0x1, RX_DRQ, 1);
 	} else {
 		/* DISBALE dma DRQ mode */
-		codec_wr_control(SUNXI_DA_INT ,  0x1, RX_DRQ, 0);
-
+		codec_wr_control(SUNXI_DA_INT, 0x1, RX_DRQ, 0);
 	}
-
-
 }
 
 static int sunxi_i2s_trigger(struct snd_pcm_substream *substream,
@@ -95,13 +91,11 @@ static int sunxi_i2s_trigger(struct snd_pcm_substream *substream,
 			case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
 				/*enable i2s tx*/
 				sunxi_snd_txctrl(substream, 1);
-				//unmute_enble(1);
 				return 0;
 			case SNDRV_PCM_TRIGGER_SUSPEND:
 			case SNDRV_PCM_TRIGGER_STOP:
 			case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
 				sunxi_snd_txctrl(substream, 0);
-				//codec_play_stop();
 				return 0;
 			default:
 				return -EINVAL;
@@ -117,16 +111,14 @@ static int sunxi_i2s_trigger(struct snd_pcm_substream *substream,
 		case SNDRV_PCM_TRIGGER_STOP:
 		case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
 			sunxi_snd_rxctrl(substream, 0);
-		//	codec_capture_stop();
 			return 0;
 		default:
-			printk("error:%s,%d\n", __func__, __LINE__);
+			pr_err("error:%s,%d\n", __func__, __LINE__);
 			return -EINVAL;
 		}
 	}
 	return 0;
 }
-
 
 static int sunxi_i2s_hw_params(struct snd_pcm_substream *substream,
 	struct snd_pcm_hw_params *params,
@@ -151,13 +143,15 @@ static int sunxi_i2s_set_sysclk(struct snd_soc_dai *cpu_dai,
 				  int clk_id, unsigned int freq, int dir)
 {
 	/*config i2s clk*/
+#ifdef CONFIG_ARCH_SUN8IW5
 	sunxi_i2s_set_rate(freq);
 
 	/*config aif1 clk from pll*/
-	codec_wr_control(SUNXI_SYSCLK_CTL ,  0x3, AIF1CLK_SRC, 0x3);
+	codec_wr_control(SUNXI_SYSCLK_CTL, 0x3, AIF1CLK_SRC, 0x3);
 
 	/*config sys clk from aif1clk*/
-	codec_wr_control(SUNXI_SYSCLK_CTL ,  0x1, SYSCLK_SRC, 0x0);
+	codec_wr_control(SUNXI_SYSCLK_CTL, 0x1, SYSCLK_SRC, 0x0);
+#endif
 	return 0;
 }
 
@@ -167,11 +161,13 @@ static int sunxi_i2s_set_clkdiv(struct snd_soc_dai *cpu_dai, int div_id, int sam
 	u32 bclk_div = 0;
 	int wss_value = 0;
 	int rs_value  = 0;
-	u32 bclk_lrck_div = 64;
 	u32 over_sample_rate = 0;
 	u32 word_select_size = 32;
 	u32 sample_resolution =16;
+#ifdef CONFIG_ARCH_SUN8IW5
+	u32 bclk_lrck_div = 64;
 	int aif1_word_size = 16;
+#endif
 	/*mclk div calculate*/
 	switch(samplerate)
 	{
@@ -290,9 +286,9 @@ static int sunxi_i2s_set_clkdiv(struct snd_soc_dai *cpu_dai, int div_id, int sam
 	 bclk_div &= 0x7;
 
 	 /*confige mclk and bclk dividor register*/
-	codec_wr_control(SUNXI_DA_CLKD ,  0x7, BCLKDIV, bclk_div);
-	codec_wr_control(SUNXI_DA_CLKD ,  0xf, MCLKDIV, mclk_div);
-	codec_wr_control(SUNXI_DA_CLKD ,  0x1, 7, 1);
+	codec_wr_control(SUNXI_DA_CLKD, 0x7, BCLKDIV, bclk_div);
+	codec_wr_control(SUNXI_DA_CLKD, 0xf, MCLKDIV, mclk_div);
+	codec_wr_control(SUNXI_DA_CLKD, 0x1, 7, 1);
 
 	/* word select size */
 	switch(word_select_size)
@@ -306,7 +302,7 @@ static int sunxi_i2s_set_clkdiv(struct snd_soc_dai *cpu_dai, int div_id, int sam
 		case 32: wss_value = 3;
 			break;
 	}
-	codec_wr_control(SUNXI_DA_FAT0 ,  0x3, WSS, wss_value);
+	codec_wr_control(SUNXI_DA_FAT0, 0x3, WSS, wss_value);
 
 	/* sample rate */
 	switch(sample_resolution)
@@ -320,8 +316,8 @@ static int sunxi_i2s_set_clkdiv(struct snd_soc_dai *cpu_dai, int div_id, int sam
 		case 32: rs_value = 3;
 			break;
 	}
-	codec_wr_control(SUNXI_DA_FAT0 ,  0x3, SR, rs_value);
-
+	codec_wr_control(SUNXI_DA_FAT0, 0x3, SR, rs_value);
+#ifdef CONFIG_ARCH_SUN8IW5
 /*********aif1 part************ */
 	/*calculate bclk_lrck_div Ratio*/
 	switch(bclk_lrck_div)
@@ -339,7 +335,7 @@ static int sunxi_i2s_set_clkdiv(struct snd_soc_dai *cpu_dai, int div_id, int sam
 		default:
 			break;
 	}
-	codec_wr_control(SUNXI_AIF1CLK_CTRL ,  0x7, AIF1_LRCK_DIV, bclk_lrck_div);
+	codec_wr_control(SUNXI_AIF1CLK_CTRL, 0x7, AIF1_LRCK_DIV, bclk_lrck_div);
 
 	/*calculate word select bit*/
 	switch (aif1_word_size)
@@ -355,8 +351,8 @@ static int sunxi_i2s_set_clkdiv(struct snd_soc_dai *cpu_dai, int div_id, int sam
 		default:
 			break;
 	}
-	codec_wr_control(SUNXI_AIF1CLK_CTRL ,  0x3, AIF1_WORD_SIZ, aif1_word_size);
-
+	codec_wr_control(SUNXI_AIF1CLK_CTRL, 0x3, AIF1_WORD_SIZ, aif1_word_size);
+#endif
 	return 0;
 }
 
@@ -365,34 +361,35 @@ static int sunxi_i2s_set_fmt(struct snd_soc_dai *cpu_dai,
 {
 	/*i2s part*/
 	/*SDO ON*/
-//	codec_wr_control(SUNXI_DA_CTL ,  0x1, DA_CTL, 1);
+//	codec_wr_control(SUNXI_DA_CTL, 0x1, SDO_EN, 1);
 	/*master mode*/
-	codec_wr_control(SUNXI_DA_CTL ,  0x1, MS, 0);
+	codec_wr_control(SUNXI_DA_CTL, 0x1, MS, 0);
 	/*i2s mode*/
-	codec_wr_control(SUNXI_DA_CTL ,  0x1, PCM, 0);
+	codec_wr_control(SUNXI_DA_CTL, 0x1, PCM, 0);
 
 	/* DAI signal inversions */
-	codec_wr_control(SUNXI_DA_FAT0 ,  0x1, LRCP, 0);
-	codec_wr_control(SUNXI_DA_FAT0 ,  0x1, BCP, 0);
+	codec_wr_control(SUNXI_DA_FAT0, 0x1, LRCP, 0);
+	codec_wr_control(SUNXI_DA_FAT0, 0x1, BCP, 0);
 
 	/*data format*/
-	codec_wr_control(SUNXI_DA_FAT0 ,  0x3, FMT, 0);/*standard i2s fmt*/	
+	codec_wr_control(SUNXI_DA_FAT0, 0x3, FMT, 0);/*standard i2s fmt*/
 	/*RX FIFO trigger level*/
-	codec_wr_control(SUNXI_DA_FCTL ,  0x7f, TXTL, 0x40);
+	codec_wr_control(SUNXI_DA_FCTL, 0x7f, TXTL, 0x40);
 	/*TX FIFO empty trigger level*/
-	codec_wr_control(SUNXI_DA_FCTL ,  0x1f, RXTL, 0x1f);
+	codec_wr_control(SUNXI_DA_FCTL, 0x1f, RXTL, 0x1f);
 
-	codec_wr_control(SUNXI_DA_FCTL ,  0xf, RXOM, 0x5);
-
+	codec_wr_control(SUNXI_DA_FCTL, 0xf, RXOM, 0x5);
+#ifdef CONFIG_ARCH_SUN8IW5
 /**aif1 part**/
 	/*aif1 slave*/
-	codec_wr_control(SUNXI_AIF1CLK_CTRL ,  0x1, AIF1_MSTR_MOD, 1);
+	codec_wr_control(SUNXI_AIF1CLK_CTRL, 0x1, AIF1_MSTR_MOD, 1);
 	/*aif1 i2s mode*/
-	codec_wr_control(SUNXI_AIF1CLK_CTRL ,  0x3, AIF1_DATA_FMT, 0);
+	codec_wr_control(SUNXI_AIF1CLK_CTRL, 0x3, AIF1_DATA_FMT, 0);
 
 	/* DAI signal inversions */
-	codec_wr_control(SUNXI_AIF1CLK_CTRL ,  0x1, AIF1_BCLK_INV, 0);
-	codec_wr_control(SUNXI_AIF1CLK_CTRL ,  0x1, AIF1_LRCK_INV, 0);	
+	codec_wr_control(SUNXI_AIF1CLK_CTRL, 0x1, AIF1_BCLK_INV, 0);
+	codec_wr_control(SUNXI_AIF1CLK_CTRL, 0x1, AIF1_LRCK_INV, 0);
+#endif
 	return 0;
 }
 
@@ -401,41 +398,33 @@ static int sunxi_i2s_preapre(struct snd_pcm_substream *substream,
 {
 	u32 reg_val = 0;
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-
 		reg_val = SUNXI_TXCHSEL_CHNUM(substream->runtime->channels);
 		/*confige i2s ap tx channel */
-		codec_wr_control(SUNXI_DA_TXCHSEL ,  0x3, TX_CHSEL, reg_val);
-
+		codec_wr_control(SUNXI_DA_TXCHSEL, 0x7, TX_CHSEL, reg_val);
 		if(substream->runtime->channels == 1) {
 			reg_val = 0x00;
 		} else {
 			reg_val = 0x10;
 		}
 		/*confige i2s ap tx channel mapping*/
-		codec_wr_control(SUNXI_DA_TXCHMAP ,  0xff, TX_CH0_MAP, reg_val);
-
+		codec_wr_control(SUNXI_DA_TXCHMAP, 0x7, TX_CH0_MAP, reg_val);
 		/*SDO ON*/
-		codec_wr_control(SUNXI_DA_CTL ,  0x1, DA_CTL, 1);
-
+		codec_wr_control(SUNXI_DA_CTL, 0x1, SDO_EN, 1);
 		/* I2S0 TX ENABLE */
-		codec_wr_control(SUNXI_DA_CTL ,  0x1, TXEN, 1);
-
+		codec_wr_control(SUNXI_DA_CTL, 0x1, TXEN, 1);
 	} else {
-
 		reg_val = SUNXI_RXCHSEL_CHNUM(substream->runtime->channels);
 		/*confige i2s ap rx channel */
-		codec_wr_control(SUNXI_DA_RXCHSEL ,  0x3, RX_CHSEL, reg_val);
-
+		codec_wr_control(SUNXI_DA_RXCHSEL, 0x7, RX_CHSEL, reg_val);
 		if(substream->runtime->channels == 1) {
 			reg_val = 0x00;
 		} else {
 			reg_val = 0x10;
 		}
 		/*confige i2s ap rx channel mapping*/
-		codec_wr_control(SUNXI_DA_RXCHMAP ,  0xff, RX_CH0_MAP, reg_val);
-
+		codec_wr_control(SUNXI_DA_RXCHMAP, 0x7, RX_CH0_MAP, reg_val);
 		/* I2S0 RX ENABLE */
-		codec_wr_control(SUNXI_DA_CTL ,  0x1, RXEN, 1);
+		codec_wr_control(SUNXI_DA_CTL, 0x1, RXEN, 1);
 	}
 
 	return 0;
@@ -465,17 +454,20 @@ static struct snd_soc_dai_driver sunxi_pcm_dai = {
 		.formats = SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S20_3LE | SNDRV_PCM_FMTBIT_S24_LE,
 	},
 
-	#ifdef CONFIG_ARCH_SUN8IW5
+	#if defined CONFIG_ARCH_SUN8IW5 || defined CONFIG_ARCH_SUN8IW9
 	.ops 		= &sunxi_i2s_dai_ops,
 	#endif
 };
-
-
 
 static int __init sunxi_pcm_dev_probe(struct platform_device *pdev)
 {
 	int err = -1;
 
+#ifdef CONFIG_ARCH_SUN8IW9
+	/*global enable*/
+	codec_wr_control(SUNXI_DA_CTL, 0x1, GEN, 0x1);
+//	codec_wr_control(SUNXI_DA_CTL, 0x1, LOOP, 0x1);  //for loopback test
+#endif
 	err = snd_soc_register_dai(&pdev->dev, &sunxi_pcm_dai);	
 	if (err) {
 		dev_err(&pdev->dev, "Failed to register DAI\n");

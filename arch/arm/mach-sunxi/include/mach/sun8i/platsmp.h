@@ -17,7 +17,7 @@
 #ifndef __SUN8I_PLAT_SMP_H
 #define __SUN8I_PLAT_SMP_H
 
-#ifdef CONFIG_ARCH_SUN8IW6P1
+#if defined(CONFIG_ARCH_SUN8IW6P1) || defined(CONFIG_ARCH_SUN8IW9P1)
 #include <asm/smp_plat.h>
 static inline void enable_cpu(int cpu_nr)
 {
@@ -90,6 +90,7 @@ static inline void disable_cpu(int cpu_nr)
 }
 
 #else
+
 static inline void enable_cpu(int cpu)
 {
 	u32 pwr_reg;
@@ -104,25 +105,30 @@ static inline void enable_cpu(int cpu)
 	pwr_reg = readl((void *)(SUNXI_R_CPUCFG_VBASE + SUNXI_CPUCFG_GENCTL));
 	pwr_reg &= ~(1<<cpu);
 	writel(pwr_reg, (void *)(SUNXI_R_CPUCFG_VBASE + SUNXI_CPUCFG_GENCTL));
+	udelay(10);
 
-#ifdef CONFIG_ARCH_SUN8IW1
+#if defined CONFIG_ARCH_SUN8IW1 || defined CONFIG_ARCH_SUN8IW5
 	/* step2: release power clamp */
-	//write bit3, bit4 to 0
-	writel(0xe7, (void *)(SUNXI_R_PRCM_VBASE + SUNXI_CPUX_PWR_CLAMP(cpu)));
-	while((0xe7) != readl((void *)(SUNXI_R_CPUCFG_VBASE + SUNXI_CPUX_PWR_CLAMP_STATUS(cpu))))
-	        ;
-	//write 012567 bit to 0
+	writel(0xFE, (void *)(SUNXI_R_PRCM_VBASE + SUNXI_CPUX_PWR_CLAMP(cpu)));
+	udelay(20);
+	writel(0xF8, (void *)(SUNXI_R_PRCM_VBASE + SUNXI_CPUX_PWR_CLAMP(cpu)));
+	udelay(10);
+	writel(0xE0, (void *)(SUNXI_R_PRCM_VBASE + SUNXI_CPUX_PWR_CLAMP(cpu)));
+	udelay(10);
+	writel(0x80, (void *)(SUNXI_R_PRCM_VBASE + SUNXI_CPUX_PWR_CLAMP(cpu)));
+	udelay(10);
 	writel(0x00, (void *)(SUNXI_R_PRCM_VBASE + SUNXI_CPUX_PWR_CLAMP(cpu)));
-	while((0x00) != readl((void *)(SUNXI_R_CPUCFG_VBASE + SUNXI_CPUX_PWR_CLAMP_STATUS(cpu))))
-	        ;
-	mdelay(2);
+	udelay(20);
+	while(0x00 != readl((void *)(SUNXI_R_PRCM_VBASE + SUNXI_CPUX_PWR_CLAMP(cpu)))) {
+		;
+	}
 #endif
 
 	/* step3: clear power-off gating */
 	pwr_reg = readl((void *)(SUNXI_R_PRCM_VBASE + SUNXI_CPU_PWROFF_REG));
 	pwr_reg &= ~(0x00000001<<cpu);
 	writel(pwr_reg, (void *)(SUNXI_R_PRCM_VBASE + SUNXI_CPU_PWROFF_REG));
-	mdelay(1);
+	udelay(20);
 
 	/* step4: de-assert core reset */
 	writel(3, (void *)(SUNXI_R_CPUCFG_VBASE + CPUX_RESET_CTL(cpu)));
@@ -131,17 +137,24 @@ static inline void enable_cpu(int cpu)
 static inline void disable_cpu(int cpu)
 {
 	u32 pwr_reg;
+
+#if defined CONFIG_ARCH_SUN8IW3
 	writel(0, (void *)(SUNXI_R_CPUCFG_VBASE + CPUX_RESET_CTL(cpu)));
+#endif
 
 	/* step9: set up power-off signal */
 	pwr_reg = readl(IO_ADDRESS(SUNXI_R_PRCM_PBASE) + SUNXI_CPU_PWROFF_REG);
 	pwr_reg |= (1<<cpu);
 	writel(pwr_reg, IO_ADDRESS(SUNXI_R_PRCM_PBASE) + SUNXI_CPU_PWROFF_REG);
-	mdelay(1);
+	udelay(20);
 
-#ifdef CONFIG_ARCH_SUN8IW1
+#if defined CONFIG_ARCH_SUN8IW1 || defined CONFIG_ARCH_SUN8IW5
 	/* step10: active the power output clamp */
 	writel(0xff, IO_ADDRESS(SUNXI_R_PRCM_PBASE) + SUNXI_CPUX_PWR_CLAMP(cpu));
+	udelay(30);
+	while(0xff != readl(IO_ADDRESS(SUNXI_R_PRCM_PBASE) + SUNXI_CPUX_PWR_CLAMP(cpu))) {
+		;
+	}
 #endif
 }
 
@@ -152,7 +165,7 @@ static inline void disable_cpu(int cpu)
  */
 static inline void sunxi_set_secondary_entry(void *entry)
 {
-#ifdef CONFIG_ARCH_SUN8IW6P1
+#if defined(CONFIG_ARCH_SUN8IW6P1) || defined(CONFIG_ARCH_SUN8IW9P1)
 	writel((u32)entry, (void *)(SUNXI_R_CPUCFG_VBASE + PRIVATE_REG0));
 #else
 	writel((u32)entry, (void *)(SUNXI_R_CPUCFG_VBASE + SUNXI_CPUCFG_P_REG0));
@@ -164,7 +177,7 @@ static inline void sunxi_set_secondary_entry(void *entry)
  */
 static inline void *sunxi_get_secondary_entry(void)
 {
-#ifdef CONFIG_ARCH_SUN8IW6P1
+#if defined(CONFIG_ARCH_SUN8IW6P1) || defined(CONFIG_ARCH_SUN8IW9P1)
 	return (void *)readl(SUNXI_R_CPUCFG_VBASE + PRIVATE_REG0);
 #else
 	return (void *)readl(SUNXI_R_CPUCFG_VBASE + SUNXI_CPUCFG_P_REG0);

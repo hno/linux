@@ -297,7 +297,7 @@ int invsens_sm_flush(struct invsens_sm_data_t *sm, u32 func);
 int invsens_sm_sync(struct invsens_sm_data_t *sm, const char *key);
 int invsens_sm_read(struct invsens_sm_data_t *sm,
 			struct invsens_data_list_t *data_list);
-int invsens_sm_ioctl(struct invsens_sm_data_t *sm, u32 cmd, long lparam,
+int invsens_sm_ioctl(struct invsens_sm_data_t *sm, u32 cmd, long lparam,
 			void *vparam);
 int invsens_sm_get_enabled_mask(struct invsens_sm_data_t *sm,
 	u32 *enabled_mask);

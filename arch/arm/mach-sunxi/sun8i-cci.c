@@ -34,12 +34,13 @@ static int cci_enabled __read_mostly;
 void enable_cci_snoops(unsigned int cluster_id)
 {
 	void __iomem *control_reg;
+	unsigned int value;
 
 	if (!cci_enabled) {
 		return;
 	}
 
-	pr_info("sunxi cci: enable cluster[%d] snoop\n", cluster_id);
+//	pr_info("sunxi cci: enable cluster[%d] snoop\n", cluster_id);
 
 	if (cluster_id) {
 		control_reg = CCI_A15_SL_IFACE(cci_base) + SNOOP_CTLR_REG;
@@ -52,8 +53,10 @@ void enable_cci_snoops(unsigned int cluster_id)
 		return;
 	}
 
-	/* Turn on CCI snoops & DVM Messages */
-	writel(0x3, control_reg);
+	/* Turn on CCI snoops */
+	value = readl(control_reg);
+	value |= 0x3;
+	writel(value, control_reg);
 	dsb();
 
 	/* Wait for the dust to settle down */
@@ -65,12 +68,11 @@ void enable_cci_snoops(unsigned int cluster_id)
 void disable_cci_snoops(unsigned int cluster_id)
 {
 	void __iomem *control_reg;
+	unsigned int value;
 
 	if (!cci_enabled) {
 		return;
 	}
-
-	pr_info("sunxi cci: disable cluster[%d] snoop\n", cluster_id);
 
 	if (cluster_id) {
 		control_reg = CCI_A15_SL_IFACE(cci_base) + SNOOP_CTLR_REG;
@@ -82,14 +84,15 @@ void disable_cci_snoops(unsigned int cluster_id)
 		return;
 	}
 
-	/* Turn off CCI snoops & DVM messages */
-	writel(0, control_reg);
+	/* Turn off CCI snoops */
+	value = readl(control_reg);
+	value &= (~0x3);
+	writel(value, control_reg);
 	dsb();
 
 	/* Wait for the dust to settle down */
 	while (readl(cci_base + STATUS_REG) & 0x1);
 
-	pr_info("sunxi cci: disable cluster[%d] snoop ok\n", cluster_id);
 	return;
 }
 
@@ -118,9 +121,9 @@ static int get_cci_snoop_status(unsigned int cluster_id)
 	}
 
 	if (cluster_id) {
-		control_reg = CCI_A7_SL_IFACE(cci_base) + SNOOP_CTLR_REG;
-	} else {
 		control_reg = CCI_A15_SL_IFACE(cci_base) + SNOOP_CTLR_REG;
+	} else {
+		control_reg = CCI_A7_SL_IFACE(cci_base) + SNOOP_CTLR_REG;
 	}
 
 	if ((readl(control_reg) & 0x3)) {
@@ -147,19 +150,6 @@ static int cci_suspend(void)
 
 static void cci_resume(void)
 {
-#if 0
-	int i;
-
-	if (!cci_enabled) {
-		writel(0x1, core_misc_base);
-		return;
-	}
-	for (i = 0; i < 2; i++) {
-		if (cci_status[i]) {
-			enable_cci_snoops(i);
-		}
-	}
-#else
         unsigned int cluster_id = (read_mpidr() >> 8) & 0xf;
 
         if((cluster_id !=0) && (cluster_id !=1)){
@@ -172,8 +162,6 @@ static void cci_resume(void)
                 }
         }
 
-
-#endif
 }
 #else
 #define cci_suspend NULL

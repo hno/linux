@@ -1,5 +1,6 @@
 #include "pm_types.h"
 #include "./pm.h"
+#include "./pm_i.h"
 
 static __u32 cpu_freq = 0;
 static __u32 overhead = 0;
@@ -34,6 +35,8 @@ void init_perfcounters (__u32 do_reset, __u32 enable_divider)
 
 	// clear overflows:
 	asm volatile ("MCR p15, 0, %0, c9, c12, 3" : : "r"(value));
+	asm volatile ("dsb");
+	asm volatile ("isb");
 
 	return;
 }
@@ -81,12 +84,14 @@ void reset_counter(void)
 void change_runtime_env(void)
 {
 	__u32 start = 0;
+	__u32 end = 0;
 
 	//init counters:
 	//init_perfcounters (1, 0);
 	// measure the counting overhead:
 	start = get_cyclecount();
-	overhead = get_cyclecount() - start;
+	end = get_cyclecount();
+	overhead = (end >= start) ? (end-start) : (0xffffffff - start + end);
 	//busy_waiting();
 	cpu_freq = mem_clk_get_cpu_freq();	
 }
@@ -158,11 +163,18 @@ out:
 	return;
 }
 
+
+//the overflow limit is: 0x7fff,ffff / 720M = 2982ms;
+//each delay cycle can not exceed 10ms, in case of overflow.
 void delay_ms(__u32 ms)
 {
-	delay_us(ms*1000);
+    while(ms > 10){
+	delay_us(10*1000);
+	ms -= 10;
+    }
 	
-	return;
+    delay_us(ms*1000);
+    return;
 }
 
 /*============================================== event counter ==========================*/

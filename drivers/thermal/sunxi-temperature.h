@@ -31,6 +31,7 @@
 #define THS_PRO_CTRL_REG_VALUE	(0x1005f)
 
 #define THS_DATA_REG		(0x20)
+#define TEMP_CATA		(0x40)
 
 #define THS_IRQNO		(0)
 
@@ -131,7 +132,7 @@
 
 #define THS_CTRL0_VALUE		(0x17)
 #define THS_CTRL2_VALUE		(0x00170007)
-#define THS_INT_CTRL_VALUE	(0x000)
+#define THS_INT_CTRL_VALUE	(0x1070)//gai
 #define THS_CLEAR_INT_STA	(0x777)
 #define THS_FILT_CTRL_VALUE	(0x05)
 
@@ -146,6 +147,37 @@
 #define THS_INTS_ALARM2		(0x004)
 
 #define THS_IRQNO		(73)
+
+#elif defined(CONFIG_ARCH_SUN8IW7P1)
+
+#define THERMAL_BASSADDRESS	(0xf1c25000)
+
+#define THS_CTRL0_REG		(0x00)
+#define THS_CTRL1_REG		(0x04)
+#define ADC_CDAT_REG		(0x14)
+#define THS_CTRL2_REG		(0x40)
+#define THS_INT_CTRL_REG	(0x44)
+#define THS_INT_STA_REG		(0x48)
+#define THS_INT_ALM_TH_REG	(0x50)
+#define THS_INT_SHUT_TH_REG	(0x60)
+#define THS_FILT_CTRL_REG	(0x70)
+#define THS_CDATA_REG		(0x74)
+#define THS_DATA_REG		(0x80)
+
+#define THS_INT_ALM_TH_VALUE	(0x50)
+#define THS_INT_SHUT_TH_VALUE	(0x60)
+
+#define THS_CTRL0_VALUE		(0x17)
+#define THS_CTRL2_VALUE		(0x00170001)
+#define THS_INT_CTRL_VALUE	(0x000)///gai
+#define THS_CLEAR_INT_STA	(0x1111)
+#define THS_FILT_CTRL_VALUE	(0x05)
+
+#define THS_INTS_DATA0		(0x100)
+#define THS_INTS_SHT0		(0x010)
+#define THS_INTS_ALARM0		(0x001)
+
+#define THS_IRQNO		(63)
 
 #endif
 

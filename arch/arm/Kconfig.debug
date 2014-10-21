@@ -307,6 +307,14 @@ choice
 		help
 		  Say Y here if you want kernel low-level debugging support
 		  on Allwinner A1X based platforms on the UART1.
+
+	config DEBUG_SUNXI_UART2
+		bool "Kernel low-level debugging messages via sunXi UART2"
+		depends on ARCH_SUNXI
+		help
+		  Say Y here if you want kernel low-level debugging support
+		  on Allwinner A1X based platforms on the UART2.
+
 	config DEBUG_LL_UART_NONE
 		bool "No low-level debugging UART"
 		help

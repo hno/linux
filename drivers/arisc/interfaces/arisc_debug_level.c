@@ -86,3 +86,21 @@ int arisc_set_uart_baudrate(u32 baudrate)
 	return result;
 }
 
+int arisc_report_error_info(struct arisc_message *pmessage)
+{
+	u32 id = pmessage->paras[0];
+
+	switch(id) {
+		case ERR_NMI_INT_TIMEOUT: {
+			ARISC_ERR("arisc report error info: nmi int response timeout\n");
+			break;
+		}
+		default: {
+			ARISC_ERR("invaid arisc report error infomation id:%u\n", id);
+			return -EINVAL;
+		}
+	}
+
+	return 0;
+}
+

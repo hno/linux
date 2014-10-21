@@ -95,10 +95,20 @@ int resume1_c_part(void)
 	save_mem_status(RESUME1_START |0xc);
 	flush_icache();
 #endif
+	
 	mem_clk_init(1);
 	if(unlikely(mem_para_info.debug_mask&PM_STANDBY_PRINT_RESUME)){
-		serial_puts("resume1: 3. after restore mmu, before jump.\n");
+	    serial_puts("resume1: 3. after restore mmu, before jump.\n");
+	    printk("get_cur_cluster_id = %d. \n", get_cur_cluster_id());
+	    printk("mem_para_info.debug_mask = %x. \n", mem_para_info.debug_mask);
+	    printk("delay mem_para_info.suspend_delay_ms = %d. \n", mem_para_info.suspend_delay_ms);
+	    if(likely(mem_para_info.debug_mask&PM_STANDBY_PRINT_PORT)){
+		printk("addr PF: 0x%x = 0x%x. \n", (IO_ADDRESS(AW_JTAG_PF_GPIO_PA)), *(volatile __u32 * )(IO_ADDRESS(AW_JTAG_PF_GPIO_PA)));
+	    }else{
+		printk("addr PH: 0x%x = 0x%x. \n", (IO_ADDRESS(AW_JTAG_PH_GPIO_PA)), *(volatile __u32 * )(IO_ADDRESS(AW_JTAG_PH_GPIO_PA)));
+	    }
 	}
+
 
 	save_mem_status(RESUME1_START |0xe);
 	jump_to_resume((void *)mem_para_info.resume_pointer, mem_para_info.saved_runtime_context_svc);
@@ -126,7 +136,6 @@ void set_pll( void )
 	__u32 mva_addr = 0x00000000;
 	__u32 index = 0;
 
-
 	asm volatile ("mrc p15, 0, %0, c0, c0, 5" : "=r"(cpu_id)); //Read CPU ID register
 	cpu_id &= 0x3;
 	if(0 == cpu_id){
@@ -153,7 +162,12 @@ void set_pll( void )
 		//config jtag gpio
 		//need to config gpio clk? apb1 clk gating?
 		if(unlikely(mem_para_info.debug_mask&PM_STANDBY_ENABLE_JTAG)){
-			*(volatile __u32 * )(AW_JTAG_GPIO_PA) = AW_JTAG_CONFIG_VAL;
+			//notice: this will affect uart gpio config. for customer's reason, default is pf port.
+			if(likely(mem_para_info.debug_mask&PM_STANDBY_PRINT_PORT)){
+				*(volatile __u32 * )(AW_JTAG_PF_GPIO_PA) = AW_JTAG_PF_CONFIG_VAL;
+			}else{
+				*(volatile __u32 * )(AW_JTAG_PH_GPIO_PA) = AW_JTAG_PH_CONFIG_VAL;
+			}
 		}
 				
 		//config pll para
@@ -188,9 +202,16 @@ void set_pll( void )
 
 		//config jtag gpio
 		save_mem_status_nommu(RESUME1_START |0x04);
+		//config gpio clk;
+		config_gpio_clk(0);
+
 		if(unlikely(mem_para_info.debug_mask&PM_STANDBY_ENABLE_JTAG)){
-			//notice: this will affect uart gpio config.
-			*(volatile __u32 * )(AW_JTAG_GPIO_PA) = 0x00002222;
+			//notice: this will affect uart gpio config. for customer's reason, default is pf port.
+			if(likely(mem_para_info.debug_mask&PM_STANDBY_PRINT_PORT)){
+				*(volatile __u32 * )(AW_JTAG_PF_GPIO_PA) = AW_JTAG_PF_CONFIG_VAL;
+			}else{
+				*(volatile __u32 * )(AW_JTAG_PH_GPIO_PA) = AW_JTAG_PH_CONFIG_VAL;
+			}
 		}
 
 		//config pll para: bias and tun para.
@@ -200,6 +221,7 @@ void set_pll( void )
 		//N = 17, P=1 -> pll1 = 24*N/P = 24*17 = 408M
 		//Notice: the setting need be double checked before ic is ready. !!!!!!
 		*(volatile __u32 *)(&CmuReg->Pll_C0_Cfg) = (CPU_PLL_REST_DEFAULT_VAL) | (0x80000000); 
+		*(volatile __u32 *)(&CmuReg->Pll_C1_Cfg) = (CPU_PLL_REST_DEFAULT_VAL) | (0x80000000);
 		save_mem_status_nommu(RESUME1_START |0x06);
 #endif
 
@@ -208,10 +230,9 @@ void set_pll( void )
 		delay_ms(10);	
 
 		//change apb2 src to pll6
-		
 		if(unlikely(mem_para_info.debug_mask&PM_STANDBY_PRINT_RESUME)){
 			//config uart
-			serial_init_nommu();
+			serial_init_nommu(mem_para_info.debug_mask&PM_STANDBY_PRINT_PORT);
 		}
 	}else{
 		/* execute a TLBIMVAIS operation to addr: 0x0000,0000 */
@@ -340,11 +361,16 @@ void set_pll( void )
 
 #elif defined(CONFIG_ARCH_SUN9IW1P1)
 	//switch to PLL1
-	*(volatile __u32 *)(&CmuReg->Cpu_Clk_Src) = 0x00000001;	
+	if(get_cur_cluster_id()){
+		*(volatile __u32 *)(&CmuReg->Cpu_Clk_Src) = 0x00000100;
+	}else{
+	    *(volatile __u32 *)(&CmuReg->Cpu_Clk_Src) = 0x00000001;
+	}
 #endif
 
 	change_runtime_env();
 	delay_us(100);
+	
 	return ;
 }
 

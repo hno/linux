@@ -57,7 +57,7 @@
 
 
 
-struct gslX680_fw_array {
+static struct gslX680_fw_array {
 	const char* name;
 	unsigned int size;
 	const struct fw_data *fw;
@@ -130,7 +130,7 @@ struct key_data gsl_key_data[MAX_KEY_NUM] = {
 };
 #endif
 
-struct ctp_config_info config_info = {
+static struct ctp_config_info config_info = {
 	.input_type = CTP_TYPE,
 	.name = NULL,
 	.int_number = 0,
@@ -235,14 +235,14 @@ static const unsigned short normal_i2c[2] = {0x40,I2C_CLIENT_END};
 
 static void glsX680_init_events(struct work_struct *work);
 static void glsX680_resume_events(struct work_struct *work);
-struct workqueue_struct *gslX680_wq;
-struct workqueue_struct *gslX680_resume_wq;
+static struct workqueue_struct *gslX680_wq;
+static struct workqueue_struct *gslX680_resume_wq;
 static DECLARE_WORK(glsX680_init_work, glsX680_init_events);
 static DECLARE_WORK(glsX680_resume_work, glsX680_resume_events);
-struct i2c_client *glsX680_i2c;
-struct gsl_ts *ts_init;
+static struct i2c_client *glsX680_i2c;
+static struct gsl_ts *ts_init;
 
-int ctp_i2c_write_bytes(struct i2c_client *client, uint8_t *data, uint16_t len)
+static int ctp_i2c_write_bytes(struct i2c_client *client, uint8_t *data, uint16_t len)
 {
 	struct i2c_msg msg;
 	int ret=-1;
@@ -256,7 +256,7 @@ int ctp_i2c_write_bytes(struct i2c_client *client, uint8_t *data, uint16_t len)
 	return ret;
 }
 
-bool ctp_i2c_test(struct i2c_client * client)
+static bool ctp_i2c_test(struct i2c_client * client)
 {
 	int ret,retry;
 	uint8_t test_data[1] = { 0 };	//only write a data address.
@@ -301,7 +301,7 @@ static int ctp_detect(struct i2c_client *client, struct i2c_board_info *info)
  * return value:
  *
  */
-void ctp_print_info(struct ctp_config_info info,int debug_level)
+static void ctp_print_info(struct ctp_config_info info,int debug_level)
 {
 	if(debug_level == DEBUG_INIT)
 	{
@@ -322,7 +322,7 @@ void ctp_print_info(struct ctp_config_info info,int debug_level)
  * ctp_wakeup - function
  *
  */
-int ctp_wakeup(int status,int ms)
+static int ctp_wakeup(int status,int ms)
 {
 	dprintk(DEBUG_INIT,"***CTP*** %s:status:%d,ms = %d\n",__func__,status,ms);
 
@@ -897,7 +897,7 @@ schedule:
 #endif
 }
 
-irqreturn_t gsl_ts_irq(int irq, void *dev_id)
+static irqreturn_t gsl_ts_irq(int irq, void *dev_id)
 {
 	struct gsl_ts *ts = (struct gsl_ts *)dev_id;
 	dprintk(DEBUG_INT_INFO,"==========GSLX680 Interrupt============\n");

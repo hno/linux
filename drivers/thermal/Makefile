@@ -16,6 +16,7 @@ obj-$(CONFIG_CPU_BUDGET_THERMAL)+= cpu_budget_cooling.o
 obj-$(CONFIG_SPEAR_THERMAL)	+= spear_thermal.o
 obj-$(CONFIG_RCAR_THERMAL)	+= rcar_thermal.o
 obj-$(CONFIG_SUNXI_THERMAL)	+= sunxi-thermal.o
+obj-$(CONFIG_SUNXI_BATTERY)	+= sunxi-battery.o
 obj-$(CONFIG_SUNXI_THERMAL_DYNAMIC)	+= sunxi-thermal-bind.o
 obj-$(CONFIG_SUNXI_THERMAL)	+= sunxi-temperature.o
 obj-$(CONFIG_SUNXI_CPUFREQ_COOLING)	+= sunxi-cpu-cooling.o

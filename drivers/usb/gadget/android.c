@@ -206,7 +206,6 @@ static void android_enable(struct android_dev *dev)
 		return;
 
 	if (--dev->disable_depth == 0) {
-		usb_gadget_disconnect(cdev->gadget);
 		usb_add_config(cdev, &android_config_driver,
 					android_bind_config);
 		usb_gadget_connect(cdev->gadget);
@@ -1448,7 +1447,7 @@ static int android_bind(struct usb_composite_dev *cdev)
 	strncpy(manufacturer_string, usb_config.usb_manufacturer_name, sizeof(manufacturer_string) - 1);
 	strncpy(product_string, usb_config.usb_product_name, sizeof(product_string) - 1);
 
-	printk("%s, serial_unique = %d\n", __func__, usb_config.serial_unique);
+	pr_debug("%s, serial_unique = %d\n", __func__, usb_config.serial_unique);
 
 	if(usb_config.serial_unique){
 		u32 serial[4];

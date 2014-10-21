@@ -14,3 +14,11 @@ config ANDROID_SWITCH_GPIO
 	depends on GENERIC_GPIO && ANDROID_SWITCH
 	help
 	  Say Y here to enable GPIO based switch support.
+
+
+config ANDROID_SWITCH_GPIO_TS3A225
+	tristate "Android GPIO ts3a225 Switch support"
+	depends on ARCH_SUN8IW6
+	help
+	  Say Y here to enable GPIO based switch support.
+	  

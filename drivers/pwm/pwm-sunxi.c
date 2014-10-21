@@ -31,7 +31,7 @@
 #define PWM_REG_NUM 8
 
 
-#elif defined(CONFIG_ARCH_SUN8IW3P1) || defined(CONFIG_ARCH_SUN8IW5P1)
+#elif defined(CONFIG_ARCH_SUN8IW3P1) || defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1) || defined(CONFIG_ARCH_SUN8IW9P1)
 #define PWM_NUM 2
 #define PWM_REG_NUM 3
 
@@ -119,7 +119,7 @@ static int sunxi_pwm_set_polarity(struct pwm_chip *chip, struct pwm_device *pwm,
 
     sunxi_pwm_write_reg(pwm->pwm * 0x10, temp);
 
-#elif defined(CONFIG_ARCH_SUN8IW3P1) || defined(CONFIG_ARCH_SUN8IW5P1)
+#elif defined(CONFIG_ARCH_SUN8IW3P1) || defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1) || defined(CONFIG_ARCH_SUN8IW9P1)
 
     temp = sunxi_pwm_read_reg(0);
     if(polarity == PWM_POLARITY_NORMAL) {
@@ -197,7 +197,7 @@ static int sunxi_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
     pwm_debug("PWM _TEST: duty_ns=%d, period_ns=%d, freq=%d, per_scal=%d, period_reg=0x%x\n", duty_ns, period_ns, freq, pre_scal_id, temp);
 
 
-    #elif defined(CONFIG_ARCH_SUN8IW3P1) || defined(CONFIG_ARCH_SUN8IW5P1)
+    #elif defined(CONFIG_ARCH_SUN8IW3P1) || defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1) || defined(CONFIG_ARCH_SUN8IW9P1)
 
     __u32 pre_scal[11][2] = {{15, 1}, {0, 120}, {1, 180}, {2, 240}, {3, 360}, {4, 480}, {8, 12000}, {9, 24000}, {10, 36000}, {11, 48000}, {12, 72000}};
     __u32 freq;
@@ -289,7 +289,7 @@ static int sunxi_pwm_enable(struct pwm_chip *chip, struct pwm_device *pwm)
 
     sunxi_pwm_write_reg(pwm->pwm * 0x10, temp);
 
-    #elif defined(CONFIG_ARCH_SUN8IW3P1) || defined(CONFIG_ARCH_SUN8IW5P1)
+    #elif defined(CONFIG_ARCH_SUN8IW3P1) || defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1) || defined(CONFIG_ARCH_SUN8IW9P1)
 
     temp = sunxi_pwm_read_reg(0);
 
@@ -347,7 +347,7 @@ static void sunxi_pwm_disable(struct pwm_chip *chip, struct pwm_device *pwm)
 
     sunxi_pwm_write_reg(pwm->pwm * 0x10, temp);
 
-    #elif defined(CONFIG_ARCH_SUN8IW3P1) || defined(CONFIG_ARCH_SUN8IW5P1)
+    #elif defined(CONFIG_ARCH_SUN8IW3P1) || defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1) || defined(CONFIG_ARCH_SUN8IW9P1)
 
     temp = sunxi_pwm_read_reg(0);
 
@@ -417,7 +417,7 @@ static int sunxi_pwm_suspend(struct platform_device *pdev, pm_message_t state)
         j++;
         }
 
-    #elif defined(CONFIG_ARCH_SUN8IW3P1) || defined(CONFIG_ARCH_SUN8IW5P1)
+    #elif defined(CONFIG_ARCH_SUN8IW3P1) || defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1) || defined(CONFIG_ARCH_SUN8IW9P1)
     for(i = 0; i < PWM_REG_NUM; i++)
         record_reg[i] = sunxi_pwm_read_reg(i * 0x4);
 
@@ -433,11 +433,6 @@ static int sunxi_pwm_resume(struct platform_device *pdev)
     #if ((defined CONFIG_ARCH_SUN8IW1P1) || (defined CONFIG_ARCH_SUN9IW1P1))
 
     int j = 0;
-	__u32 reg;
-	reg = sunxi_pwm_read_reg(0);
-	if(reg & 0x50) {
-		record_reg[0] = record_reg[0] | 0x50;
-	}
     for(i = 0; i < PWM_NUM; i++) {
         sunxi_pwm_write_reg(i * 0x10, record_reg[j]);
         j++;
@@ -445,7 +440,7 @@ static int sunxi_pwm_resume(struct platform_device *pdev)
         j++;
         }
 
-    #elif defined(CONFIG_ARCH_SUN8IW3P1) || defined(CONFIG_ARCH_SUN8IW5P1)
+    #elif defined(CONFIG_ARCH_SUN8IW3P1) || defined(CONFIG_ARCH_SUN8IW5P1) || defined(CONFIG_ARCH_SUN8IW6P1) || defined(CONFIG_ARCH_SUN8IW9P1)
     for(i = 0; i < PWM_REG_NUM; i++)
         sunxi_pwm_write_reg(i * 0x4, record_reg[i]);
 

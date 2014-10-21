@@ -26,9 +26,6 @@
 #include <linux/printk.h>
 #include <linux/hrtimer.h>
 #include "governor.h"
-#ifdef CONFIG_ARCH_SUNXI
-#include "dramfreq/sunxi-dramfreq.h"
-#endif
 
 struct class *devfreq_class;
 
@@ -478,6 +475,10 @@ static ssize_t show_governor(struct device *dev,
 {
 	return sprintf(buf, "%s\n", to_devfreq(dev)->governor->name);
 }
+
+#if defined(CONFIG_ARCH_SUNXI) && defined(CONFIG_DEVFREQ_DRAM_FREQ)
+extern unsigned long dramfreq_get(void);
+#endif
 
 static ssize_t show_freq(struct device *dev,
 			 struct device_attribute *attr, char *buf)

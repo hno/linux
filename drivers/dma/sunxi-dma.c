@@ -37,8 +37,12 @@
 
 #if defined(CONFIG_ARCH_SUN8IW3) \
 	|| defined(CONFIG_ARCH_SUN8IW5) \
-	|| defined(CONFIG_ARCH_SUN8IW6)
+	|| defined(CONFIG_ARCH_SUN8IW6)	\
+	|| defined(CONFIG_ARCH_SUN8IW8)	\
+	|| defined(CONFIG_ARCH_SUN8IW9)
 #define NR_MAX_CHAN	8			/* total of channels */
+#elif defined(CONFIG_ARCH_SUN8IW7)
+#define NR_MAX_CHAN	12			/* total of channels */
 #else
 #define NR_MAX_CHAN	16			/* total of channels */
 #endif
@@ -101,13 +105,21 @@
 
 /* The detail information of DMA configuration */
 #define SRC_WIDTH(x)	((x) << 9)
+#ifdef CONFIG_ARCH_SUN9I
+#define SRC_BURST(x)	((x) << 6)
+#else
 #define SRC_BURST(x)	((x) << 7)
+#endif
 #define SRC_IO_MODE	(0x01 << 5)
 #define SRC_LINEAR_MODE	(0x00 << 5)
 #define SRC_DRQ(x)	((x) << 0)
 
 #define DST_WIDTH(x)	((x) << 25)
+#ifdef CONFIG_ARCH_SUN9I
+#define DST_BURST(x)	((x) << 22)
+#else
 #define DST_BURST(x)	((x) << 23)
+#endif
 #define DST_IO_MODE	(0x01 << 21)
 #define DST_LINEAR_MODE	(0x00 << 21)
 #define DST_DRQ(x)	((x) << 16)
@@ -588,7 +600,8 @@ static irqreturn_t sunxi_dma_interrupt(int irq, void *dev_id)
 	status_lo = readl(sdev->base + DMA_IRQ_STAT(0));
 #if !defined(CONFIG_ARCH_SUN8IW3) \
 	|| !defined(CONFIG_ARCH_SUN8IW5) \
-	|| !defined(CONFIG_ARCH_SUN8IW6)
+	|| !defined(CONFIG_ARCH_SUN8IW6) \
+	|| !defined(CONFIG_ARCH_SUN8IW8)
 	status_hi = readl(sdev->base + DMA_IRQ_STAT(1));
 #endif
 
@@ -599,7 +612,8 @@ static irqreturn_t sunxi_dma_interrupt(int irq, void *dev_id)
 	writel(status_lo, sdev->base + DMA_IRQ_STAT(0));
 #if !defined(CONFIG_ARCH_SUN8IW3) \
 	|| !defined(CONFIG_ARCH_SUN8IW5) \
-	|| !defined(CONFIG_ARCH_SUN8IW6)
+	|| !defined(CONFIG_ARCH_SUN8IW6) \
+	|| !defined(CONFIG_ARCH_SUN8IW8)
 	writel(status_hi, sdev->base + DMA_IRQ_STAT(1));
 #endif
 
@@ -859,6 +873,13 @@ struct dma_async_tx_descriptor *sunxi_prep_dma_cyclic( struct dma_chan *chan,
 					| DST_LINEAR_MODE
 					| SRC_IO_MODE
 					| DST_DRQ(DRQDST_SDRAM);
+		} else if (dir == DMA_DEV_TO_DEV) {
+			sunxi_cfg_lli(l_item, sconfig->src_addr,
+					sconfig->dst_addr, period_len, sconfig);
+			l_item->cfg |= GET_SRC_DRQ(sconfig->slave_id)
+					| DST_IO_MODE
+					| SRC_IO_MODE
+					| GET_DST_DRQ(sconfig->slave_id);
 		}
 
 		prev = sunxi_lli_list(prev, l_item, phy, txd);

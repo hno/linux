@@ -693,7 +693,13 @@ static int test_pinctrl_scripts_api(struct sunxi_pinctrl_test_class *sunxi_pinct
 	/* test for str */
 	strcpy(main_key, "product");
 	strcpy(sub_key, "machine");
+
+#if defined CONFIG_ARCH_SUN8IW6P1
+	strcpy(str_cmp, "perf3_v1_0");
+#else
 	strcpy(str_cmp, "evb");
+
+#endif
 	script_dump_mainkey(main_key);
 	type_cmp = SCIRPT_ITEM_VALUE_TYPE_STR;
 	type_get = script_get_item(main_key, sub_key, &item_get);
@@ -707,6 +713,7 @@ static int test_pinctrl_scripts_api(struct sunxi_pinctrl_test_class *sunxi_pinct
 			__func__, __LINE__, main_key, sub_key, str_cmp, item_get.str);
 		return -EINVAL;
 	}
+#if 0
 	/* test for mmc0_para */
 	strcpy(main_key, "mmc0_para");
 	script_dump_mainkey(main_key);
@@ -744,6 +751,7 @@ static int test_pinctrl_scripts_api(struct sunxi_pinctrl_test_class *sunxi_pinct
 			__func__, __LINE__, main_key, sub_key, type_cmp, type_get);
 		return -EINVAL;
 	}
+#endif
 	pr_warn("test sunxi pinctrl scripts success!\n");
 	return ret;
 }

@@ -251,7 +251,7 @@ static ssize_t fsa9480_set_manualsw(struct device *dev,
 }
 
 static DEVICE_ATTR(device, S_IRUGO, fsa9480_show_device, NULL);
-static DEVICE_ATTR(switch, S_IRUGO | S_IWUSR,
+static DEVICE_ATTR("switch", S_IRUGO | S_IWUSR,
 		fsa9480_show_manualsw, fsa9480_set_manualsw);
 
 static struct attribute *fsa9480_attributes[] = {

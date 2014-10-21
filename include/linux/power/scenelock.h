@@ -16,14 +16,17 @@
 
 typedef enum AW_POWER_SCENE
 {
-	SCENE_TALKING_STANDBY,
+	SCENE_TALKING_STANDBY = 1,
 	SCENE_USB_STANDBY,
 	SCENE_MP3_STANDBY,
 	SCENE_BOOT_FAST,
 	SCENE_SUPER_STANDBY,
 	SCENE_GPIO_STANDBY,
+	SCENE_GPIO_HOLD_STANDBY,
 	SCENE_NORMAL_STANDBY,
 	SCENE_MISC_STANDBY,
+	SCENE_MISC1_STANDBY,
+	SCENE_DYNAMIC_STANDBY,
 	SCENE_MAX
 } aw_power_scene_e;
 
@@ -37,6 +40,9 @@ typedef enum POWER_SCENE_FLAGS
 	GPIO_STANDBY_FLAG              = (1<<0x5),
 	MISC_STANDBY_FLAG              = (1<<0x6),
 	BOOT_FAST_STANDBY_FLAG         = (1<<0x7),
+	MISC1_STANDBY_FLAG             = (1<<0x8),
+	GPIO_HOLD_STANDBY_FLAG         = (1<<0x9),
+	DYNAMIC_STANDBY_FLAG           = (1<<0xa)
 } power_scene_flags;
 
 struct scene_lock {
@@ -82,71 +88,36 @@ typedef struct extended_standby_manager{
 	unsigned long wakeup_gpio_group;
 }extended_standby_manager_t;
 
+#ifdef CONFIG_ARCH_SUN8IW6P1
 typedef struct scene_extended_standby {
 	/*
-	 * id of extended standby
+	 * scene type of extended standby
 	 */
-	unsigned long id;
+	aw_power_scene_e scene_type; //for scene_lock implement convinient;
+
+	char * name;	//for user convinient;
+
+	soc_pwr_dep_t soc_pwr_dep;
+
+	struct list_head list; /* list of all extended standby */
+} scene_extended_standby_t;
+#else
+typedef struct scene_extended_standby {
+	extended_standby_t extended_standby_data;
+
 	/*
 	 * scene type of extended standby
 	 */
 	aw_power_scene_e scene_type;
-	/*
-	 * clk tree para description as follow:
-	 * vdd_dll : exdev : avcc : vcc_wifi : vcc_dram: vdd_sys : vdd_cpux : vdd_gpu : vcc_io : vdd_cpus
-	 */
-	int pwr_dm_en;	//bitx = 1, mean power on when sys is in standby state. otherwise, vice verse.
-
-	/*
-	 * Hosc: losc: ldo: ldo1
-	 */
-	int osc_en;
-
-	/*
-	 * pll_10: pll_9: pll_mipi: pll_8: pll_7: pll_6: pll_5: pll_4: pll_3: pll_2: pll_1
-	 */
-	int init_pll_dis;
-
-	/*
-	 * pll_10: pll_9: pll_mipi: pll_8: pll_7: pll_6: pll_5: pll_4: pll_3: pll_2: pll_1
-	 */
-	int exit_pll_en;
-
-	/*
-	 * set corresponding bit if it's pll factors need to be set some value.
-	 * pll_10: pll_9: pll_mipi: pll_8: pll_7: pll_6: pll_5: pll_4: pll_3: pll_2: pll_1
-	 */
-	int pll_change;
-
-	/*
-	 * fill in the enabled pll freq factor sequently. unit is khz pll6: 0x90041811
-	 * factor n/m/k/p already do the pretreatment of the minus one
-	 */
-	pll_para_t pll_factor[PLL_NUM];
-
-	/*
-	 * bus_en: cpu:axi:atb/apb:ahb1:apb1:apb2,
-	 * normally, only clk src need be cared.
-	 * so, at a31, only cpu:ahb1:apb2 need be cared.
-	 * pll1->cpu -> axi
-	 *	     -> atb/apb
-	 * ahb1 -> apb1
-	 * apb2
-	 */
-	int bus_change;
-
-	/*
-	 * bus_src: ahb1, apb2 src;
-	 * option:  pllx:axi:hosc:losc
-	 */
-	bus_para_t bus_factor[BUS_NUM];
 
 	struct list_head list; /* list of all extended standby */
 
 	char * name;
 } scene_extended_standby_t;
+#endif
 
-extern scene_extended_standby_t extended_standby[8];
+extern scene_extended_standby_t extended_standby[];
+extern int extended_standby_cnt;
 
 const extended_standby_manager_t *get_extended_standby_manager(void);
 

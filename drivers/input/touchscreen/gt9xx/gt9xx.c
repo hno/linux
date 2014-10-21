@@ -1440,8 +1440,6 @@ static int __devinit goodix_ts_init(void)
                 printk("%s:read config fail!\n",__func__);
                 return ret;
         }
-	input_set_power_enable(&(config_info.input_type), 1);
-	msleep(10);
         sunxi_gpio_to_name(CTP_IRQ_NUMBER,irq_pin_name);
         gtp_io_init(20);
 		

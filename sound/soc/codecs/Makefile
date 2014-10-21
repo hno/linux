@@ -210,3 +210,4 @@ obj-$(CONFIG_SND_SOC_TPA6130A2)	+= snd-soc-tpa6130a2.o
 
 #AC100
 obj-$(CONFIG_SND_SOC_AC100_CODEC) += ac100.o
+obj-$(CONFIG_SND_SOC_AC100DAPM_CODEC) += ac100_dapm.o

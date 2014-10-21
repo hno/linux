@@ -22,9 +22,8 @@
 #include <linux/io.h>
 #include <linux/irq.h>
 
-#define  DMSG_ERR(format,args...)               printk("[sunxi_hci_sunxi]: "format,##args)
-#define  DMSG_PRINT(format,args...)             printk("[sunxi_hci_sunxi]: "format,##args)
-
+#define  DMSG_ERR(format,args...)               pr_err("hci: "format,##args)
+#define  DMSG_PRINT(format,args...)             pr_debug("hci: "format,##args)
 
 #if 0
 #define DMSG_DEBUG                              DMSG_PRINT
@@ -44,13 +43,13 @@
 #define DMSG_PANIC(...)
 #endif
 
-#define  USBC_Readb(reg)                        (*(volatile unsigned char * __force)(reg))
-#define  USBC_Readw(reg)                        (*(volatile unsigned short * __force)(reg))
-#define  USBC_Readl(reg)                        (*(volatile unsigned long * __force)(reg))
+#define  USBC_Readb(reg)                        readb(reg)
+#define  USBC_Readw(reg)                        readw(reg)
+#define  USBC_Readl(reg)                        readl(reg)
 
-#define  USBC_Writeb(value, reg)                (*(volatile unsigned char * __force)(reg) = (value))
-#define  USBC_Writew(value, reg)                (*(volatile unsigned short * __force)(reg) = (value))
-#define  USBC_Writel(value, reg)                (*(volatile unsigned long * __force)(reg) = (value))
+#define  USBC_Writeb(value, reg)                writeb(value, reg)
+#define  USBC_Writew(value, reg)                writew(value, reg)
+#define  USBC_Writel(value, reg)                writel(value, reg)
 
 #define  USBC_REG_test_bit_b(bp, reg)           (USBC_Readb(reg) & (1 << (bp)))
 #define  USBC_REG_test_bit_w(bp, reg)           (USBC_Readw(reg) & (1 << (bp)))
@@ -70,6 +69,9 @@
 #define SUNXI_USB_OHCI_LEN                      0x58
 
 #define SUNXI_USB_PMU_IRQ_ENABLE                0x800
+#define SUNXI_HCI_PHY_CTRL                      0x810
+#define SUNXI_HCI_PHY_CTRL_DISENABLE               3
+
 
 #define EHCI_CAP_OFFSET		(0x00)
 #define EHCI_CAP_LEN		(0x10)
@@ -210,6 +212,7 @@ struct sunxi_hci_hcd{
 	void (* set_power)(struct sunxi_hci_hcd *sunxi_hci, int is_on);
 	void (* port_configure)(struct sunxi_hci_hcd *sunxi_hci, u32 enable);
 	void (* usb_passby)(struct sunxi_hci_hcd *sunxi_hci, u32 enable);
+	void (* hci_phy_ctrl)(struct sunxi_hci_hcd *sunxi_hci, u32 enable);
 };
 
 #ifdef  SUNXI_USB_FPGA
@@ -219,7 +222,7 @@ static inline void fpga_config_use_hci(__u32 sram_vbase)
 	u32 reg_value = 0;
 	reg_value = USBC_Readl(sram_vbase + 0x04);
 	/* bit1: 1 - select phy for otg, 0 - select phy for hci */
-#ifdef CONFIG_ARCH_SUN8IW8
+#if defined (CONFIG_ARCH_SUN8IW8) || defined (CONFIG_ARCH_SUN8IW7)
 	reg_value |= 0x01;
 #else
 	reg_value &= ~(0x01);

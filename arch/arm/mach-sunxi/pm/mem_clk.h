@@ -43,6 +43,12 @@ struct clk_misc_t {
 	__u32   Pll_C1_Bias;            //0x0238
 	__u32   PllC1Tun;             //0x0254
 	__u32   PllC1Ctl;    	        //0x0004
+	__u32   Pll3Ctl;		//0x10, video
+	__u32	Pll4Ctl;		//0x18, ve
+	__u32	PllVideo0Bias;           //0x228,  pll video0 bias reg
+	__u32	PllVeBias;              //0x22c,  pll ve    bias reg
+	__u32	PllVideo0Reg0Pattern;        //0x288,  pll video0 pattern reg
+	__u32	PllVideo0Reg1Pattern;        //0x288,  pll video0 pattern reg
 #endif
 
 };
@@ -63,6 +69,7 @@ struct clk_state{
 #elif defined(CONFIG_ARCH_SUN9IW1P1)
 struct clk_div_t {
 	__u32	Axi0_Cfg;             
+	__u32	Axi1_Cfg;             
 };
 
 struct clk_misc_t {
@@ -76,6 +83,7 @@ struct clk_misc_t {
 	__u32   Pll_C1_Tun;             //0x00e4
 	__u32   Pll_Video1_Pat_Cfg;     //0x0118
 	__u32   Pll_Video2_Pat_Cfg;     //0x011c
+	__u32   Pll_C0_Cfg;    	        //0x0000
 	__u32   Pll_C1_Cfg;    	        //0x0004
 	__u32   Pll_Video1_Cfg;    	//0x0018
 	__u32   Pll_Video2_Cfg;    	//0x001c

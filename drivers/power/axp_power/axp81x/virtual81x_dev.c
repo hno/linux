@@ -90,12 +90,6 @@ static struct platform_device virt[]={
 				.platform_data = "axp81x_fldo2",
 			}
 	},{
-			.name = "reg-81x-cs-fldo3",
-			.id = -1,
-			.dev		= {
-				.platform_data = "axp81x_fldo3",
-			}
-	},{
 			.name = "reg-81x-cs-dcdc1",
 			.id = -1,
 			.dev		= {
@@ -141,13 +135,13 @@ static struct platform_device virt[]={
 			.name = "reg-81x-cs-gpio0ldo",
 			.id = -1,
 			.dev		= {
-				.platform_data = "axp81x_ldoio0",
+				.platform_data = "axp81x_gpio0ldo",
 			}
  	},{
 			.name = "reg-81x-cs-gpio1ldo",
 			.id = -1,
 			.dev		= {
-				.platform_data = "axp81x_ldoio1",
+				.platform_data = "axp81x_gpio1ldo",
 		}
 	},
 };

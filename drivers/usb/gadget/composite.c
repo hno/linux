@@ -1794,7 +1794,7 @@ static s32 get_android_config(struct android_usb_config *config)
 	if(type == SCIRPT_ITEM_VALUE_TYPE_INT){
 		config->serial_unique = item_temp.val;
 	}else{
-		printk("get serial_unique failed\n");
+		pr_debug("get serial_unique failed\n");
 		config->serial_unique = 0;
 	}
 

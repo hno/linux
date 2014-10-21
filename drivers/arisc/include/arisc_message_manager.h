@@ -29,7 +29,7 @@
  *
  * returns:  OK if initialize succeeded, others if failed.
  */
-int arisc_message_manager_init(void);
+int arisc_message_manager_init(void *addr, u32 size);
 
 /**
  * exit message manager.
@@ -66,5 +66,9 @@ void arisc_message_free(struct arisc_message *pmessage);
 int arisc_message_coming_notify(struct arisc_message *pmessage);
 
 int arisc_semaphore_used_num_query(void);
+
+struct arisc_message *arisc_message_map_to_cpux(u32 addr);
+u32 arisc_message_map_to_cpus(struct arisc_message *message);
+int arisc_message_valid(struct arisc_message *pmessage);
 
 #endif  /* __MESSAGE_MANAGER_H */

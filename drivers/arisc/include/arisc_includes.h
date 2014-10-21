@@ -44,6 +44,7 @@
 #include "./../arisc_i.h"
 #include "./arisc_cfgs.h"
 #include "./arisc_dbgs.h"
+#include "./arisc_para.h"
 
 /* messages define */
 #include "./arisc_messages.h"
@@ -62,6 +63,7 @@ extern int arisc_set_uart_baudrate(u32 baudrate);
 extern int arisc_set_dram_crc_paras(unsigned int dram_crc_en, unsigned int dram_crc_srcaddr, unsigned int dram_crc_len);
 extern int arisc_query_set_standby_info(struct standby_info_para *para, arisc_rw_type_e op);
 extern int arisc_sysconfig_sstpower_paras(void);
+extern int arisc_report_error_info(struct arisc_message *pmessage);
 
 /* global vars */
 extern unsigned long arisc_sram_a2_vbase;

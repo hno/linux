@@ -769,6 +769,10 @@ static inline const struct snd_interval *hw_param_interval_c(const struct snd_pc
 	(hw_param_interval_c((p), SNDRV_PCM_HW_PARAM_CHANNELS)->min)
 #define params_rate(p) \
 	(hw_param_interval_c((p), SNDRV_PCM_HW_PARAM_RATE)->min)
+#ifdef CONFIG_SND_SUNXI_SOC_SUPPORT_AUDIO_RAW
+#define params_raw(p) \
+	(hw_param_interval_c((p), SNDRV_PCM_HW_PARAM_RAW_FLAG)->min)
+#endif
 #define params_period_size(p) \
 	(hw_param_interval_c((p), SNDRV_PCM_HW_PARAM_PERIOD_SIZE)->min)
 #define params_periods(p) \
@@ -888,6 +892,9 @@ snd_pcm_sframes_t snd_pcm_lib_writev(struct snd_pcm_substream *substream,
 				     void __user **bufs, snd_pcm_uframes_t frames);
 snd_pcm_sframes_t snd_pcm_lib_readv(struct snd_pcm_substream *substream,
 				    void __user **bufs, snd_pcm_uframes_t frames);
+#ifdef AUDIO_KARAOKE
+void audio_mixer_buffer(char *out_buf, char *offloadbuf, char *pcmbuf, int bufflen);
+#endif
 
 extern const struct snd_pcm_hw_constraint_list snd_pcm_known_rates;
 

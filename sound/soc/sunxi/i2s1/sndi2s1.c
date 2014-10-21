@@ -172,7 +172,7 @@ static int __init sndi2s1_codec_init(void)
 
 	type = script_get_item("i2s1", "i2s1_used", &val);
 	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
-        printk("[I2S] type err!\n");
+        pr_err("[I2S] type err!\n");
     }
 
 	i2s1_used = val.val;
@@ -184,7 +184,7 @@ static int __init sndi2s1_codec_init(void)
 		if ((err = platform_driver_register(&sndi2s1_codec_driver)) < 0)
 			return err;
 	} else {
-       printk("[I2S]sndi2s1 cannot find any using configuration for controllers, return directly!\n");
+       pr_err("[I2S]sndi2s1 cannot find any using configuration for controllers, return directly!\n");
        return 0;
     }
 	

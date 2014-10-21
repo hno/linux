@@ -47,7 +47,7 @@ void serial_init(void);
 void serial_exit(void);
 __s32 serial_puts(const char *string);
 __u32 serial_gets(char* buf, __u32 n);
-void serial_init_nommu(void);
+void serial_init_nommu(__u32 port_id);
 __s32 serial_puts_nommu(const char *string);
 __u32 serial_gets_nommu(char* buf, __u32 n);
 

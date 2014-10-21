@@ -595,4 +595,11 @@ config IR_TX_SUNXI
        tristate "sunxi IR TX support"
          help
           Say Y here to enable the IR TX, support NEC code.
+		  
+config KEYPAD_SUNXI
+	tristate "softwinnner KEY PAD support"
+	depends on ARCH_SUN8IW9
+	help
+		Say Y here to enable the keyboard, support 8x8 keys.
+		based on verify board.
 endif

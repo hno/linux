@@ -19,12 +19,15 @@
 #if  (defined CONFIG_FPGA_V4_PLATFORM)|| (defined CONFIG_FPGA_V7_PLATFORM) /* S4 820 */
 #define SUNXI_IRQ_NMI                   (SUNXI_GIC_START + 0)  /* 32 */
 #define SUNXI_IRQ_UART0                 (SUNXI_GIC_START + 1)  /* 33 */
+#define SUNXI_IRQ_UART1                 (SUNXI_GIC_START + 1)  /* 33 */
 #define SUNXI_IRQ_TWI0                  (SUNXI_GIC_START + 2)  /* 34 */
 #define SUNXI_IRQ_TWI1                  (SUNXI_GIC_START + 2)  /* 34 */
 #define SUNXI_IRQ_TWI2                  (SUNXI_GIC_START + 2)  /* 34 */
+#define SUNXI_IRQ_CSI_CCI               (SUNXI_GIC_START + 2)  /* 34 */
 #define SUNXI_IRQ_EINTA                 (SUNXI_GIC_START + 3)  /* 35 */
 #define SUNXI_IRQ_EINTB                 (SUNXI_GIC_START + 3)  /* 35 */
 #define SUNXI_IRQ_EINTG                 (SUNXI_GIC_START + 3)  /* 35 */
+#define SUNXI_IRQ_EINTL                 (SUNXI_GIC_START + 3)  /* 35 */
 #define SUNXI_IRQ_IIS0                  (SUNXI_GIC_START + 4)  /* 36 */
 #define SUNXI_IRQ_IIS1                  (SUNXI_GIC_START + 4)  /* 36 */
 #define SUNXI_IRQ_CSI                   (SUNXI_GIC_START + 5)  /* 37 */
@@ -59,15 +62,16 @@
 #define SUNXI_IRQ_GPU_PMU               (SUNXI_GIC_START + 24) /* 56 */
 #define SUNXI_IRQ_GPU_PP1               (SUNXI_GIC_START + 25) /* 57 */
 #define SUNXI_IRQ_GPU_PPMMU1            (SUNXI_GIC_START + 26) /* 58 */
-#define SUNXI_IRQ_SPDIF                 (SUNXI_GIC_START + 26) /* 58 */
-#define SUNXI_IRQ_SS0                   (SUNXI_GIC_START + 26) /* 58 */
-#define SUNXI_IRQ_R_CIR_RX              (SUNXI_GIC_START + 26) /* 58 */
-#define SUNXI_IRQ_LCD1                  (SUNXI_GIC_START + 26) /* 58 */
-#define SUNXI_IRQ_RTWD                  (SUNXI_GIC_START + 26) /* 58 */
-#define SUNXI_IRQ_SMC                   (SUNXI_GIC_START + 26) /* 58 */
-#define SUNXI_IRQ_DE                    (SUNXI_GIC_START + 27) /* 59 */
-#define SUNXI_IRQ_TSDM                  (SUNXI_GIC_START + 29) /* 61 */
-#define SUNXI_IRQ_EMAC                  (SUNXI_GIC_START + 30) /* 62 */
+#define SUNXI_IRQ_SPDIF                 (SUNXI_GIC_START + 27) /* 59 */
+#define SUNXI_IRQ_SS                    (SUNXI_GIC_START + 27) /* 59 */
+#define SUNXI_IRQ_R_CIR_RX              (SUNXI_GIC_START + 27) /* 59 */
+#define SUNXI_IRQ_LCD1                  (SUNXI_GIC_START + 27) /* 59 */
+#define SUNXI_IRQ_RTWD                  (SUNXI_GIC_START + 27) /* 59 */
+#define SUNXI_IRQ_SMC                   (SUNXI_GIC_START + 27) /* 59 */
+#define SUNXI_IRQ_DE                    (SUNXI_GIC_START + 28) /* 60 */
+#define SUNXI_IRQ_TS                    (SUNXI_GIC_START + 29) /* 61 */
+#define SUNXI_IRQ_DIT                   (SUNXI_GIC_START + 29) /* 61 */
+#define SUNXI_IRQ_GMAC                  (SUNXI_GIC_START + 30) /* 62 */
 
 #define SUNXI_IRQ_PMU                   (SUNXI_GIC_START + 100) /* 132, invalid */
 
@@ -91,6 +95,7 @@
 #define SUNXI_IRQ_WATCHDOG              (SUNXI_GIC_START + 25)  /* 57 */
 #define SUNXI_IRQ_AUDIO                 (SUNXI_GIC_START + 29)  /* 61 */
 #define SUNXI_IRQ_LRADC                 (SUNXI_GIC_START + 30)  /* 62 */
+#define SUNXI_IRQ_THERMAL               (SUNXI_GIC_START + 31)  /* 63 */
 #define SUNXI_IRQ_NMI                   (SUNXI_GIC_START + 32)  /* 64 */
 #define SUNXI_IRQ_RTIMER0               (SUNXI_GIC_START + 33)  /* 65 */
 #define SUNXI_IRQ_RTIMER1               (SUNXI_GIC_START + 34)  /* 66 */
@@ -99,6 +104,8 @@
 #define SUNXI_IRQ_RUART                 (SUNXI_GIC_START + 38)  /* 70 */
 #define SUNXI_IRQ_RALARM0               (SUNXI_GIC_START + 40)  /* 72 */
 #define SUNXI_IRQ_RALARM1               (SUNXI_GIC_START + 41)  /* 73 */
+#define SUNXI_IRQ_RTIMER2               (SUNXI_GIC_START + 42)  /* 74 */
+#define SUNXI_IRQ_RTIMER3               (SUNXI_GIC_START + 43)  /* 75 */
 #define SUNXI_IRQ_RTWI                  (SUNXI_GIC_START + 44)  /* 76 */
 #define SUNXI_IRQ_EINTL                 (SUNXI_GIC_START + 45)  /* 77 */
 #define SUNXI_IRQ_RTWD                  (SUNXI_GIC_START + 46)  /* 78 */
@@ -122,9 +129,9 @@
 #define SUNXI_IRQ_USBOHCI2              (SUNXI_GIC_START + 77)  /* 109 */
 #define SUNXI_IRQ_USBEHCI3              (SUNXI_GIC_START + 78)  /* 110 */
 #define SUNXI_IRQ_USBOHCI3              (SUNXI_GIC_START + 79)  /* 111 */
-#define SUNXI_IRQ_SS0                   (SUNXI_GIC_START + 80)  /* 112 */
+#define SUNXI_IRQ_SS_TZ                 (SUNXI_GIC_START + 80)  /* 112 SS in TrustZone */
 #define SUNXI_IRQ_TS                    (SUNXI_GIC_START + 81)  /* 113 */
-#define SUNXI_IRQ_EMAC                  (SUNXI_GIC_START + 82)  /* 114 */
+#define SUNXI_IRQ_GMAC                  (SUNXI_GIC_START + 82)  /* 114 */
 #define SUNXI_IRQ_SCR                   (SUNXI_GIC_START + 83)  /* 115 */
 #define SUNXI_IRQ_CSI                   (SUNXI_GIC_START + 84)  /* 116 */
 #define SUNXI_IRQ_CSI_CCI               (SUNXI_GIC_START + 85)  /* 117 */
@@ -133,7 +140,7 @@
 #define SUNXI_IRQ_HDMI                  (SUNXI_GIC_START + 88)  /* 120 */
 #define SUNXI_IRQ_TVE                   (SUNXI_GIC_START + 92)  /* 124 */
 #define SUNXI_IRQ_DIT                   (SUNXI_GIC_START + 93)  /* 125 */
-#define SUNXI_IRQ_SS1                   (SUNXI_GIC_START + 94)  /* 126 */
+#define SUNXI_IRQ_SS                    (SUNXI_GIC_START + 94)  /* 126 */
 #define SUNXI_IRQ_DE                    (SUNXI_GIC_START + 95)  /* 127 */
 #define SUNXI_IRQ_GPU_GP                (SUNXI_GIC_START + 97)  /* 129 */
 #define SUNXI_IRQ_GPU_GPMMU             (SUNXI_GIC_START + 98)  /* 130 */

@@ -73,11 +73,11 @@ SUNXI_CLK_FACTORS(pll_cpu,    8,  5,  4,  2,  0,  2,  16, 2,  0,   0,   0,   0, 
 SUNXI_CLK_FACTORS(pll_audio,  8,  7,  0,  0,  0,  5,  16, 4,  0,   0,   0,   0,    0,    0,   0,     31,    0,     0,       0,        0);
 SUNXI_CLK_FACTORS(pll_video,  8,  7,  0,  0,  0,  4,  0,  0,  0,   0,   0,   0,    1,    25,  24,    31,   24,     0,       PLL_VIDEOPAT,0xd1303333);
 SUNXI_CLK_FACTORS(pll_ve,     8,  7,  0,  0,  0,  4,  0,  0,  0,   0,   0,   0,    1,    25,  24,    31,    0,     0,       0,        0);
-SUNXI_CLK_FACTORS(pll_ddr0,   8,  5,  4,  2,  0,  2,  0,  0,  0,   0,   0,   0,    0,    0,   0,     31,    0,     0,       0,        0);
+SUNXI_CLK_FACTORS_UPDATE(pll_ddr0,   8,  5,  4,  2,  0,  2,  0,  0,  0,   0,   0,   0,    0,    0,   0,     31,    0,     0,       0,        0 , 20);
 SUNXI_CLK_FACTORS(pll_periph0,8,  5,  4,  2,  0,  0,  0,  0,  0,   0,   0,   0,    0,    0,   0,     31,    0,     0,       0,        0);
 SUNXI_CLK_FACTORS(pll_isp,    8,  7,  0,  0,  0,  4,  0,  0,  0,   0,   0,   0,    1,    25,  24,    31,    0,     0,       0,        0);
 SUNXI_CLK_FACTORS(pll_periph1,8,  5,  4,  2,  0,  0,  0,  0,  0,   0,   0,   0,    0,    0,   0,     31,    0,     0,       0,        0);
-SUNXI_CLK_FACTORS(pll_ddr1,   8,  6,  0,  0,  0,  2,  0,  0,  0,   0,   0,   0,    0,    0,   0,     31,    0,     0,       0,        0);
+SUNXI_CLK_FACTORS_UPDATE(pll_ddr1,   8,  6,  0,  0,  0,  2,  0,  0,  0,   0,   0,   0,    0,    0,   0,     31,    0,     0,       0,        0 , 30);
 
 static int get_factors_pll_cpu(u32 rate, u32 parent_rate, struct clk_factors_value *factor)
 {
@@ -337,10 +337,10 @@ struct periph_init_data {
 
 static const char *cpu_parents[] = {"losc", "hosc", "pll_cpu", "pll_cpu"};
 static const char *axi_parents[] = {"cpu"};
-static const char *pll_periphahb0_parents[] = {"pll_periph"};
+static const char *pll_periphahb0_parents[] = {"pll_periph0"};
 static const char *ahb0_parents[] = {"losc", "hosc", "axi", "pll_periphahb0"};
 static const char *apb0_parents[] = {"ahb0"};
-static const char *apb1_parents[] = {"losc", "hosc", "pll_periph", "pll_periph"};
+static const char *apb1_parents[] = {"losc", "hosc", "pll_periph0", "pll_periph0"};
 static const char *periph0_parents[] = {"hosc", "pll_periph0","",""};
 static const char *periph_parents[] = {"hosc", "pll_periph0","pll_periph1",""};
 static const char *i2s_parents[] = {"pll_audiox8", "pll_audiox4", "pll_audiox2", "pll_audio"};

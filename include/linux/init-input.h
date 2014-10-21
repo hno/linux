@@ -24,7 +24,8 @@ enum input_sensor_type{
 	LS_TYPE,
 	IR_TYPE,
 	THS_TYPE,
-	MOTOR_TYPE
+	MOTOR_TYPE,
+	BAT_TYPE
 };
 
 struct sensor_config_info{
@@ -58,6 +59,7 @@ struct ctp_config_info{
 	int revert_y_flag;
 	int exchange_x_y_flag;
 	u32 int_number;
+	unsigned char device_detect;
 	char *ctp_power;
 	u32 ctp_power_vol;
 	struct gpio_config ctp_power_io;

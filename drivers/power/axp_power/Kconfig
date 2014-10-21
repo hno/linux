@@ -39,6 +39,13 @@ config AW_AXP15
 	---help---
 	AXP15 driver
 
+config AW_AXP20
+	bool "AXP20 driver"
+	depends on I2C
+	depends on AXP_TWI_USED
+	---help---
+	AXP20 driver
+	
 config AXP_CHARGEINIT
 	bool "AXP initial charging environment set"
 	default y

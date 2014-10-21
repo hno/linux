@@ -45,19 +45,19 @@
 
 #define SUNXI_MBUS_PBASE            SUNXI_DRAMCOM_PBASE
 #define SUNXI_MBUS_VBASE            IO_ADDRESS(SUNXI_MBUS_PBASE)
-#define MBUS_MAST_CFG0_REG(n)       IO_ADDRESS((SUNXI_MBUS_PBASE + 0x0010 + (0x8 * n))) /* Config n = 0 ~ 15       */
-#define MBUS_MAST_CFG1_REG(n)       IO_ADDRESS((SUNXI_MBUS_PBASE + 0x0014 + (0x8 * n))) /* BWL Config n = 0 ~ 15   */
+#define MBUS_MAST_CFG0_REG(n)       IO_ADDRESS((SUNXI_MBUS_PBASE + 0x0010 + (0x8 * n))) /* Config n = 0 ~ 15(w5)/13(w6)     */
+#define MBUS_MAST_CFG1_REG(n)       IO_ADDRESS((SUNXI_MBUS_PBASE + 0x0014 + (0x8 * n))) /* BWL Config n = 0 ~ 15(w5)/13(w6) */
 #define MBUS_BW_CFG_REG             IO_ADDRESS((SUNXI_MBUS_PBASE + 0x0090)) /* Bandwith Window base on MCLK cycles */
 #define MBUS_MAST_ACEN_CFG_REG      IO_ADDRESS((SUNXI_MBUS_PBASE + 0x0094)) /* Master Access Enable, 0:dis, 1:en   */
+#if defined CONFIG_ARCH_SUN8IW5P1
 #define MBUS_MAST_ACPR_CFG_REG      IO_ADDRESS((SUNXI_MBUS_PBASE + 0x0098)) /* Master Access Priority, 0:low, 1:hg */
+#endif
 #define MBUS_PMU_CNTEB_CFG_REG      IO_ADDRESS((SUNXI_MBUS_PBASE + 0x009c)) /* Counter Enable, 0x0001:enable all   */
 #define MBUS_PMU_CNT_REG(n)         IO_ADDRESS((SUNXI_MBUS_PBASE + 0x00a0 + (0x4 * n))) /* Counter n = 0 ~ 6       */
 /* generaly, the below registers are not needed to modify */
 #define MBUS_SW_CLK_ON_REG          IO_ADDRESS((SUNXI_MBUS_PBASE + 0x00c0)) /* Software Clock ON, 0:open by hws    */
 #define MBUS_SW_CLK_OFF_REG         IO_ADDRESS((SUNXI_MBUS_PBASE + 0x00c4)) /* Sofrware Clock OFF, 1:dis-access    */
 #define MBUS_RESOURCE_SIZE          (MBUS_SW_CLK_OFF_REG - SUNXI_MBUS_VBASE)
-
-#define MBUS_MAX_PORTS       MBUS_PORT_MSTG1
 
 /* for register MBUS_MAST_CFG0_REG(n) */
 #define MBUS_QOS_MAX            0x03
@@ -72,6 +72,9 @@
 #define MBUS_BWL0_SHIFT         16 /* shirft, Bandwidth Limit in MB/S, 0: no limit     */
 #define MBUS_BWL1_SHIFT         0
 #define MBUS_BWL2_SHIFT         16
+#if defined CONFIG_ARCH_SUN8IW6P1
+#define MBUS_PRI_SHIFT          1  /* shirft, Priority, 0:low   */
+#endif
 
 /* for register MBUS_BW_CFG_REG */
 #define MBUS_BWSIZE_MAX         0x0ffff
@@ -85,16 +88,17 @@ typedef enum mbus_pmu{
 	MBUS_PMU_DISP   = 3,    /* DISPLAY       */
 	MBUS_PMU_OTH    = 4,    /* other masters */
 	MBUS_PMU_TOTAL  = 5,    /* total masters */
+	MBUS_PMU_MAX    = 6,    /* max masters   */
 }mbus_pmu_e;
 
-#define MBUS_MAX_PMU            MBUS_PMU_TOTAL
-#define MBUS_PORT_PRI           (MBUS_MAX_PMU + 1)
-#define MBUS_PORT_QOS           (MBUS_MAX_PMU + 2)
-#define MBUS_PORT_WT            (MBUS_MAX_PMU + 3)
-#define MBUS_PORT_ACS           (MBUS_MAX_PMU + 4)
-#define MBUS_PORT_BWL0          (MBUS_MAX_PMU + 5)
-#define MBUS_PORT_BWL1          (MBUS_MAX_PMU + 6)
-#define MBUS_PORT_BWL2          (MBUS_MAX_PMU + 7)
+#define MBUS_PORT_PRI           (MBUS_PMU_MAX + 0)
+#define MBUS_PORT_QOS           (MBUS_PMU_MAX + 1)
+#define MBUS_PORT_WT            (MBUS_PMU_MAX + 2)
+#define MBUS_PORT_ACS           (MBUS_PMU_MAX + 3)
+#define MBUS_PORT_BWL0          (MBUS_PMU_MAX + 4)
+#define MBUS_PORT_BWL1          (MBUS_PMU_MAX + 5)
+#define MBUS_PORT_BWL2          (MBUS_PMU_MAX + 6)
+#define MBUS_PORT_BWLEN         (MBUS_PMU_MAX + 7)
 
 struct sunxi_mbus_port {
 	void __iomem *base;     /* SUNXI_MBUS_VBASE */
@@ -119,7 +123,7 @@ int notrace mbus_port_setbwlen(mbus_port_e port, bool en)
 {
 	unsigned int value;
 
-	if (port > MBUS_MAX_PORTS)
+	if (port >= MBUS_PORTS_MAX)
 		return -ENODEV;
 
 	mutex_lock(&mbus_seting);
@@ -141,13 +145,19 @@ int notrace mbus_port_setpri(mbus_port_e port, bool pri)
 {
 	unsigned int value;
 
-	if (port > MBUS_MAX_PORTS)
+	if (port >= MBUS_PORTS_MAX)
 		return -ENODEV;
 
 	mutex_lock(&mbus_seting);
+#if defined CONFIG_ARCH_SUN8IW5P1
 	value = readl_relaxed(MBUS_MAST_ACPR_CFG_REG);
 	value &= ~(1 << port);
 	writel_relaxed(value | (pri << port), MBUS_MAST_ACPR_CFG_REG);
+#elif defined CONFIG_ARCH_SUN8IW6P1
+	value = readl_relaxed(MBUS_MAST_CFG0_REG(port));
+	value &= ~(1 << MBUS_PRI_SHIFT);
+	writel_relaxed(value | (pri << MBUS_PRI_SHIFT), MBUS_MAST_CFG0_REG(port));
+#endif
 	mutex_unlock(&mbus_seting);
 
 	return 0;
@@ -163,7 +173,7 @@ int notrace mbus_port_setqos(mbus_port_e port, unsigned int qos)
 {
 	unsigned int value;
 
-	if (port > MBUS_MAX_PORTS)
+	if (port >= MBUS_PORTS_MAX)
 		return -ENODEV;
 
 	if (qos > MBUS_QOS_MAX)
@@ -188,6 +198,9 @@ int notrace mbus_port_setwt(mbus_port_e port, unsigned int wt)
 {
 	unsigned int value;
 
+	if (port >= MBUS_PORTS_MAX)
+		return -ENODEV;
+
 	if (wt > MBUS_WT_MAX)
 		return -EPERM;
 
@@ -210,6 +223,9 @@ int notrace mbus_port_setacs(mbus_port_e port, unsigned int acs)
 {
 	unsigned int value;
 
+	if (port >= MBUS_PORTS_MAX)
+		return -ENODEV;
+
 	if (acs > MBUS_ACS_MAX)
 		return -EPERM;
 
@@ -231,6 +247,9 @@ EXPORT_SYMBOL_GPL(mbus_port_setacs);
 int notrace mbus_port_setbwl0(mbus_port_e port, unsigned int bwl0)
 {
 	unsigned int value;
+
+	if (port >= MBUS_PORTS_MAX)
+		return -ENODEV;
 
 	if (bwl0 > MBUS_BWL_MAX)
 		return -EPERM;
@@ -255,6 +274,9 @@ int notrace mbus_port_setbwl1(mbus_port_e port, unsigned int bwl1)
 {
 	unsigned int value;
 
+	if (port >= MBUS_PORTS_MAX)
+		return -ENODEV;
+
 	if (bwl1 > MBUS_BWL_MAX)
 		return -EPERM;
 
@@ -278,6 +300,9 @@ int notrace mbus_port_setbwl2(mbus_port_e port, unsigned int bwl2)
 {
 	unsigned int value;
 
+	if (port >= MBUS_PORTS_MAX)
+		return -ENODEV;
+
 	if (bwl2 > MBUS_BWL_MAX)
 		return -EPERM;
 
@@ -300,6 +325,9 @@ EXPORT_SYMBOL_GPL(mbus_port_setbwl2);
 int notrace mbus_port_setbwl(mbus_port_e port, unsigned int bwl0, \
                              unsigned int bwl1, unsigned int bwl2)
 {
+	if (port >= MBUS_PORTS_MAX)
+		return -ENODEV;
+
 	if ((bwl0 > MBUS_BWL_MAX) || (bwl1 > MBUS_BWL_MAX) || (bwl2 > MBUS_BWL_MAX))
 		return -EPERM;
 
@@ -396,7 +424,11 @@ static void notrace mbus_port_control(mbus_port_e port, bool enable)
  */
 int notrace mbus_port_control_by_index(mbus_port_e port, bool enable)
 {
-	if (port > MBUS_MAX_PORTS)
+#if defined CONFIG_ARCH_SUN8IW5P1
+	if (port >= MBUS_PORTS_MAX)
+#elif defined CONFIG_ARCH_SUN8IW6P1
+	if (port >= MBUS_PORTSAE_MAX)
+#endif
 		return -ENODEV;
 	/*
 	 * MBUS control for ports connected to CPUS is extremely fragile
@@ -491,17 +523,30 @@ static unsigned int mbus_get_value(struct mbus_data *data, \
 	mutex_lock(&data->update_lock);
 	switch (index) {
 	case MBUS_PORT_PRI:
+#if defined CONFIG_ARCH_SUN8IW5P1
 		value = readl_relaxed(MBUS_MAST_ACPR_CFG_REG);
-		for (i = 0; i <= MBUS_MAX_PORTS; i++) {
+		for (i = 0; i < MBUS_PORTS_MAX; i++) {
+#elif defined CONFIG_ARCH_SUN8IW6P1
+		for (i = 0; i < MBUS_PORTS_MAX; i++) {
+			value = readl_relaxed(MBUS_MAST_CFG0_REG(i));
+			value >>= MBUS_PRI_SHIFT;
+#else
+		value = 0;
+		i = 0;
+
+		printk("func:%s, line:%d this platform is not supported!!\n", \
+		        __func__, __LINE__);
+		{
+#endif
 			snprintf(buf + (i * 20), 20, \
-				"master%2d priority:%1d\n", i, (value & 1));
+			         "master%2d priority:%1d\n", i, (value & 1));
 			*(buf + (i * 20) + 19) = '\n';
-			value >>= 1;
+			value >>= 1; /* useless for w6 */
 		}
 		*(buf + (i * 20)) = 0;
 		break;
 	case MBUS_PORT_QOS:
-		for (i = 0; i <= MBUS_MAX_PORTS; i++) {
+		for (i = 0; i < MBUS_PORTS_MAX; i++) {
 			value = readl_relaxed(MBUS_MAST_CFG0_REG(i));
 			value >>= MBUS_QOS_SHIFT;
 			value &= MBUS_QOS_MAX;
@@ -512,7 +557,7 @@ static unsigned int mbus_get_value(struct mbus_data *data, \
 		*(buf + (i * 15)) = 0;
 		break;
 	case MBUS_PORT_WT:
-		for (i = 0; i <= MBUS_MAX_PORTS; i++) {
+		for (i = 0; i < MBUS_PORTS_MAX; i++) {
 			value = readl_relaxed(MBUS_MAST_CFG0_REG(i));
 			value >>= MBUS_WT_SHIFT;
 			value &= MBUS_WT_MAX;
@@ -523,7 +568,7 @@ static unsigned int mbus_get_value(struct mbus_data *data, \
 		*(buf + (i * 23)) = 0;
 		break;
 	case MBUS_PORT_ACS:
-		for (i = 0; i <= MBUS_MAX_PORTS; i++) {
+		for (i = 0; i < MBUS_PORTS_MAX; i++) {
 			value = readl_relaxed(MBUS_MAST_CFG0_REG(i));
 			value >>= MBUS_ACS_SHIFT;
 			value &= MBUS_ACS_MAX;
@@ -534,7 +579,7 @@ static unsigned int mbus_get_value(struct mbus_data *data, \
 		*(buf + (i * 31)) = 0;
 		break;
 	case MBUS_PORT_BWL0:
-		 for (i = 0; i <= MBUS_MAX_PORTS; i++) {
+		 for (i = 0; i < MBUS_PORTS_MAX; i++) {
 			value = readl_relaxed(MBUS_MAST_CFG0_REG(i));
 			value >>= MBUS_BWL0_SHIFT;
 			value &= MBUS_BWL_MAX;
@@ -545,7 +590,7 @@ static unsigned int mbus_get_value(struct mbus_data *data, \
 		*(buf + (i * 32)) = 0;
 		break;
 	case MBUS_PORT_BWL1:
-		for (i = 0; i <= MBUS_MAX_PORTS; i++) {
+		for (i = 0; i < MBUS_PORTS_MAX; i++) {
 			value = readl_relaxed(MBUS_MAST_CFG1_REG(i));
 			value >>= MBUS_BWL1_SHIFT;
 			value &= MBUS_BWL_MAX;
@@ -556,7 +601,7 @@ static unsigned int mbus_get_value(struct mbus_data *data, \
 		*(buf + (i * 32)) = 0;
 		break;
 	case MBUS_PORT_BWL2:
-		for (i = 0; i <= MBUS_MAX_PORTS; i++) {
+		for (i = 0; i < MBUS_PORTS_MAX; i++) {
 			value = readl_relaxed(MBUS_MAST_CFG1_REG(i));
 			value >>= MBUS_BWL2_SHIFT;
 			value &= MBUS_BWL_MAX;
@@ -565,6 +610,16 @@ static unsigned int mbus_get_value(struct mbus_data *data, \
 			*(buf + (i * 32) + 31) = '\n';
 		}
 		*(buf + (i * 32)) = 0;
+		break;
+	case MBUS_PORT_BWLEN:
+		for (i = 0; i < MBUS_PORTS_MAX; i++) {
+			value = readl_relaxed(MBUS_MAST_CFG0_REG(i));
+			value &= 1;
+			snprintf(buf + (i * 22), 22, \
+			         "master%2d BWLimit_en:%1d\n", i, value);
+			*(buf + (i * 22) + 21) = '\n';
+		}
+		*(buf + (i * 22)) = 0;
 		break;
 	default:
 		/* programmer goofed */
@@ -583,7 +638,7 @@ static ssize_t mbus_show_value(struct device *dev, \
 	struct sensor_device_attribute *attr = to_sensor_dev_attr(da);
 	unsigned int len;
 
-	if (attr->index > MBUS_MAX_PMU) {
+	if (attr->index >= MBUS_PMU_MAX) {
 		mbus_get_value(&hw_mbus_pmu, attr->index, buf);
 		len = strlen(buf);
 		len = (len < PAGE_SIZE) ? len : PAGE_SIZE;
@@ -621,6 +676,9 @@ static unsigned int mbus_set_value(struct mbus_data *data, unsigned int index,\
 		break;
 	case MBUS_PORT_BWL2:
 		mbus_port_setbwl2(port, val);
+		break;
+	case MBUS_PORT_BWLEN:
+		mbus_port_setbwlen(port, val);
 		break;
 	default:
 		/* programmer goofed */
@@ -660,7 +718,7 @@ static ssize_t mbus_store_value(struct device *dev, \
 	err = kstrtoul(pbuf, 10, &port);
 	if (err < 0)
 		return err;
-	if (port > MBUS_MAX_PORTS) {
+	if (port >= MBUS_PORTS_MAX) {
 		dev_err(dev, "master is illegal\n");
 		return -EINVAL;
 	}
@@ -734,6 +792,10 @@ static SENSOR_DEVICE_ATTR(port_bwl1, S_IRUGO | S_IWUSR, mbus_show_value, mbus_st
 static SENSOR_DEVICE_ATTR(port_bwl2, S_IRUGO | S_IWUSR, mbus_show_value, mbus_store_value,
 			  MBUS_PORT_BWL2);
 
+/* get all masters' requeset number or set a master's number */
+static SENSOR_DEVICE_ATTR(port_bwlen, S_IRUGO | S_IWUSR, mbus_show_value, mbus_store_value,
+			  MBUS_PORT_BWLEN);
+
 /* pointers to created device attributes */
 static struct attribute *mbus_attributes[] = {
 	&sensor_dev_attr_pmu_cpuddr.dev_attr.attr,
@@ -749,6 +811,7 @@ static struct attribute *mbus_attributes[] = {
 	&sensor_dev_attr_port_bwl0.dev_attr.attr,
 	&sensor_dev_attr_port_bwl1.dev_attr.attr,
 	&sensor_dev_attr_port_bwl2.dev_attr.attr,
+	&sensor_dev_attr_port_bwlen.dev_attr.attr,
 	NULL,
 };
 

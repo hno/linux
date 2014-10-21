@@ -21,19 +21,42 @@
 #include "clk-sunxi.h"
 #include "clk-factors.h"
 
+
 static int sunxi_clk_fators_enable(struct clk_hw *hw)
 {
 	struct sunxi_clk_factors *factor = to_clk_factor(hw);
     struct sunxi_clk_factors_config *config = factor->config;
     unsigned long reg = factor_readl(factor,factor->reg);
-
+	unsigned int loop = 500;
     if(config->sdmwidth)
     {
         factor_writel(factor,config->sdmval, (void __iomem *)config->sdmpat);
         reg = SET_BITS(config->sdmshift, config->sdmwidth, reg, 1);
     }
-    reg = SET_BITS(config->enshift, 1, reg, 1);
-    factor_writel(factor,reg, factor->reg);
+
+	//enable the register
+	reg = SET_BITS(config->enshift, 1, reg, 1);
+
+	if(config->updshift) //update for pll_ddr register
+		reg = SET_BITS(config->updshift, 1, reg, 1);
+
+	factor_writel(factor,reg, factor->reg);
+
+
+    while(loop--)
+    {
+        reg = factor_readl(factor,factor->lock_reg);
+        if(GET_BITS(factor->lock_bit, 1, reg))
+             break;
+        else
+            udelay(1);
+    }
+    if(!loop)
+#if (defined CONFIG_FPGA_V4_PLATFORM) || (defined CONFIG_FPGA_V7_PLATFORM)
+    printk("clk %s wait lock timeout\n",hw->clk->name);
+#else
+    WARN(1, "clk %s wait lock timeout\n",hw->clk->name);
+#endif
     return 0;
 }
 
@@ -45,6 +68,8 @@ static void sunxi_clk_fators_disable(struct clk_hw *hw)
 
     if(config->sdmwidth)
         reg = SET_BITS(config->sdmshift, config->sdmwidth, reg, 0);
+	if(config->updshift) //update for pll_ddr register
+		reg = SET_BITS(config->updshift, 1, reg, 1);
 
     reg = SET_BITS(config->enshift, 1, reg, 0);
     factor_writel(factor,reg, factor->reg);
@@ -129,7 +154,7 @@ static int sunxi_clk_factors_set_rate(struct clk_hw *hw, unsigned long rate, uns
 {
     unsigned long reg;
     struct clk_factors_value factor_val;
-    unsigned long orig_jiffies;
+    unsigned int loop = 500;
 	struct sunxi_clk_factors *factor = to_clk_factor(hw);
     struct sunxi_clk_factors_config *config = factor->config;
 
@@ -168,26 +193,28 @@ static int sunxi_clk_factors_set_rate(struct clk_hw *hw, unsigned long rate, uns
         reg = SET_BITS(config->modeshift, 1, reg, factor_val.frac_mode);
         reg = SET_BITS(config->outshift, 1, reg, factor_val.frac_freq);
     }
+
+	if(config->updshift) //update for pll_ddr register
+		reg = SET_BITS(config->updshift, 1, reg, 1);
+
     factor_writel(factor,reg, factor->reg);
 #ifndef CONFIG_SUNXI_CLK_DUMMY_DEBUG
-    orig_jiffies = jiffies;
     if(GET_BITS(config->enshift, 1, reg))
     {
-    		while(1)
-    		{
-                    reg = factor_readl(factor,factor->lock_reg);
-    				if(GET_BITS(factor->lock_bit, 1, reg))
-                        break;
-                    if(time_after(jiffies, orig_jiffies + msecs_to_jiffies(500)))
-                    {
+        while(loop--)
+        {
+            reg = factor_readl(factor,factor->lock_reg);
+            if(GET_BITS(factor->lock_bit, 1, reg))
+                break;
+            else
+               udelay(1);
+        }
+        if(!loop)
 #if (defined CONFIG_FPGA_V4_PLATFORM) || (defined CONFIG_FPGA_V7_PLATFORM)
-                        printk("clk %s wait lock timeout\n",hw->clk->name);
+        printk("clk %s wait lock timeout\n",hw->clk->name);
 #else
-                        WARN(1, "clk %s wait lock timeout\n",hw->clk->name);
+        WARN(1, "clk %s wait lock timeout\n",hw->clk->name);
 #endif
-                        break;
-                    }
-            }
     }
 #endif
     return 0;

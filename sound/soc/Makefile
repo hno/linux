@@ -28,6 +28,7 @@ obj-$(CONFIG_SND_SOC)	+= tegra/
 obj-$(CONFIG_SND_SOC)	+= txx9/
 obj-$(CONFIG_SND_SOC)  += sunxi/audiocodec/
 obj-$(CONFIG_SND_SOC)  += sunxi/daudio0/
+obj-$(CONFIG_SND_SOC)  += sunxi/daudio1/
 obj-$(CONFIG_SND_SOC)  += sunxi/hdmiaudio/
 obj-$(CONFIG_SND_SOC)  += sunxi/spdif/
 obj-$(CONFIG_SND_SOC)  += sunxi/i2s0/

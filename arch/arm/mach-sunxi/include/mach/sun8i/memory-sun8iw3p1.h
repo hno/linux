@@ -24,14 +24,14 @@
 #define PLAT_MEM_SIZE            SZ_256M
 #endif
 
-#define SYS_CONFIG_MEMBASE       (PLAT_PHYS_OFFSET + SZ_32M + SZ_16M)        /* 0x43000000 */
-#define SYS_CONFIG_MEMSIZE       (SZ_128K)                                   /* 0x00020000 */
+#define SYS_CONFIG_MEMBASE       (PLAT_PHYS_OFFSET + SZ_32M + SZ_16M)           /* 0x43000000 */
+#define SYS_CONFIG_MEMSIZE       (SZ_128K)                                      /* 0x00020000 */
 
-#define SUPER_STANDBY_MEM_BASE   (SYS_CONFIG_MEMBASE + SYS_CONFIG_MEMSIZE)   /* 0x43020000 */
-#define SUPER_STANDBY_MEM_SIZE   (SZ_2K)                                     /* 0x00000800 */
+#define SUPER_STANDBY_MEM_BASE   (PLAT_PHYS_OFFSET + SZ_32M + SZ_16M + SZ_512K) /* 0x43080000 */
+#define SUPER_STANDBY_MEM_SIZE   (SZ_2K)                                        /* 0x00000800 */
 
 #if defined(CONFIG_ION) || defined(CONFIG_ION_MODULE)
-#define ION_CARVEOUT_MEM_BASE    (0x43100000)                                /* 0x43100000 */
+#define ION_CARVEOUT_MEM_BASE    (0x43100000)                                   /* 0x43100000 */
 #define ION_CARVEOUT_MEM_SIZE    (CONFIG_ION_SUNXI_CARVEOUT_SIZE * SZ_1M)
 #endif
 

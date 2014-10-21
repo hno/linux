@@ -1131,6 +1131,65 @@ static void icn83xx_ts_resume(struct early_suspend *handler)
                 hrtimer_start(&icn83xx_ts->timer, ktime_set(CTP_START_TIMER/1000, (CTP_START_TIMER%1000)*1000000), HRTIMER_MODE_REL);
         }
 }
+#else
+/***********************************************************************************************
+Name    :   icn83xx_ts_suspend
+Input   :   void
+Output  :
+function    : tp enter sleep mode
+***********************************************************************************************/
+static int ts_suspend(struct i2c_client *client, pm_message_t mesg)
+{
+        int ret = -1;
+        struct icn83xx_ts_data *icn83xx_ts = i2c_get_clientdata(this_client);
+        dprintk(DEBUG_SUSPEND,"\n#######################icn83xx_ts_suspend: write ICN83XX_REG_PMODE .#######################\n");
+        if (icn83xx_ts->use_irq){
+                ret = input_set_int_enable(&(config_info.input_type), 0);
+                if (ret < 0)
+                        printk("%s irq dissable failed\n", ICN83XX_NAME);
+        } else {
+                hrtimer_cancel(&icn83xx_ts->timer);
+        }
+        cancel_work_sync(&icn83xx_ts->pen_event_work);
+        flush_workqueue(icn83xx_ts->ts_workqueue);
+        icn83xx_write_reg(ICN83XX_REG_PMODE, PMODE_HIBERNATE);
+        dprintk(DEBUG_SUSPEND,"\n####################### icn83xx_ts_suspend OVER .#######################\n");
+	return 0;
+}
+
+/***********************************************************************************************
+Name    :   icn83xx_ts_resume
+Input   :   void
+Output  :
+function    : wakeup tp or reset tp
+***********************************************************************************************/
+static int ts_resume(struct i2c_client *client)
+{
+        struct icn83xx_ts_data *icn83xx_ts = i2c_get_clientdata(this_client);
+        int ret = -1;
+        dprintk(DEBUG_SUSPEND,"==icn83xx_ts_resume== \n");
+
+#if CTP_REPORT_PROTOCOL
+        int i;
+        for(i = 0; i < POINT_NUM; i++){
+                input_mt_slot(icn83xx_ts->input_dev, i);
+                input_mt_report_slot_state(icn83xx_ts->input_dev, MT_TOOL_FINGER, false);
+        }
+#else
+	       icn83xx_ts_release();
+#endif
+	       ctp_wakeup(0, CTP_WAKEUP_LOW_PERIOD);
+                msleep(CTP_WAKEUP_HIGH_PERIOD);
+        if (icn83xx_ts->use_irq) {
+	       ret = input_set_int_enable(&(config_info.input_type), 1);
+	       if (ret < 0)
+	              dprintk(DEBUG_SUSPEND,"%s irq ensable failed\n", ICN83XX_NAME);
+        } else {
+                hrtimer_start(&icn83xx_ts->timer, ktime_set(CTP_START_TIMER/1000, (CTP_START_TIMER%1000)*1000000), HRTIMER_MODE_REL);
+        }
+	return 0;
+}
+
 #endif
 
 /***********************************************************************************************
@@ -1382,8 +1441,8 @@ static struct i2c_driver icn83xx_ts_driver = {
         .probe      = icn83xx_ts_probe,
         .remove     = __devexit_p(icn83xx_ts_remove),
 #ifndef CONFIG_HAS_EARLYSUSPEND
-        .suspend    = icn83xx_ts_suspend,
-        .resume     = icn83xx_ts_resume,
+        .suspend    = ts_suspend,
+        .resume     = ts_resume,
 #endif
         .id_table   = icn83xx_ts_id,
         .driver = {

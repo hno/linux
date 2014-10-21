@@ -22,7 +22,7 @@
 
 #ifdef CONFIG_ARCH_SUN8IW3
 #define SYS_CONFIG_PAT_EN       1
-struct sunxi_clk_pat_item clkpat_table[]=
+static struct sunxi_clk_pat_item clkpat_table[]=
 {
     {"pll3","pll3pat"},
     {"pll_mipi","pll_mipipat"},
@@ -30,8 +30,7 @@ struct sunxi_clk_pat_item clkpat_table[]=
 #endif
 #ifdef CONFIG_ARCH_SUN8IW5
 #define SYS_CONFIG_PAT_EN       1
-#define SYS_CONFIG_PAT_VAL      1
-struct sunxi_clk_pat_item clkpat_table[]=
+static struct sunxi_clk_pat_item clkpat_table[]=
 {
     {"pll_cpu","pll_cpupat"},
     {"pll_video","pll_videopat"},
@@ -45,15 +44,14 @@ struct sunxi_clk_pat_item clkpat_table[]=
 
 #ifdef CONFIG_ARCH_SUN8IW6
 #define SYS_CONFIG_PAT_EN       1
-struct sunxi_clk_pat_item clkpat_table[]=
+static struct sunxi_clk_pat_item clkpat_table[]=
 {
     {"pll_video0","pll_video0pat"},
 };
 #endif
 #ifdef CONFIG_ARCH_SUN9IW1
 #define SYS_CONFIG_PAT_EN       1
-#define SYS_CONFIG_PAT_VAL      1
-struct sunxi_clk_pat_item clkpat_table[]=
+static struct sunxi_clk_pat_item clkpat_table[]=
 {
     {"pll7","pll7pat"},
     {"pll8","pll8pat"},
@@ -174,11 +172,11 @@ static void sunxi_clk_default_source(void)
 
 #ifdef CONFIG_SUNXI_CLK_DEFAULT_INIT
 #if defined (CONFIG_ARCH_SUN9IW1)
-static char *init_clks[] ={"pll3","pll7","pll8","pll10"};
+static char *init_clks[] ={"pll3","pll7","pll8","pll10","ahb1"};
 #elif defined (CONFIG_ARCH_SUN8IW3) || defined (CONFIG_ARCH_SUN8IW5)
 static char *init_clks[] = {"pll3", "pll4","pll6","pll8","pll9","pll10"};
 #elif defined (CONFIG_ARCH_SUN8IW6)
-static char *init_clks[] = {"pll_video0", "pll_ve","pll_periph","pll_gpu","pll_hsic","pll_de","pll_cpu1"};
+static char *init_clks[] = {"pll_video1", "pll_ve","pll_periph","pll_gpu","pll_hsic","pll_de"};
 #elif defined (CONFIG_ARCH_SUN8IW8)
 static char *init_clks[] = {"pll_video", "pll_ve","pll_periph0","pll_de"};
 #else
@@ -326,10 +324,9 @@ static int __init sunxi_clk_default_sdm(void)
                 if(script_item.val)
                 {
                     factor->config->sdmwidth = 1;
-#ifdef SYS_CONFIG_PAT_VAL
-                        if(script_item.val != 1)    //avoid old format usage to only enable
-                            factor->config->sdmval=script_item.val;
-#endif
+                    if(script_item.val != 1)    //avoid old format usage to only enable
+                        factor->config->sdmval=script_item.val;
+
                     //sync with already enable PLLs
                     if (clk->enable_count && __clk_is_enabled(clk))
                     {

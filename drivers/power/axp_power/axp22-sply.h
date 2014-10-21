@@ -144,6 +144,7 @@ struct axp_charger {
 	bool usb_det;
 	bool ac_valid;
 	bool usb_valid;
+	bool usb_adapter_valid;
 	bool ext_valid;
 	bool bat_current_direction;
 	bool in_short;
@@ -181,6 +182,9 @@ struct axp_charger {
 	/* platform callbacks for battery low and critical events */
 	void (*battery_low)(void);
 	void (*battery_critical)(void);
+
+	/* timer for report ac/usb type */
+	struct timer_list usb_status_timer;
 
 	struct dentry *debug_file;
 };

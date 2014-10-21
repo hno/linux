@@ -13,6 +13,11 @@
 #include <linux/clk/clk-sun8iw6.h>
 #define SW_INT_IRQNO_IR0 (SUNXI_IRQ_R_CIR_RX)
 #define IR0_BASE         (void __iomem *)(0xf1f02000)
+#elif defined CONFIG_ARCH_SUN8IW7P1
+#include <linux/clk/clk-sun8iw7.h>
+#define SW_INT_IRQNO_IR0 (SUNXI_IRQ_R_CIR_RX)
+#define IR0_BASE         (void __iomem *)(0xf1f02000)
+
 #endif
 
 #ifdef CONFIG_FPGA_V4_PLATFORM
@@ -85,6 +90,7 @@ enum {
 	DEBUG_INT = 1U << 1,
 	DEBUG_DATA_INFO = 1U << 2,
 	DEBUG_SUSPEND = 1U << 3,
+	DEBUG_ERR = 1U << 4,
 };
 
 enum ir_mode {

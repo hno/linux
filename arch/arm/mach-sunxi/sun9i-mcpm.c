@@ -38,7 +38,17 @@
 #include <linux/arisc/arisc.h>
 #include <linux/arisc/arisc-notifier.h>
 #include <mach/sys_config.h>
-#include <mach/sunxi-chip.h>
+#include <mach/sunxi-smc.h>
+#include <asm/firmware.h>
+
+void sun9i_set_secondary_entry(void *entry)
+{
+	if (sunxi_soc_is_secure()) {
+		call_firmware_op(set_secondary_entry, entry);
+	} else {
+		sunxi_set_secondary_entry(entry);
+	}
+}
 
 /* sync with arisc module */
 static bool arisc_ready = 0;
@@ -53,8 +63,8 @@ static bool arisc_ready = 0;
 #define A15_CLUSTER	1
 #define MAX_CLUSTERS	2
 
-#define SUN9I_CPU_IS_WFI_MODE(cluster, cpu) (readl(sun9i_cpucfg_base + SUNXI_CLUSTER_CPU_STATUS(cluster)) & (1 << (16 + cpu)))
-#define SUN9I_L2CACHE_IS_WFI_MODE(cluster)  (readl(sun9i_cpucfg_base + SUNXI_CLUSTER_CPU_STATUS(cluster)) & (1 << 0))
+#define SUN9I_CPU_IS_WFI_MODE(cluster, cpu) (sunxi_smc_readl(sun9i_cpucfg_base + SUNXI_CLUSTER_CPU_STATUS(cluster)) & (1 << (16 + cpu)))
+#define SUN9I_L2CACHE_IS_WFI_MODE(cluster)  (sunxi_smc_readl(sun9i_cpucfg_base + SUNXI_CLUSTER_CPU_STATUS(cluster)) & (1 << 0))
 
 #define SUN9I_A7_CLSUTER_PWRUP_FREQ   (600000)  /* freq base on khz */
 #define SUN9I_A15_CLSUTER_PWRUP_FREQ  (600000)  /* freq base on khz */
@@ -105,36 +115,36 @@ static struct hrtimer cluster_power_down_timer;
 static int sun9i_ca7_power_switch_set(unsigned int cluster, unsigned int cpu, bool enable)
 {
 	if (enable) {
-		if (0x00 == readl(sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu))) {
+		if (0x00 == sunxi_smc_readl(sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu))) {
 			pr_debug("%s: power switch enable already\n", __func__);
 			return 0;
 		}
 		/* de-active cpu power clamp */
-		writel(0xFE, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
+		sunxi_smc_writel(0xFE, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
 		udelay(20);
 		
-		writel(0xF8, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
+		sunxi_smc_writel(0xF8, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
 		udelay(10);
 		
-		writel(0xE0, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
+		sunxi_smc_writel(0xE0, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
 		udelay(10);
 
-		writel(0x80, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
+		sunxi_smc_writel(0x80, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
 		udelay(10);
 
-		writel(0x00, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
+		sunxi_smc_writel(0x00, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
 		udelay(20);
-		while(0x00 != readl(sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu))) {
+		while(0x00 != sunxi_smc_readl(sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu))) {
 			;
 		}
 	} else {
-		if (0xFF == readl(sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu))) {
+		if (0xFF == sunxi_smc_readl(sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu))) {
 			pr_debug("%s: power switch disable already\n", __func__);
 			return 0;
 		}
-		writel(0xFF, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
+		sunxi_smc_writel(0xFF, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
 		udelay(30);
-		while(0xFF != readl(sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu))) {
+		while(0xFF != sunxi_smc_readl(sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu))) {
 			;
 		}
 	}
@@ -145,70 +155,70 @@ static int sun9i_ca15_power_switch_set(unsigned int cluster, unsigned int cpu, b
 {
 	if (sunxi_get_soc_ver() >= SUN9IW1P1_REV_B) {
 		if (enable) {
-			if (0x00 == readl(sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu))) {
+			if (0x00 == sunxi_smc_readl(sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu))) {
 				pr_debug("%s: power switch enable already\n", __func__);
 				return 0;
 			}
 			/* de-active cpu power clamp */
-			writel(0xFE, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
+			sunxi_smc_writel(0xFE, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
 			udelay(20);
 
-			writel(0xF8, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
+			sunxi_smc_writel(0xF8, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
 			udelay(10);
 
-			writel(0xE0, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
+			sunxi_smc_writel(0xE0, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
 			udelay(10);
 
-			writel(0x80, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
+			sunxi_smc_writel(0x80, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
 			udelay(10);
 
-			writel(0x00, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
+			sunxi_smc_writel(0x00, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
 			udelay(20);
-			while(0x00 != readl(sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu))) {
+			while(0x00 != sunxi_smc_readl(sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu))) {
 				;
 			}
 		} else {
-			if (0xFF == readl(sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu))) {
+			if (0xFF == sunxi_smc_readl(sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu))) {
 				pr_debug("%s: power switch disable already\n", __func__);
 				return 0;
 			}
-			writel(0xFF, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
+			sunxi_smc_writel(0xFF, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
 			udelay(30);
-			while(0xFF != readl(sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu))) {
+			while(0xFF != sunxi_smc_readl(sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu))) {
 				;
 			}
 		}
 	} else {
 		if (enable) {
-			if (0xFF == readl(sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu))) {
+			if (0xFF == sunxi_smc_readl(sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu))) {
 				pr_debug("%s: power switch enable already\n", __func__);
 				return 0;
 			}
-			writel(0x01, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
+			sunxi_smc_writel(0x01, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
 			udelay(20);
         	
-			writel(0x07, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
+			sunxi_smc_writel(0x07, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
 			udelay(10);
         	
-			writel(0x1F, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
+			sunxi_smc_writel(0x1F, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
 			udelay(10);
         	
-			writel(0x7F, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
+			sunxi_smc_writel(0x7F, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
 			udelay(10);
         	
-			writel(0xFF, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
+			sunxi_smc_writel(0xFF, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
 			udelay(20);
-			while(0xFF != readl(sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu))) {
+			while(0xFF != sunxi_smc_readl(sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu))) {
 				;
 			}
 		} else {
-			if (0x00 == readl(sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu))) {
+			if (0x00 == sunxi_smc_readl(sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu))) {
 				pr_debug("%s: power switch disable already\n", __func__);
 				return 0;
 			}
-			writel(0x00, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
+			sunxi_smc_writel(0x00, sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu));
 			udelay(30);
-			while(0x00 != readl(sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu))) {
+			while(0x00 != sunxi_smc_readl(sun9i_prcm_base + SUNXI_CPU_PWR_CLAMP(cluster, cpu))) {
 				;
 			}
 		}
@@ -232,11 +242,11 @@ static int sun9i_cpu_power_switch_set(unsigned int cluster, unsigned int cpu, bo
 static int sun9i_boot_cpu_hotplug_enable(bool enable)
 {
 	if(enable){
-		writel(0xFA50392F,(sun9i_sram_b_vbase+SUNXI_CPU0_SUPPORT_HOTPLUG_ADD1));
-		writel(0x790DCA3A,(sun9i_sram_b_vbase+SUNXI_CPU0_SUPPORT_HOTPLUG_ADD2));
+		sunxi_smc_writel(0xFA50392F,(sun9i_sram_b_vbase+SUNXI_CPU0_SUPPORT_HOTPLUG_ADD1));
+		sunxi_smc_writel(0x790DCA3A,(sun9i_sram_b_vbase+SUNXI_CPU0_SUPPORT_HOTPLUG_ADD2));
 	} else {
-		writel(0x00000000,(sun9i_sram_b_vbase+SUNXI_CPU0_SUPPORT_HOTPLUG_ADD1));
-		writel(0x00000000,(sun9i_sram_b_vbase+SUNXI_CPU0_SUPPORT_HOTPLUG_ADD2));
+		sunxi_smc_writel(0x00000000,(sun9i_sram_b_vbase+SUNXI_CPU0_SUPPORT_HOTPLUG_ADD1));
+		sunxi_smc_writel(0x00000000,(sun9i_sram_b_vbase+SUNXI_CPU0_SUPPORT_HOTPLUG_ADD2));
 	}
 	return 0;
 }
@@ -259,15 +269,15 @@ int sun9i_cpu_power_set(unsigned int cluster, unsigned int cpu, bool enable)
 		}
 
 		/* assert cpu core reset */
-		value  = readl(sun9i_cpucfg_base + SUNXI_CPU_RST_CTRL(cluster));
+		value  = sunxi_smc_readl(sun9i_cpucfg_base + SUNXI_CPU_RST_CTRL(cluster));
 		value &= (~(1<<cpu));
-		writel(value, sun9i_cpucfg_base + SUNXI_CPU_RST_CTRL(cluster));
+		sunxi_smc_writel(value, sun9i_cpucfg_base + SUNXI_CPU_RST_CTRL(cluster));
 		udelay(10);
 
 		/* assert cpu power-on reset */
-		value  = readl(sun9i_prcm_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
+		value  = sunxi_smc_readl(sun9i_prcm_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
 		value &= (~(1<<cpu));
-		writel(value, sun9i_prcm_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
+		sunxi_smc_writel(value, sun9i_prcm_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
 		udelay(10);
 
 		/* L1RSTDISABLE hold low */
@@ -276,30 +286,30 @@ int sun9i_cpu_power_set(unsigned int cluster, unsigned int cpu, bool enable)
 			 * the A15_CLUSTER default reset by hardware when power-up, 
 			 * software can't control it.
 			 */
-			value = readl(sun9i_cpucfg_base + SUNXI_CLUSTER_CTRL0(cluster));
+			value = sunxi_smc_readl(sun9i_cpucfg_base + SUNXI_CLUSTER_CTRL0(cluster));
 			value &= ~(1<<cpu);
-			writel(value, sun9i_cpucfg_base + SUNXI_CLUSTER_CTRL0(cluster));
+			sunxi_smc_writel(value, sun9i_cpucfg_base + SUNXI_CLUSTER_CTRL0(cluster));
 		}
 
 		/* release power switch */
 		sun9i_cpu_power_switch_set(cluster, cpu, 1);
 
 		/* clear power-off gating */
-		value = readl(sun9i_prcm_base + SUNXI_CLUSTER_PWROFF_GATING(cluster));
+		value = sunxi_smc_readl(sun9i_prcm_base + SUNXI_CLUSTER_PWROFF_GATING(cluster));
 		value &= (~(0x1<<cpu));
-		writel(value, sun9i_prcm_base + SUNXI_CLUSTER_PWROFF_GATING(cluster));
+		sunxi_smc_writel(value, sun9i_prcm_base + SUNXI_CLUSTER_PWROFF_GATING(cluster));
 		udelay(20);
 
 		/* de-assert cpu power-on reset */
-		value  = readl(sun9i_prcm_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
+		value  = sunxi_smc_readl(sun9i_prcm_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
 		value |= ((1<<cpu));
-		writel(value, sun9i_prcm_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
+		sunxi_smc_writel(value, sun9i_prcm_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
 		udelay(10);
 
 		/* de-assert core reset */
-		value  = readl(sun9i_cpucfg_base + SUNXI_CPU_RST_CTRL(cluster));
+		value  = sunxi_smc_readl(sun9i_cpucfg_base + SUNXI_CPU_RST_CTRL(cluster));
 		value |= (1<<cpu);
-		writel(value, sun9i_cpucfg_base + SUNXI_CPU_RST_CTRL(cluster));
+		sunxi_smc_writel(value, sun9i_cpucfg_base + SUNXI_CPU_RST_CTRL(cluster));
 		udelay(10);
 
 		pr_debug("sun9i power-up cluster-%d cpu-%d already\n", cluster, cpu);
@@ -310,9 +320,9 @@ int sun9i_cpu_power_set(unsigned int cluster, unsigned int cpu, bool enable)
 		pr_debug("sun9i power-down cluster-%d cpu-%d\n", cluster, cpu);
 
 		/* enable cpu power-off gating */
-		value = readl(sun9i_prcm_base + SUNXI_CLUSTER_PWROFF_GATING(cluster));
+		value = sunxi_smc_readl(sun9i_prcm_base + SUNXI_CLUSTER_PWROFF_GATING(cluster));
 		value |= (1 << cpu);
-		writel(value, sun9i_prcm_base + SUNXI_CLUSTER_PWROFF_GATING(cluster));
+		sunxi_smc_writel(value, sun9i_prcm_base + SUNXI_CLUSTER_PWROFF_GATING(cluster));
 		udelay(20);
 
 		/* active the power output switch */
@@ -342,24 +352,24 @@ int sun9i_cluster_power_set(unsigned int cluster, bool enable)
 		pr_debug("sun9i power-up cluster-%d\n", cluster);
 
 		/* active ACINACTM */
-		value = readl(sun9i_cpucfg_base + SUNXI_CLUSTER_CTRL1(cluster));
+		value = sunxi_smc_readl(sun9i_cpucfg_base + SUNXI_CLUSTER_CTRL1(cluster));
 		value |= (1<<0);
-		writel(value, sun9i_cpucfg_base + SUNXI_CLUSTER_CTRL1(cluster));
+		sunxi_smc_writel(value, sun9i_cpucfg_base + SUNXI_CLUSTER_CTRL1(cluster));
 
 		/* assert cluster cores resets */
-		value = readl(sun9i_cpucfg_base + SUNXI_CPU_RST_CTRL(cluster));
+		value = sunxi_smc_readl(sun9i_cpucfg_base + SUNXI_CPU_RST_CTRL(cluster));
 		value &= (~(0xF<<0));   /* Core Reset    */
-		writel(value, sun9i_cpucfg_base + SUNXI_CPU_RST_CTRL(cluster));
+		sunxi_smc_writel(value, sun9i_cpucfg_base + SUNXI_CPU_RST_CTRL(cluster));
 		udelay(10);
 
 		/* assert cluster cores power-on reset */
-		value = readl(sun9i_prcm_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
+		value = sunxi_smc_readl(sun9i_prcm_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
 		value &= (~(0xF));
-		writel(value, sun9i_prcm_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
+		sunxi_smc_writel(value, sun9i_prcm_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
 		udelay(10);
 		
 		/* assert cluster resets */
-		value = readl(sun9i_cpucfg_base + SUNXI_CPU_RST_CTRL(cluster));
+		value = sunxi_smc_readl(sun9i_cpucfg_base + SUNXI_CPU_RST_CTRL(cluster));
 		value &= (~(0x1<<24));  /* SOC DBG Reset */
 		value &= (~(0xF<<16));  /* Debug Reset   */
 		value &= (~(0x1<<12));  /* HReset        */
@@ -369,18 +379,18 @@ int sun9i_cluster_power_set(unsigned int cluster, bool enable)
 		} else {
 			value &= (~(0xF<<4));   /* Neon Reset   */
 		}
-		writel(value, sun9i_cpucfg_base + SUNXI_CPU_RST_CTRL(cluster));
+		sunxi_smc_writel(value, sun9i_cpucfg_base + SUNXI_CPU_RST_CTRL(cluster));
 		udelay(10);
 
 		/* Set L2RSTDISABLE LOW */
 		if (cluster == A7_CLUSTER) {
-			value = readl(sun9i_cpucfg_base + SUNXI_CLUSTER_CTRL0(cluster));
+			value = sunxi_smc_readl(sun9i_cpucfg_base + SUNXI_CLUSTER_CTRL0(cluster));
 			value &= (~(0x1<<4));
-			writel(value, sun9i_cpucfg_base + SUNXI_CLUSTER_CTRL0(cluster));
+			sunxi_smc_writel(value, sun9i_cpucfg_base + SUNXI_CLUSTER_CTRL0(cluster));
 		} else {
-			value = readl(sun9i_cpucfg_base + SUNXI_CLUSTER_CTRL0(cluster));
+			value = sunxi_smc_readl(sun9i_cpucfg_base + SUNXI_CLUSTER_CTRL0(cluster));
 			value &= (~(0x1<<0));
-			writel(value, sun9i_cpucfg_base + SUNXI_CLUSTER_CTRL0(cluster));			
+			sunxi_smc_writel(value, sun9i_cpucfg_base + SUNXI_CLUSTER_CTRL0(cluster));			
 		}
 
 		/* notify arisc to power-up cluster */
@@ -389,18 +399,18 @@ int sun9i_cluster_power_set(unsigned int cluster, bool enable)
 		mdelay(1);
 		
 		/* clear cluster power-off gating */
-		value = readl(sun9i_prcm_base + SUNXI_CLUSTER_PWROFF_GATING(cluster));
+		value = sunxi_smc_readl(sun9i_prcm_base + SUNXI_CLUSTER_PWROFF_GATING(cluster));
 		value &= (~(0x1<<4));
-		writel(value, sun9i_prcm_base + SUNXI_CLUSTER_PWROFF_GATING(cluster));
+		sunxi_smc_writel(value, sun9i_prcm_base + SUNXI_CLUSTER_PWROFF_GATING(cluster));
 		udelay(20);
 
 		/* de-active ACINACTM */
-		value = readl(sun9i_cpucfg_base + SUNXI_CLUSTER_CTRL1(cluster));
+		value = sunxi_smc_readl(sun9i_cpucfg_base + SUNXI_CLUSTER_CTRL1(cluster));
 		value &= (~(1<<0));
-		writel(value, sun9i_cpucfg_base + SUNXI_CLUSTER_CTRL1(cluster));
+		sunxi_smc_writel(value, sun9i_cpucfg_base + SUNXI_CLUSTER_CTRL1(cluster));
 
 		/* de-assert cores reset */
-		value = readl(sun9i_cpucfg_base + SUNXI_CPU_RST_CTRL(cluster));
+		value = sunxi_smc_readl(sun9i_cpucfg_base + SUNXI_CPU_RST_CTRL(cluster));
 		value |= (0x1<<24);  /* SOC DBG Reset */
 		value |= (0xF<<16);  /* Debug Reset   */
 		value |= (0x1<<12);  /* HReset        */
@@ -410,19 +420,19 @@ int sun9i_cluster_power_set(unsigned int cluster, bool enable)
 		} else {
 			value |= (0xF<<4);   /* Neon Reset   */
 		}
-		writel(value, sun9i_cpucfg_base + SUNXI_CPU_RST_CTRL(cluster));
+		sunxi_smc_writel(value, sun9i_cpucfg_base + SUNXI_CPU_RST_CTRL(cluster));
                 udelay(20);
 		
 		/* de-assert cores power-on reset */
-		value = readl(sun9i_prcm_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
+		value = sunxi_smc_readl(sun9i_prcm_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
 		value |= (0xF);
-		writel(value, sun9i_prcm_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
+		sunxi_smc_writel(value, sun9i_prcm_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
 		udelay(60);
 		
 		/* de-assert cores reset */
-		value = readl(sun9i_cpucfg_base + SUNXI_CPU_RST_CTRL(cluster));
+		value = sunxi_smc_readl(sun9i_cpucfg_base + SUNXI_CPU_RST_CTRL(cluster));
 		value |= (0xF<<0);   /* Core Reset    */
-		writel(value, sun9i_cpucfg_base + SUNXI_CPU_RST_CTRL(cluster));
+		sunxi_smc_writel(value, sun9i_cpucfg_base + SUNXI_CPU_RST_CTRL(cluster));
                 udelay(20);
                 
 		pr_debug("sun9i power-up cluster-%d ok\n", cluster);
@@ -432,9 +442,9 @@ int sun9i_cluster_power_set(unsigned int cluster, bool enable)
 		pr_debug("sun9i power-down cluster-%d\n", cluster);
 
 		/* active ACINACTM */
-		value = readl(sun9i_cpucfg_base + SUNXI_CLUSTER_CTRL1(cluster));
+		value = sunxi_smc_readl(sun9i_cpucfg_base + SUNXI_CLUSTER_CTRL1(cluster));
 		value |= (1<<0);
-		writel(value, sun9i_cpucfg_base + SUNXI_CLUSTER_CTRL1(cluster));
+		sunxi_smc_writel(value, sun9i_cpucfg_base + SUNXI_CLUSTER_CTRL1(cluster));
 		
 		while (1) {
 			if (SUN9I_L2CACHE_IS_WFI_MODE(cluster)) {
@@ -444,19 +454,19 @@ int sun9i_cluster_power_set(unsigned int cluster, bool enable)
 		}
 		
 		/* assert cluster cores resets */
-		value = readl(sun9i_cpucfg_base + SUNXI_CPU_RST_CTRL(cluster));
+		value = sunxi_smc_readl(sun9i_cpucfg_base + SUNXI_CPU_RST_CTRL(cluster));
 		value &= (~(0xF<<0));   /* Core Reset    */
-		writel(value, sun9i_cpucfg_base + SUNXI_CPU_RST_CTRL(cluster));
+		sunxi_smc_writel(value, sun9i_cpucfg_base + SUNXI_CPU_RST_CTRL(cluster));
 		udelay(10);
 		
 		/* assert cluster cores power-on reset */
-		value = readl(sun9i_prcm_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
+		value = sunxi_smc_readl(sun9i_prcm_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
 		value &= (~(0xF));
-		writel(value, sun9i_prcm_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
+		sunxi_smc_writel(value, sun9i_prcm_base + SUNXI_CLUSTER_PWRON_RESET(cluster));
 		udelay(10);
 		
 		/* assert cluster resets */
-		value = readl(sun9i_cpucfg_base + SUNXI_CPU_RST_CTRL(cluster));
+		value = sunxi_smc_readl(sun9i_cpucfg_base + SUNXI_CPU_RST_CTRL(cluster));
 		value &= (~(0x1<<24));  /* SOC DBG Reset */
 		value &= (~(0xF<<16));  /* Debug Reset   */
 		value &= (~(0x1<<12));  /* HReset        */
@@ -466,14 +476,14 @@ int sun9i_cluster_power_set(unsigned int cluster, bool enable)
 		} else {
 			value &= (~(0xF<<4));   /* Neon Reset   */
 		}
-		writel(value, sun9i_cpucfg_base + SUNXI_CPU_RST_CTRL(cluster));
+		sunxi_smc_writel(value, sun9i_cpucfg_base + SUNXI_CPU_RST_CTRL(cluster));
 		udelay(10);
 
 		/* enable cluster and cores power-off gating */
-		value = readl(sun9i_prcm_base + SUNXI_CLUSTER_PWROFF_GATING(cluster));
+		value = sunxi_smc_readl(sun9i_prcm_base + SUNXI_CLUSTER_PWROFF_GATING(cluster));
 		value |= (1<<4);
 		value |= (0xF<<0);
-		writel(value, sun9i_prcm_base + SUNXI_CLUSTER_PWROFF_GATING(cluster));
+		sunxi_smc_writel(value, sun9i_prcm_base + SUNXI_CLUSTER_PWROFF_GATING(cluster));
 		udelay(20);
 		
 		/* disable cluster cores power switch */
@@ -499,7 +509,7 @@ static int sun9i_cluster_power_status(unsigned int cluster)
 	int          status = 0;
 	unsigned int value;
 
-	value = readl(sun9i_cpucfg_base + SUNXI_CLUSTER_CPU_STATUS(cluster));
+	value = sunxi_smc_readl(sun9i_cpucfg_base + SUNXI_CLUSTER_CPU_STATUS(cluster));
 
 	/* cluster WFI status :
 	 * all cpu cores enter WFI mode + L2Cache enter WFI status
@@ -826,6 +836,12 @@ static const struct mcpm_platform_ops sun9i_mcpm_power_ops = {
 static int sun9i_arisc_notify_call(struct notifier_block *nfb, 
                                    unsigned long action, void *parg)
 {
+	unsigned int mpidr, cpu, cluster;
+
+	mpidr = read_cpuid_mpidr();
+	cpu = MPIDR_AFFINITY_LEVEL(mpidr, 0);
+	cluster = MPIDR_AFFINITY_LEVEL(mpidr, 1);
+
 	switch (action) {
 		case ARISC_INIT_READY: {
 		unsigned int cpu;
@@ -833,8 +849,13 @@ static int sun9i_arisc_notify_call(struct notifier_block *nfb,
 		/* arisc ready now */
 		set_arisc_ready(1);
 		
-		/* power-off cluster-a15 first */
-		sun9i_cluster_power_set(A15_CLUSTER, 0);
+		if (cluster == A7_CLUSTER) {
+			/* power-off cluster-a15 first */
+			sun9i_cluster_power_set(A15_CLUSTER, 0);
+		} else if (cluster == A15_CLUSTER) {
+			/* power-off cluster-a7 first */
+			sun9i_cluster_power_set(A7_CLUSTER, 0);
+		}
 		
 		/* power-up off-line cpus*/
 		for_each_present_cpu(cpu) {
@@ -874,9 +895,56 @@ static void __init sun9i_mcpm_boot_cpu_init(void)
     cpumask_set_cpu((cluster*4 + cpu),&cpu_power_up_state_mask);
 }
 
-extern void sun9i_power_up_setup(unsigned int affinity_level);
-extern int __init cci_init(void);
 
+static int sun9i_mcpm_get_cfg(char *main, char *sub, u32 *val)
+{
+	script_item_u script_val;
+	script_item_value_type_e type;
+	type = script_get_item(main, sub, &script_val);
+	if (SCIRPT_ITEM_VALUE_TYPE_INT != type) {
+		pr_err("%s: %s-%s config type err", __func__, main, sub);
+		return -EINVAL;
+	}
+	*val = script_val.val;
+	pr_debug("%s: mcpm config [%s][%s] : %d\n", __func__, main, sub, *val);
+	return 0;
+}
+
+int sun9i_mcpm_cpu_map_init(void)
+{
+	int index = 0;
+	u32 cpu_count = 0;
+	u32 logical_map = 0;
+	char cpu_name[32];
+
+	/* default cpu logical map */
+	cpu_logical_map(0) = 0x000;
+	cpu_logical_map(1) = 0x001;
+	cpu_logical_map(2) = 0x002;
+	cpu_logical_map(3) = 0x003;
+	cpu_logical_map(4) = 0x100;
+	cpu_logical_map(5) = 0x101;
+	cpu_logical_map(6) = 0x102;
+	cpu_logical_map(7) = 0x103;
+
+	/* readout config mapping information from sys_config */
+	if (sun9i_mcpm_get_cfg("cpu_logical_map", "cpu_count", &cpu_count)) {
+		pr_warn("%s: invalid config cpu_count\n", __func__);
+		return -EINVAL;
+	}
+	for (index = 0; index < cpu_count; index++) {
+		sprintf(cpu_name, "cpu%d", index);
+		if (sun9i_mcpm_get_cfg("cpu_logical_map", cpu_name, &logical_map) == 0) {
+			cpu_logical_map(index) = logical_map;
+		}
+	}
+
+	return 0;
+}
+
+extern void sun9i_power_up_setup(unsigned int affinity_level);
+
+extern int __init cci_init(void);
 static int __init sun9i_mcpm_init(void)
 {
 	int ret;
@@ -902,10 +970,10 @@ static int __init sun9i_mcpm_init(void)
 	}
 
 	/* map brom address to 0x0 */
-	writel(0x16AA0000, 0xF08000E0);
+	sunxi_smc_writel(0x16AA0000, (void *)0xF08000E0);
 
 	/* set sun9i platform non-boot cpu startup entry. */
-	sunxi_set_secondary_entry((void *)(virt_to_phys(mcpm_entry_point)));
+	sun9i_set_secondary_entry((void *)(virt_to_phys(mcpm_entry_point)));
 
 	/* initialize ca7 and ca15 cluster pll number */
 	cluster_pll[A7_CLUSTER] = ARISC_DVFS_PLL1;

@@ -64,5 +64,9 @@ struct write_group {
 void sunxi_dump_regs(u32 start_reg, u32 end_reg);
 void sunxi_compare_regs(struct compare_group *pgroup);
 void sunxi_write_regs(struct write_group *pgroup);
+#if (defined CONFIG_ARCH_SUN8IW6P1) || (defined CONFIG_ARCH_SUN9IW1P1)
+s32 sunxi_rtc_reg_write(u32 addr, u32 data);
+u32 sunxi_rtc_reg_read(u32 addr);
+#endif
 
 #endif /* __SUNXI_DUMP_REG_H */

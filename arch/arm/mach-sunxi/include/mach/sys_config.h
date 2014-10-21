@@ -67,6 +67,8 @@ typedef union {
     struct gpio_config  gpio;
 } script_item_u;
 
+int __init script_init(void);
+
 /*
  * script_get_item
  *      get an item from script based on main_key & sub_key

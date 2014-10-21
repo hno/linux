@@ -22,9 +22,9 @@
  */
 #define SUNXI_IO_PBASE                   0x01000000
 #define SUNXI_IO_SIZE                    0x01000000
-#define SUNXI_BROM0_N_PBASE              0x00000000
+#define SUNXI_BROM0_N_PBASE              0xffff0000
 #define SUNXI_BROM0_N_SIZE               0x00008000
-#define SUNXI_BROM1_S_PBASE              0x00000000
+#define SUNXI_BROM1_S_PBASE              0xffff0000
 #define SUNXI_BROM1_S_SIZE               0x00010000
 #define SUNXI_SRAM_A1_PBASE              0x00000000
 #define SUNXI_SRAM_A1_SIZE               0x00008000
@@ -63,7 +63,7 @@
 #define SUNXI_NFC0_PBASE                 0x01c03000
 #define SUNXI_KEYMEM_PBASE               0x01c0b000
 #define SUNXI_LCD0_PBASE                 0x01c0c000
-#define SUNXI_LCD1_PBASE                 0x01d0c000
+#define SUNXI_LCD1_PBASE                 0x01c0d000
 #define SUNXI_VE_PBASE                   0x01c0e000
 #define SUNXI_SDMMC0_PBASE               0x01c0f000
 #define SUNXI_SDMMC1_PBASE               0x01c10000
@@ -79,13 +79,14 @@
 #define SUNXI_CCM_PBASE                  0x01c20000
 #define SUNXI_PIO_PBASE                  0x01c20800
 #define SUNXI_TIMER_PBASE                0x01c20c00
+#define SUNXI_OWA_PBASE                  0x01c21000
 #define SUNXI_PWM_PBASE                  0x01c21400
 #define SUNXI_DAUDIO0_PBASE              0x01c22000
 #define SUNXI_DAUDIO1_PBASE              0x01c22400
 #define SUNXI_DAUDIO2_PBASE              0x01c22800
 #define SUNXI_TDM_PBASE                  0x01c23000
 #define SUNXI_SMTA_PBASE                 0x01c23400
-#define SUNXI_DSI_PBASE                  0x01c26000
+#define SUNXI_MIPI_DSI0_PBASE            0x01c26000
 #define SUNXI_UART0_PBASE                0x01c28000
 #define SUNXI_UART1_PBASE                0x01c28400
 #define SUNXI_UART2_PBASE                0x01c28800
@@ -127,12 +128,11 @@
  * define virt addresses
  */
 #define SUNXI_DE_VBASE                   IO_ADDRESS(SUNXI_DE_PBASE           )
-#define SUNXI_BROM0_N_VBASE              IO_ADDRESS(SUNXI_BROM0_N_PBASE        )
-#define SUNXI_BROM1_S_VBASE              IO_ADDRESS(SUNXI_BROM1_S_PBASE        )
+#define SUNXI_BROM1_S_VBASE              (SUNXI_IO_VBASE + SUNXI_IO_SIZE     )
 #define SUNXI_IO_VBASE                   IO_ADDRESS(SUNXI_IO_PBASE           )
 #define SUNXI_SRAM_A1_VBASE              IO_ADDRESS(SUNXI_SRAM_A1_PBASE      )
 #define SUNXI_SRAM_A2_VBASE              IO_ADDRESS(SUNXI_SRAM_A2_PBASE      )
-#define SUNXI_BROM_VBASE                 0xf1000000 /* note: IO_ADDRESS(SUNXI_BROM_PBASE) out of vmalloc range */
+#define SUNXI_SRAM_B_VBASE               IO_ADDRESS(SUNXI_SRAM_B_PBASE       )
 #define SUNXI_SRAMCTRL_VBASE             IO_ADDRESS(SUNXI_SRAMCTRL_PBASE     )
 #define SUNXI_DMA_VBASE                  IO_ADDRESS(SUNXI_DMA_PBASE          )
 #define SUNXI_NANDFLASHC0_VBASE          IO_ADDRESS(SUNXI_NANDFLASHC0_PBASE  )
@@ -148,9 +148,11 @@
 #define SUNXI_SPINLOCK_VBASE             IO_ADDRESS(SUNXI_SPINLOCK_PBASE     )
 #define SUNXI_USB_OTG_VBASE              IO_ADDRESS(SUNXI_USB_OTG_PBASE      )
 #define SUNXI_USB_HCI0_VBASE             IO_ADDRESS(SUNXI_USB_HCI0_PBASE     )
+#define SUNXI_USB_HCI1_VBASE             IO_ADDRESS(SUNXI_USB_HCI1_PBASE     )
 #define SUNXI_CCM_VBASE                  IO_ADDRESS(SUNXI_CCM_PBASE          )
 #define SUNXI_PIO_VBASE                  IO_ADDRESS(SUNXI_PIO_PBASE          )
 #define SUNXI_TIMER_VBASE                IO_ADDRESS(SUNXI_TIMER_PBASE        )
+#define SUNXI_OWA_VBASE                  IO_ADDRESS(SUNXI_OWA_PBASE          )
 #define SUNXI_PWM_VBASE                  IO_ADDRESS(SUNXI_PWM_PBASE          )
 #define SUNXI_DAUDIO0_VBASE              IO_ADDRESS(SUNXI_DAUDIO0_PBASE      )
 #define SUNXI_DAUDIO1_VBASE              IO_ADDRESS(SUNXI_DAUDIO1_PBASE      )
@@ -178,10 +180,7 @@
 #define SUNXI_MIPI_DSI0_VBASE            IO_ADDRESS(SUNXI_MIPI_DSI0_PBASE    )
 #define SUNXI_MIPI_DSI0_PHY_VBASE        IO_ADDRESS(SUNXI_MIPI_DSI0_PHY_PBASE)
 #define SUNXI_CSI_VBASE                  IO_ADDRESS(SUNXI_CSI_PBASE          )
-#define SUNXI_DE_FE0_VBASE               IO_ADDRESS(SUNXI_DE_FE0_PBASE       )
-#define SUNXI_DE_BE0_VBASE               IO_ADDRESS(SUNXI_DE_BE0_PBASE       )
-#define SUNXI_DRC0_VBASE                 IO_ADDRESS(SUNXI_DRC0_PBASE         )
-#define SUNXI_SAT_VBASE                  IO_ADDRESS(SUNXI_SAT_PBASE          )
+#define SUNXI_HDMI_VBASE                 IO_ADDRESS(SUNXI_HDMI_PBASE       )
 #define SUNXI_RTC_VBASE                  IO_ADDRESS(SUNXI_RTC_PBASE          )
 #define SUNXI_R_TIMER_VBASE              IO_ADDRESS(SUNXI_R_TIMER_PBASE      )
 #define SUNXI_R_INTC_VBASE               IO_ADDRESS(SUNXI_R_INTC_PBASE       )
@@ -220,8 +219,8 @@
 #define SUNXI_CPUXCFG_C0CTRL_REG1         0x004
 #define SUNXI_CPUXCFG_C1CTRL_REG0         0x010
 #define SUNXI_CPUXCFG_C1CTRL_REG1         0x014
-#define SUNXI_CPUXCFG_CXCTRL_REG0(cluster)                (0x000 + (cluster) * 0x10)
-#define SUNXI_CPUXCFG_CXCTRL_REG1(cluster)                (0x004 + (cluster) * 0x10)
+#define SUNXI_CLUSTER_CTRL0(cluster)                (0x000 + (cluster) * 0x10)
+#define SUNXI_CLUSTER_CTRL1(cluster)                (0x004 + (cluster) * 0x10)
 #define SUNXI_CPUXCFG_DBGCTL0             0x020
 #define C0_CPU_STATUS                             0x0030
 #define C1_CPU_STATUS                             0x0034
